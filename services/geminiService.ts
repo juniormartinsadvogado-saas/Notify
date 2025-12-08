@@ -3,37 +3,37 @@ import { Attachment } from "../types";
 
 // Helper para obter API KEY de forma segura (suporta Vite, process.env e Vercel)
 const getApiKey = () => {
-  let key = '';
+  // 1. Prioridade Absoluta: process.env.API_KEY (Injeção direta do Sistema/Container)
+  if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+    return process.env.API_KEY;
+  }
+
+  // 2. Variáveis de Ambiente Vite (Cliente/Browser)
+  // IMPORTANTE: No Vercel + Vite, a variável DEVE começar com 'VITE_' para ser visível no navegador.
   try {
-    // Tenta obter via import.meta.env (Vite standard)
     const meta = import.meta as any;
     if (typeof meta !== 'undefined' && meta.env) {
-        key = meta.env.GOOGLE_AI_API_KEY || // Nova chave solicitada
-              meta.env.VITE_GOOGLE_AI_API_KEY ||
-              meta.env.API_KEY_NOTIFY_GEMINI || 
-              meta.env.VITE_API_KEY_NOTIFY_GEMINI ||
-              meta.env.VITE_API_KEY_GEMINI || 
-              meta.env.API_KEY_GEMINI || 
-              meta.env.VITE_API_KEY || 
-              meta.env.API_KEY || '';
+        // Verifica a chave renomeada pelo usuário com o prefixo obrigatório do Vite
+        if (meta.env.VITE_GOOGLE_AI_API_KEY) return meta.env.VITE_GOOGLE_AI_API_KEY;
+        
+        // Verifica outras variações comuns
+        if (meta.env.GOOGLE_AI_API_KEY) return meta.env.GOOGLE_AI_API_KEY; 
+        if (meta.env.VITE_API_KEY) return meta.env.VITE_API_KEY;
+        if (meta.env.API_KEY) return meta.env.API_KEY;
+        
+        // Legado / Específicas do Projeto
+        if (meta.env.API_KEY_NOTIFY_GEMINI) return meta.env.API_KEY_NOTIFY_GEMINI;
+        if (meta.env.VITE_API_KEY_NOTIFY_GEMINI) return meta.env.VITE_API_KEY_NOTIFY_GEMINI;
     }
   } catch (e) {}
 
-  if (!key) {
-    try {
-      // Fallback para process.env (Node/Vercel System Envs)
-      if (typeof process !== 'undefined' && process.env) {
-        key = process.env.GOOGLE_AI_API_KEY || // Nova chave solicitada
-              process.env.VITE_GOOGLE_AI_API_KEY ||
-              process.env.API_KEY_NOTIFY_GEMINI || 
-              process.env.VITE_API_KEY_NOTIFY_GEMINI ||
-              process.env.API_KEY_GEMINI || 
-              process.env.VITE_API_KEY_GEMINI || 
-              process.env.API_KEY || '';
-      }
-    } catch (e) {}
+  // 3. Fallback para process.env (Node/Serverless/Next.js)
+  if (typeof process !== 'undefined' && process.env) {
+      if (process.env.VITE_GOOGLE_AI_API_KEY) return process.env.VITE_GOOGLE_AI_API_KEY;
+      if (process.env.GOOGLE_AI_API_KEY) return process.env.GOOGLE_AI_API_KEY;
   }
-  return key;
+
+  return '';
 };
 
 const fileToGenerativePart = async (file: File): Promise<{ inlineData: { data: string; mimeType: string } } | null> => {
@@ -73,8 +73,8 @@ export const generateNotificationText = async (
     const key = getApiKey();
     
     if (!key) {
-        console.error("DEBUG: Nenhuma API Key encontrada nas variáveis de ambiente.");
-        throw new Error("API KEY não configurada. Verifique se 'GOOGLE_AI_API_KEY' está definida.");
+        console.error("DEBUG: Nenhuma API Key encontrada. Verifique se VITE_GOOGLE_AI_API_KEY está definida no Vercel.");
+        throw new Error("Chave de API não encontrada. Configure 'VITE_GOOGLE_AI_API_KEY' nas variáveis de ambiente.");
     }
 
     // Instancia o cliente DAQUI de dentro para garantir que a chave foi carregada
@@ -149,9 +149,10 @@ export const generateNotificationText = async (
     return response.text || "Não foi possível gerar o texto.";
   } catch (error: any) {
     console.error("Erro Gemini Detalhado:", error);
-    if (error.message && error.message.includes("API KEY")) {
-        throw new Error("Chave de API inválida ou não encontrada. Verifique 'GOOGLE_AI_API_KEY'.");
+    if (error.message && (error.message.includes("API KEY") || error.message.includes("API key"))) {
+        throw new Error("Chave de API inválida ou não encontrada. Verifique 'VITE_GOOGLE_AI_API_KEY'.");
     }
-    throw new Error("Falha na comunicação com a IA. Tente novamente.");
+    // Repassa a mensagem original se for erro de quota ou outro
+    throw new Error(error.message || "Falha na comunicação com a IA. Tente novamente.");
   }
 };

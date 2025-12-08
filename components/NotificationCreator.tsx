@@ -601,9 +601,10 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
       );
       
       setFormData(prev => ({ ...prev, generatedContent: text, subject: formData.species }));
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError('Erro ao gerar texto: Verifique sua conexão ou a Chave de API.');
+      // Mostra mensagem de erro real se disponível para ajudar na depuração (Ex: API Key Missing)
+      setError(err.message || 'Erro ao gerar texto: Verifique sua conexão ou a Chave de API.');
     } finally {
       setIsGenerating(false);
     }
