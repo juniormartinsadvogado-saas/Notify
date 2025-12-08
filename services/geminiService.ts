@@ -8,7 +8,9 @@ const getApiKey = () => {
     // Tenta obter via import.meta.env (Vite standard)
     const meta = import.meta as any;
     if (typeof meta !== 'undefined' && meta.env) {
-        key = meta.env.API_KEY_NOTIFY_GEMINI || // Prioridade para a chave específica do usuário
+        key = meta.env.GOOGLE_AI_API_KEY || // Nova chave solicitada
+              meta.env.VITE_GOOGLE_AI_API_KEY ||
+              meta.env.API_KEY_NOTIFY_GEMINI || 
               meta.env.VITE_API_KEY_NOTIFY_GEMINI ||
               meta.env.VITE_API_KEY_GEMINI || 
               meta.env.API_KEY_GEMINI || 
@@ -21,7 +23,9 @@ const getApiKey = () => {
     try {
       // Fallback para process.env (Node/Vercel System Envs)
       if (typeof process !== 'undefined' && process.env) {
-        key = process.env.API_KEY_NOTIFY_GEMINI || // Prioridade para a chave específica do usuário
+        key = process.env.GOOGLE_AI_API_KEY || // Nova chave solicitada
+              process.env.VITE_GOOGLE_AI_API_KEY ||
+              process.env.API_KEY_NOTIFY_GEMINI || 
               process.env.VITE_API_KEY_NOTIFY_GEMINI ||
               process.env.API_KEY_GEMINI || 
               process.env.VITE_API_KEY_GEMINI || 
@@ -70,7 +74,7 @@ export const generateNotificationText = async (
     
     if (!key) {
         console.error("DEBUG: Nenhuma API Key encontrada nas variáveis de ambiente.");
-        throw new Error("API KEY não configurada. Verifique se 'API_KEY_NOTIFY_GEMINI' está definida.");
+        throw new Error("API KEY não configurada. Verifique se 'GOOGLE_AI_API_KEY' está definida.");
     }
 
     // Instancia o cliente DAQUI de dentro para garantir que a chave foi carregada
@@ -112,7 +116,7 @@ export const generateNotificationText = async (
 
       ESTRUTURA DO DOCUMENTO (Markdown):
       1. CABEÇALHO (Local e Data atual)
-      2. PREÂMBULO (Identificação das partes - OBRIGATÓRIO USAR OS DADOS COMPLETOS FORNECIDOS EM 'DADOS OBRIGATÓRIOS PARA O PREÂMBULO' acima. Não invente dados se eles foram fornecidos.)
+      2. PREÂMBULO (Identificação COMPLETA das partes usando os dados fornecidos em [DADOS OBRIGATÓRIOS PARA O PREÂMBULO]. Inclua endereço, CPF/CNPJ e contatos EXATAMENTE como fornecidos. Não invente dados se eles já existem.)
       3. DOS FATOS (Narrativa detalhada baseada nos dados e no contexto de ${contextInfo?.species || 'Notificação'})
       4. DO DIREITO (Fundamentação jurídica robusta citando Artigos de Leis, Códigos ou Súmulas aplicáveis à área de ${contextInfo?.area || 'Direito'})
       5. DOS PEDIDOS (Exigências claras com prazo explícito para cumprimento)
@@ -146,7 +150,7 @@ export const generateNotificationText = async (
   } catch (error: any) {
     console.error("Erro Gemini Detalhado:", error);
     if (error.message && error.message.includes("API KEY")) {
-        throw new Error("Chave de API inválida ou não encontrada. Verifique 'API_KEY_NOTIFY_GEMINI'.");
+        throw new Error("Chave de API inválida ou não encontrada. Verifique 'GOOGLE_AI_API_KEY'.");
     }
     throw new Error("Falha na comunicação com a IA. Tente novamente.");
   }
