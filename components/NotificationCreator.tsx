@@ -604,7 +604,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
     } catch (err: any) {
       console.error(err);
       // Mostra mensagem de erro real se disponível para ajudar na depuração (Ex: API Key Missing)
-      setError(err.message || 'Erro ao gerar texto: Verifique sua conexão ou a Chave de API.');
+      setError(err.message || 'Erro ao gerar texto: Verifique sua conexão.');
     } finally {
       setIsGenerating(false);
     }
