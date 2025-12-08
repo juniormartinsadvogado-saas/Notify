@@ -228,7 +228,8 @@ const App: React.FC = () => {
       case ViewState.SETTINGS:
       case ViewState.SETTINGS_ACCOUNT:
       case ViewState.SETTINGS_PLATFORM:
-        return <Settings subView={currentView === ViewState.SETTINGS_PLATFORM ? 'platform' : 'account'} onThemeChange={handleThemeChange} initialTheme={{darkMode, themeColor}} />;
+        // KEY prop is crucial here to force re-render when switching between Account and Platform tabs
+        return <Settings key={currentView} user={user} subView={currentView === ViewState.SETTINGS_PLATFORM ? 'platform' : 'account'} onThemeChange={handleThemeChange} initialTheme={{darkMode, themeColor}} />;
       default:
         return <Dashboard notifications={notifications} meetings={meetings} transactions={transactions} onNavigate={setCurrentView} />;
     }

@@ -6,13 +6,15 @@ interface SettingsProps {
     subView?: 'account' | 'platform';
     onThemeChange?: (darkMode: boolean, color: string) => void;
     initialTheme?: { darkMode: boolean, themeColor: string };
+    user?: any; // Recebe o usuário via prop para garantir consistência
 }
 
 type SecurityAction = 'UPDATE_PROFILE' | 'CHANGE_PASSWORD' | 'DELETE_ACCOUNT' | null;
 
-const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange, initialTheme }) => {
+const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange, initialTheme, user: propUser }) => {
+  // Fallback para localStorage se não vier via prop (ex: refresh)
   const savedUser = localStorage.getItem('mock_session_user');
-  const user = savedUser ? JSON.parse(savedUser) : null;
+  const user = propUser || (savedUser ? JSON.parse(savedUser) : null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Form Data (Profile)
@@ -219,7 +221,7 @@ const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange,
         
         {/* VIEW: CONTA */}
         {subView === 'account' && (
-            <div className="lg:col-span-2 space-y-8">
+            <div className="lg:col-span-2 space-y-8 animate-slide-in-down">
                 
                 {/* BANNER MODO SIMULADO */}
                 <div className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded-r-xl shadow-sm flex items-start">
@@ -438,7 +440,7 @@ const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange,
 
         {/* VIEW: PAINEL / PLATAFORMA */}
         {subView === 'platform' && (
-            <div className="space-y-6 lg:col-span-2">
+            <div className="space-y-6 lg:col-span-2 animate-slide-in-down">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 h-full">
                 <div className="flex items-center space-x-2 mb-6 border-b border-slate-100 pb-4">
                     <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">

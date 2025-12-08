@@ -3,7 +3,7 @@ import { generateNotificationText } from '../services/geminiService';
 import { saveNotification, uploadEvidence, deleteEvidence, uploadSignedPdf } from '../services/notificationService';
 import { initiateCheckout } from '../services/paymentService';
 import { createMeeting } from '../services/meetingService'; // Import para persistir reunião
-import { NotificationItem, NotificationStatus, EvidenceItem, Meeting, Transaction } from '../types';
+import { NotificationItem, NotificationStatus, EvidenceItem, Meeting, Transaction, Attachment } from '../types';
 import { 
   Wand2, Scale, Users, 
   FileText, PenTool, CreditCard, Check, Loader2, 
@@ -488,7 +488,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
 
     setIsGenerating(true);
     try {
-      let promptContext = `[Área: ${currentArea?.name}] [Espécie: ${formData.species}] ${formData.facts}`;
+      let promptContext = `${formData.facts}`; // Fatos são a base
+      
       const senderInfo = `NOTIFICANTE: ${formData.sender.name}, CPF/CNPJ ${formData.sender.cpfCnpj}`;
       const recipientInfo = `NOTIFICADO: ${formData.recipient.name}, CPF/CNPJ ${formData.recipient.cpfCnpj}`;
       
@@ -505,17 +506,48 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
           INSTRUÇÃO OBRIGATÓRIA: Adicione um parágrafo de destaque no corpo da notificação (antes dos pedidos ou das consequências) convidando formalmente o Notificado para esta audiência de tentativa de conciliação extrajudicial, citando expressamente a data, hora e o link de acesso acima.`;
       }
 
+      // Preparar arquivos para a IA
+      const currentAttachments: Attachment[] = [];
+      if (evidences && evidences.length > 0) {
+          for (const ev of evidences) {
+              try {
+                  // Como é ambiente simulado, ev.url é um blob url local
+                  const response = await fetch(ev.url);
+                  const blob = await response.blob();
+                  const file = new File([blob], ev.name, { type: blob.type });
+                  
+                  // Aceita imagens e PDFs
+                  if (file.type.startsWith('image/') || file.type === 'application/pdf') {
+                      currentAttachments.push({
+                          file: file,
+                          preview: ev.url,
+                          type: file.type.startsWith('image/') ? 'image' : 'document'
+                      });
+                  }
+              } catch (e) {
+                  console.warn("Could not prepare file for AI", ev.name, e);
+              }
+          }
+      }
+
       const text = await generateNotificationText(
         formData.recipient.name || '[Destinatário]',
         formData.species,
         promptContext + `\n\n${senderInfo}\n${recipientInfo}`,
         formData.tone,
-        []
+        currentAttachments,
+        // PASSANDO O CONTEXTO DE NAVEGAÇÃO
+        {
+            area: currentArea?.name || 'Direito Geral',
+            species: formData.species,
+            areaDescription: currentArea?.desc || ''
+        }
       );
       
       setFormData(prev => ({ ...prev, generatedContent: text, subject: formData.species }));
     } catch (err) {
-      setError('Erro ao gerar texto.');
+      console.error(err);
+      setError('Erro ao gerar texto: Verifique sua conexão ou a Chave de API.');
     } finally {
       setIsGenerating(false);
     }
@@ -1038,7 +1070,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                           )}
                       </div>
 
-                      <p className="text-slate-400 text-xs mb-4">A IA analisará os fatos e gerará uma minuta com base na legislação vigente.</p>
+                      <p className="text-slate-400 text-xs mb-4">A IA analisará os fatos e gerará uma minuta com base na legislação vigente e no percurso selecionado.</p>
                       <button onClick={generateContent} disabled={isGenerating} className="w-full bg-purple-600 hover:bg-purple-500 py-3 rounded-lg font-bold flex justify-center items-center transition shadow-lg shadow-purple-900/50">
                           {isGenerating ? <Loader2 className="animate-spin mr-2"/> : <Wand2 className="mr-2"/>} {formData.generatedContent ? 'Regerar Minuta' : 'Gerar Minuta'}
                       </button>
