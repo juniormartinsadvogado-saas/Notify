@@ -8,7 +8,7 @@ import {
   Wand2, Scale, Users, 
   FileText, PenTool, CreditCard, Check, Loader2, 
   AlertCircle, Briefcase, ShoppingBag, Home, Heart, Gavel, Globe,
-  Building2, Calculator, Landmark, Stethoscope, Leaf, Anchor, Plane, Zap, Rocket, Laptop, Trophy, FileSignature, Scroll, UploadCloud, X, MapPin, UserCheck, UserCog, ExternalLink, ChevronDown, Calendar, Clock, Video, User, ShieldCheck, Download, Clock3, MessageCircle, Smartphone, Mail, Package, ZapIcon, Send
+  Building2, Calculator, Landmark, Stethoscope, Leaf, Anchor, Plane, Zap, Rocket, Laptop, Trophy, FileSignature, Scroll, UploadCloud, X, MapPin, UserCheck, UserCog, ExternalLink, ChevronDown, Calendar, Clock, Video, User, ShieldCheck, Download, Clock3, MessageCircle, Smartphone, Mail, Package, ZapIcon, Send, Lock, Unlock
 } from 'lucide-react';
 
 interface NotificationCreatorProps {
@@ -167,6 +167,17 @@ const MASKS = {
     }
 };
 
+const formatAddressString = (addr: Address) => {
+    const parts = [];
+    if(addr.street) parts.push(addr.street);
+    if(addr.number) parts.push(addr.number);
+    if(addr.complement) parts.push(addr.complement);
+    if(addr.neighborhood) parts.push(addr.neighborhood);
+    if(addr.city && addr.state) parts.push(`${addr.city}/${addr.state}`);
+    if(addr.cep) parts.push(`CEP ${addr.cep}`);
+    return parts.join(', ') || 'Endereço não informado';
+};
+
 const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputChange, onAddressChange, documentLabel = "CPF ou CNPJ", documentMask = MASKS.cpfCnpj, documentMaxLength = 18, documentPlaceholder }) => {
     const getIcon = () => {
         if (section === 'representative') return <UserCog className="mr-2" />;
@@ -313,6 +324,14 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
       
       setError('');
       setFormData(prev => ({ ...prev, meetingDate: e.target.value }));
+  };
+
+  // Função para Destrancar Edição
+  const unlockForEditing = () => {
+      if(confirm('Atenção: Ao editar o documento, sua assinatura atual será removida e você precisará assinar novamente. Deseja continuar?')) {
+          setFormData(prev => ({ ...prev, signed: false }));
+          setSignatureData(null);
+      }
   };
 
   const saveDraftState = async (evidencesOverride?: EvidenceItem[]) => {
@@ -481,19 +500,53 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
   };
 
   const generateContent = async () => {
-    if (formData.scheduleMeeting && (!formData.meetingDate || !formData.meetingTime)) {
-        setError("Selecione data e hora para a reunião ou desmarque a opção.");
-        return;
-    }
-
+    // MODIFICAÇÃO: Removida a validação bloqueante.
+    // O usuário solicitou que a geração ocorra independente dos dados de agendamento estarem completos.
+    
     setIsGenerating(true);
+    setError(''); // Limpa erros anteriores
+
     try {
       let promptContext = `${formData.facts}`; // Fatos são a base
       
-      const senderInfo = `NOTIFICANTE: ${formData.sender.name}, CPF/CNPJ ${formData.sender.cpfCnpj}`;
-      const recipientInfo = `NOTIFICADO: ${formData.recipient.name}, CPF/CNPJ ${formData.recipient.cpfCnpj}`;
+      // CONSTRUÇÃO DETALHADA DAS PARTES (QUALIFICAÇÃO COMPLETA)
+      const senderAddr = formatAddressString(formData.sender.address);
+      const recipientAddr = formatAddressString(formData.recipient.address);
       
-      if (formData.scheduleMeeting) {
+      let partiesBlock = `
+      [DADOS OBRIGATÓRIOS PARA O PREÂMBULO]
+      
+      NOTIFICANTE (REMETENTE):
+      Nome: ${formData.sender.name}
+      CPF/CNPJ: ${formData.sender.cpfCnpj}
+      Endereço Completo: ${senderAddr}
+      Contato: ${formData.sender.phone} | ${formData.sender.email}
+      `;
+
+      if (role === 'representative') {
+          const repAddr = formatAddressString(formData.representative.address);
+          partiesBlock += `
+          REPRESENTADO POR (PROCURADOR/ADVOGADO):
+          Nome: ${formData.representative.name}
+          CPF: ${formData.representative.cpfCnpj}
+          Endereço Profissional: ${repAddr}
+          Contato: ${formData.representative.phone} | ${formData.representative.email}
+          `;
+      }
+
+      partiesBlock += `
+      NOTIFICADO (DESTINATÁRIO):
+      Nome: ${formData.recipient.name}
+      CPF/CNPJ: ${formData.recipient.cpfCnpj}
+      Endereço Completo: ${recipientAddr}
+      Contato: ${formData.recipient.phone} | ${formData.recipient.email}
+      `;
+
+      // Adiciona o bloco de partes ao contexto
+      promptContext += `\n\n${partiesBlock}`;
+      
+      // Apenas adiciona contexto de reunião se os dados estiverem preenchidos E o checkbox marcado
+      if (formData.scheduleMeeting && formData.meetingDate && formData.meetingTime) {
           const dateParts = formData.meetingDate.split('-');
           const formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
           
@@ -504,6 +557,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
           Link: https://meet.google.com/gvd-nmhs-jjv
           
           INSTRUÇÃO OBRIGATÓRIA: Adicione um parágrafo de destaque no corpo da notificação (antes dos pedidos ou das consequências) convidando formalmente o Notificado para esta audiência de tentativa de conciliação extrajudicial, citando expressamente a data, hora e o link de acesso acima.`;
+      } else if (formData.scheduleMeeting) {
+          // Caso esteja marcado mas sem dados, avisamos visualmente mas geramos o texto sem o agendamento
+          setError("Aviso: Texto gerado sem dados de agendamento (Data/Hora não preenchidos).");
       }
 
       // Preparar arquivos para a IA
@@ -533,7 +589,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
       const text = await generateNotificationText(
         formData.recipient.name || '[Destinatário]',
         formData.species,
-        promptContext + `\n\n${senderInfo}\n${recipientInfo}`,
+        promptContext, // Passamos o contexto enriquecido com qualificações
         formData.tone,
         currentAttachments,
         // PASSANDO O CONTEXTO DE NAVEGAÇÃO
@@ -794,10 +850,13 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
 
                   ${createdData.notif.signatureBase64 ? `
                     <div style="text-align: center; margin-top: 60px;">
-                        <img src="${createdData.notif.signatureBase64}" style="max-width: 200px; max-height: 100px;" />
+                        <img src="${createdData.notif.signatureBase64}" style="max-height: 80px;" />
                         <div style="border-top: 1px solid #000; width: 300px; margin: 5px auto 0;"></div>
                         <p><strong>${createdData.notif.senderName}</strong></p>
-                        <p style="font-size: 10px;">Assinado Digitalmente</p>
+                        <p style="font-size: 10px; color: #666; margin-top: 5px;">
+                            ID: ${createdData.notif.id}<br/>
+                            HASH: ${btoa(createdData.notif.id).substring(0, 24)}...
+                        </p>
                     </div>
                   ` : ''}
               </body>
@@ -1011,9 +1070,32 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
               </div>
           );
           case 4: return (
-              <div className="flex flex-col gap-6 pb-12 h-auto min-h-[500px]">
+              <div className="flex flex-col gap-6 pb-12 h-auto min-h-[500px] relative">
+                  
+                  {/* LOCK OVERLAY IF SIGNED */}
+                  {formData.signed && (
+                      <div className="absolute inset-0 bg-slate-200/60 backdrop-blur-sm z-30 rounded-xl flex items-center justify-center animate-fade-in">
+                          <div className="bg-white p-8 rounded-2xl shadow-xl border border-slate-200 text-center max-w-sm">
+                              <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 border border-blue-100">
+                                  <Lock size={32} />
+                              </div>
+                              <h3 className="text-xl font-bold text-slate-800 mb-2">Documento Assinado</h3>
+                              <p className="text-slate-500 text-sm mb-6">
+                                  O conteúdo está bloqueado para preservar a integridade da assinatura digital.
+                              </p>
+                              <button 
+                                onClick={unlockForEditing}
+                                className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold text-sm hover:bg-slate-800 transition flex items-center justify-center"
+                              >
+                                  <Unlock size={16} className="mr-2" /> Destrancar para Editar
+                              </button>
+                              <p className="text-xs text-red-400 mt-3 font-medium">Atenção: A assinatura atual será removida.</p>
+                          </div>
+                      </div>
+                  )}
+
                   {/* AGENDAMENTO E IA CONFIG */}
-                  <div className="bg-slate-900 text-white p-6 rounded-xl shrink-0">
+                  <div className={`bg-slate-900 text-white p-6 rounded-xl shrink-0 transition-opacity ${formData.signed ? 'opacity-30' : 'opacity-100'}`}>
                       <div className="flex items-center justify-between mb-4">
                         <h4 className="font-bold">IA Generation</h4>
                         <Wand2 className="text-purple-400" />
@@ -1021,13 +1103,14 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                       
                       {/* LÓGICA DE AGENDAMENTO */}
                       <div className="bg-slate-800 rounded-lg p-4 mb-4 border border-slate-700">
-                          <label className="flex items-center gap-3 cursor-pointer mb-4">
+                          <label className={`flex items-center gap-3 cursor-pointer mb-4 ${formData.signed ? 'pointer-events-none' : ''}`}>
                               <div className="relative inline-flex items-center">
                                 <input 
                                     type="checkbox" 
                                     className="sr-only peer" 
                                     checked={formData.scheduleMeeting}
                                     onChange={() => setFormData(p => ({...p, scheduleMeeting: !p.scheduleMeeting}))}
+                                    disabled={formData.signed}
                                 />
                                 <div className="w-11 h-6 bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500"></div>
                               </div>
@@ -1046,6 +1129,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                                                   value={formData.meetingDate}
                                                   onChange={handleDateChange}
                                                   className="w-full bg-slate-700 border border-slate-600 rounded-lg py-2 pl-8 pr-2 text-sm text-white focus:ring-1 focus:ring-purple-400 outline-none"
+                                                  disabled={formData.signed}
                                               />
                                           </div>
                                       </div>
@@ -1057,6 +1141,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                                                   value={formData.meetingTime}
                                                   onChange={e => setFormData(p => ({...p, meetingTime: e.target.value}))}
                                                   className="w-full bg-slate-700 border border-slate-600 rounded-lg py-2 pl-8 pr-2 text-sm text-white focus:ring-1 focus:ring-purple-400 outline-none appearance-none"
+                                                  disabled={formData.signed}
                                               >
                                                   <option value="">Selecione</option>
                                                   {[8,9,10,11,13,14,15,16].map(h => (
@@ -1076,18 +1161,23 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                       </div>
 
                       <p className="text-slate-400 text-xs mb-4">A IA analisará os fatos e gerará uma minuta com base na legislação vigente e no percurso selecionado.</p>
-                      <button onClick={generateContent} disabled={isGenerating} className="w-full bg-purple-600 hover:bg-purple-500 py-3 rounded-lg font-bold flex justify-center items-center transition shadow-lg shadow-purple-900/50">
+                      <button 
+                        onClick={generateContent} 
+                        disabled={isGenerating || formData.signed} 
+                        className="w-full bg-purple-600 hover:bg-purple-500 py-3 rounded-lg font-bold flex justify-center items-center transition shadow-lg shadow-purple-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
                           {isGenerating ? <Loader2 className="animate-spin mr-2"/> : <Wand2 className="mr-2"/>} {formData.generatedContent ? 'Regerar Minuta' : 'Gerar Minuta'}
                       </button>
                   </div>
                   
                   {/* EDITOR */}
-                  <div className="flex-1 bg-slate-50 p-4 rounded-xl border border-slate-200 min-h-[400px]">
+                  <div className={`flex-1 bg-slate-50 p-4 rounded-xl border border-slate-200 min-h-[400px] transition-opacity ${formData.signed ? 'opacity-50' : 'opacity-100'}`}>
                       <textarea 
                         value={formData.generatedContent} 
                         onChange={e => setFormData(p=>({...p, generatedContent: e.target.value}))} 
-                        className="w-full h-full bg-transparent resize-none outline-none font-serif text-sm leading-relaxed text-slate-800" 
+                        className="w-full h-full bg-transparent resize-none outline-none font-serif text-sm leading-relaxed text-slate-800 disabled:cursor-not-allowed" 
                         placeholder="A minuta aparecerá aqui e poderá ser editada..." 
+                        disabled={formData.signed}
                       />
                   </div>
               </div>
@@ -1097,8 +1187,24 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                    <div className="prose prose-sm max-w-none bg-white p-4 md:p-8 border shadow-sm mx-auto text-left h-80 overflow-y-auto mb-6 rounded-xl">
                        {/* MODO LEITURA - ASSINATURA */}
                        <pre className="whitespace-pre-wrap font-serif text-slate-800 text-sm">{formData.generatedContent}</pre>
-                       {formData.signed && <div className="mt-8 border-t pt-4 font-bold text-center text-slate-900">ASSINADO DIGITALMENTE: {formData.sender.name}</div>}
+                       
+                       {/* ÁREA DA ASSINATURA FINALIZADA */}
+                       {formData.signed && signatureData && (
+                           <div className="mt-8 pt-4 border-t border-slate-200 flex flex-col items-center">
+                               <img src={signatureData} alt="Assinatura" className="h-20 object-contain mb-2" />
+                               <div className="border-t border-black w-64 mb-2"></div>
+                               <p className="font-bold text-slate-900 uppercase text-sm">{formData.sender.name}</p>
+                               
+                               {/* HASH E ID DO DOCUMENTO */}
+                               <div className="mt-4 text-[10px] text-slate-400 font-mono text-center bg-slate-50 p-2 rounded border border-slate-100 inline-block">
+                                   <p className="mb-1"><strong>ID DO DOCUMENTO:</strong> {notificationId}</p>
+                                   <p><strong>HASH DE INTEGRIDADE:</strong> {btoa(notificationId + formData.sender.cpfCnpj).substring(0, 32)}...</p>
+                                   <p className="text-green-600 flex items-center justify-center mt-1 gap-1"><ShieldCheck size={10} /> Documento assinado eletronicamente</p>
+                               </div>
+                           </div>
+                       )}
                    </div>
+
                    {!formData.signed && (
                        <div className="w-full max-w-md mx-auto">
                            <p className="text-sm font-bold text-slate-500 mb-2 uppercase">Assine no quadro abaixo</p>
@@ -1211,135 +1317,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                      <button onClick={() => setPaymentStage('input')} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg flex items-center justify-center hover:bg-slate-800 transition transform active:scale-95">
                          Ir para Pagamento <ArrowRightIcon className="ml-2" size={18} />
                      </button>
-                 </div>
-             );
-             if (paymentStage === 'protocol') return (
-                 <div className="pb-12 flex flex-col items-center justify-center animate-fade-in text-center min-h-[400px]">
-                      <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-6 border-4 border-green-50 shadow-sm animate-bounce-short">
-                          <ShieldCheck size={40} className="text-green-600" />
-                      </div>
-                      <h2 className="text-2xl font-bold text-slate-900 mb-2">Notificação Gerada com Sucesso!</h2>
-                      <p className="text-slate-500 max-w-md mx-auto mb-8">
-                          {paymentPlan === 'subscription' 
-                            ? 'Sua assinatura está ativa e o primeiro crédito foi utilizado. Seu documento será enviado em breve.' 
-                            : 'Seu documento foi criado, assinado e está sendo processado para envio digital.'}
-                      </p>
-                      
-                      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-8 w-full max-w-sm">
-                          <p className="text-xs font-bold text-slate-400 uppercase mb-1">Protocolo Digital</p>
-                          <div className="flex items-center justify-center gap-2">
-                              <span className="font-mono text-lg font-bold text-slate-800">{createdData.notif?.id || notificationId}</span>
-                              <button 
-                                onClick={generateProtocolPDF} 
-                                title="Baixar PDF do Protocolo" 
-                                className="text-blue-500 hover:text-blue-700 transition flex items-center"
-                              >
-                                  <Download size={16} />
-                              </button>
-                          </div>
-                      </div>
-
-                      <button 
-                        onClick={handleFinishProtocol} 
-                        className="w-full max-w-xs bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-slate-800 transition transform active:scale-95 flex items-center justify-center"
-                      >
-                         <Home size={18} className="mr-2" />
-                         Ir para o Painel de Controle
-                      </button>
-                 </div>
-             );
-             return (
-                 <div className="pb-12">
-                     <div className="text-center mb-6">
-                        <h3 className="text-xl font-bold mb-2 text-slate-800">Confirmar Pagamento</h3>
-                        <p className="text-sm text-slate-500">Escolha a forma de pagamento segura</p>
-                     </div>
-                     
-                     <div className="flex gap-4 justify-center mb-8">
-                         <button onClick={() => setPaymentMethod('pix')} className={`flex-1 p-4 border-2 rounded-xl font-bold transition flex flex-col items-center gap-2 ${paymentMethod === 'pix' ? 'border-green-500 bg-green-50 text-green-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
-                            <Zap size={24} />
-                            PIX
-                         </button>
-                         <button onClick={() => setPaymentMethod('credit_card')} className={`flex-1 p-4 border-2 rounded-xl font-bold transition flex flex-col items-center gap-2 ${paymentMethod === 'credit_card' ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
-                            <CreditCard size={24} />
-                            Cartão
-                         </button>
-                     </div>
-
-                     {/* CARTÃO DE CRÉDITO INPUTS */}
-                     {paymentMethod === 'credit_card' && (
-                         <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 mb-8 animate-slide-in-down">
-                             <h4 className="text-sm font-bold text-slate-800 mb-4 flex items-center"><CreditCard size={16} className="mr-2"/> Dados do Cartão</h4>
-                             <div className="space-y-4">
-                                 <div>
-                                     <input 
-                                        type="text" 
-                                        placeholder="Número do Cartão" 
-                                        maxLength={19}
-                                        value={cardData.number}
-                                        onChange={e => setCardData({...cardData, number: MASKS.card(e.target.value)})}
-                                        className="w-full p-3 border border-slate-200 rounded-lg outline-none focus:border-blue-400 font-mono"
-                                     />
-                                 </div>
-                                 <div>
-                                     <input 
-                                        type="text" 
-                                        placeholder="Nome no Cartão" 
-                                        value={cardData.name}
-                                        onChange={e => setCardData({...cardData, name: e.target.value.toUpperCase()})}
-                                        className="w-full p-3 border border-slate-200 rounded-lg outline-none focus:border-blue-400"
-                                     />
-                                 </div>
-                                 <div className="grid grid-cols-2 gap-4">
-                                     <input 
-                                        type="text" 
-                                        placeholder="MM/AA" 
-                                        maxLength={5}
-                                        value={cardData.expiry}
-                                        onChange={e => setCardData({...cardData, expiry: MASKS.expiry(e.target.value)})}
-                                        className="w-full p-3 border border-slate-200 rounded-lg outline-none focus:border-blue-400 text-center"
-                                     />
-                                     <input 
-                                        type="text" 
-                                        placeholder="CVV" 
-                                        maxLength={3} // 3 or 4
-                                        value={cardData.cvv}
-                                        onChange={e => setCardData({...cardData, cvv: e.target.value.replace(/\D/g, '')})}
-                                        className="w-full p-3 border border-slate-200 rounded-lg outline-none focus:border-blue-400 text-center"
-                                     />
-                                 </div>
-                             </div>
-                             <div className="mt-4 flex items-center text-xs text-slate-400">
-                                 <ShieldCheck size={12} className="mr-1 text-green-500" />
-                                 Pagamento processado com criptografia SSL 256-bit.
-                             </div>
-                         </div>
-                     )}
-
-                     {paymentMethod === 'pix' && (
-                         <div className="bg-green-50 p-6 rounded-xl border border-green-200 mb-8 text-center animate-slide-in-down">
-                             <div className="w-32 h-32 bg-white mx-auto mb-4 border border-slate-200 flex items-center justify-center text-slate-300">
-                                 QR Code
-                             </div>
-                             <p className="text-sm text-green-800 font-medium">O QR Code para pagamento será gerado na próxima tela.</p>
-                         </div>
-                     )}
-
-                     <div className="space-y-4">
-                        <button onClick={handleConfirmPayment} disabled={isProcessingPayment} className="w-full bg-green-600 text-white py-4 rounded-xl font-bold flex justify-center items-center shadow-lg shadow-green-200 hover:bg-green-700 transition">
-                            {isProcessingPayment ? <Loader2 className="animate-spin mr-2" /> : <Check className="mr-2" />} 
-                            {isProcessingPayment ? 'Processando...' : `Pagar R$ ${calculateTotal().toFixed(2)}`}
-                        </button>
-                        
-                        <button 
-                            onClick={handlePayLater}
-                            disabled={isProcessingPayment}
-                            className="w-full bg-white text-slate-500 border border-slate-200 py-3 rounded-xl font-bold flex justify-center items-center hover:bg-slate-50 hover:text-slate-700 transition"
-                        >
-                            <Clock3 className="mr-2" size={18} />
-                            Pagar Depois (Salvar Pendência)
-                        </button>
-                     </div>
                  </div>
              );
       }

@@ -98,17 +98,21 @@ export const generateNotificationText = async (
       
       ${contextPrompt}
 
-      DADOS DO CASO:
-      - Destinatário: ${recipient}
+      DADOS DE INPUT DO USUÁRIO:
+      - Destinatário (Nome Curto): ${recipient}
       - Assunto Geral: ${subject}
-      - Fatos/Detalhes fornecidos pelo usuário: ${details}
       - Tom de Voz: ${tone}
+      
+      ---
+      INFORMAÇÕES E FATOS:
+      ${details}
+      ---
       
       ${attachments.length > 0 ? `NOTA ADICIONAL: O usuário anexou ${attachments.length} arquivos probatórios. Analise o conteúdo visual/textual destes anexos se possível para enriquecer a descrição dos fatos.` : ''}
 
       ESTRUTURA DO DOCUMENTO (Markdown):
       1. CABEÇALHO (Local e Data atual)
-      2. PREÂMBULO (Identificação das partes)
+      2. PREÂMBULO (Identificação das partes - OBRIGATÓRIO USAR OS DADOS COMPLETOS FORNECIDOS EM 'DADOS OBRIGATÓRIOS PARA O PREÂMBULO' acima. Não invente dados se eles foram fornecidos.)
       3. DOS FATOS (Narrativa detalhada baseada nos dados e no contexto de ${contextInfo?.species || 'Notificação'})
       4. DO DIREITO (Fundamentação jurídica robusta citando Artigos de Leis, Códigos ou Súmulas aplicáveis à área de ${contextInfo?.area || 'Direito'})
       5. DOS PEDIDOS (Exigências claras com prazo explícito para cumprimento)
@@ -133,7 +137,7 @@ export const generateNotificationText = async (
       model: 'gemini-2.5-flash',
       contents: { parts },
       config: {
-        systemInstruction: "Você é a 'Notify AI', assistente jurídica de elite. Você deve respeitar estritamente a ÁREA e a ESPÉCIE selecionadas pelo usuário ao criar o documento. Use formatação Markdown limpa.",
+        systemInstruction: "Você é a 'Notify AI', assistente jurídica de elite. Você deve respeitar estritamente a ÁREA e a ESPÉCIE selecionadas pelo usuário ao criar o documento. O Preâmbulo deve conter a qualificação completa das partes conforme fornecido nos dados de input.",
         temperature: 0.4, // Temperatura menor para ser mais preciso tecnicamente
       }
     });
