@@ -1,0 +1,245 @@
+import React, { useState, useRef } from 'react';
+import { Mail, Lock, ArrowRight, Loader2, User, CheckCircle, AlertCircle, Phone, FileText, Camera, Eye, EyeOff } from 'lucide-react';
+
+interface LoginProps {
+  onLogin: (user: any) => void;
+}
+
+const LogoY = () => (
+  <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-white">
+    <path d="M20 40C31.0457 40 40 31.0457 40 20C40 8.9543 31.0457 0 20 0C8.9543 0 0 8.9543 0 20C0 31.0457 8.9543 40 20 40Z" fill="#0F172A"/>
+    <path d="M12 12L20 22L28 12" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M20 22V30" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const MASKS = {
+    cpf: (value: string) => {
+      return value
+        .replace(/\D/g, '')
+        .replace(/(\d{3})(\d)/, '$1.$2')
+        .replace(/(\d{3})(\d)/, '$1.$2')
+        .replace(/(\d{3})(\d{1,2})/, '$1-$2')
+        .replace(/(-\d{2})\d+?$/, '$1');
+    },
+    phone: (value: string) => {
+      return value
+        .replace(/\D/g, '')
+        .replace(/^(\d{2})(\d)/, '($1) $2')
+        .replace(/(\d{5})(\d)/, '$1-$2')
+        .replace(/(-\d{4})\d+?$/, '$1');
+    }
+};
+
+const Login: React.FC<LoginProps> = ({ onLogin }) => {
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  
+  // Fields
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [name, setName] = useState('');
+  const [cpf, setCpf] = useState('');
+  const [phone, setPhone] = useState('');
+  const [repeatPassword, setRepeatPassword] = useState('');
+  const [showRepeatPassword, setShowRepeatPassword] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const objectUrl = URL.createObjectURL(file);
+      setPhotoPreview(objectUrl);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setIsLoading(true);
+
+    setTimeout(() => {
+        // MOCK LOGIN SUCCESS
+        const mockUser = {
+            uid: email || 'user-123',
+            email: email,
+            displayName: name || 'Usuário Demo',
+            photoURL: photoPreview || null,
+            emailVerified: true
+        };
+        onLogin(mockUser);
+        setIsLoading(false);
+    }, 1500);
+  };
+
+  return (
+    <div className="min-h-screen flex bg-zinc-100 font-sans selection:bg-slate-900 selection:text-white">
+      {/* Lado Esquerdo */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden bg-slate-200">
+        <div className="absolute inset-0 bg-slate-900/40 z-10 mix-blend-multiply"></div>
+        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1497366216548-37526070297c?q=80&w=2069&auto=format&fit=crop')] bg-cover bg-center grayscale contrast-125"></div>
+        
+        <div className="relative z-20 flex flex-col justify-between h-full p-16">
+          <div className="flex flex-col items-start space-y-4">
+            <LogoY />
+            <span className="text-3xl font-bold tracking-tight text-white drop-shadow-md">Notify</span>
+          </div>
+          <div className="max-w-md">
+            <h1 className="text-5xl font-bold text-white leading-tight mb-6 drop-shadow-lg">
+              Inteligência <br/>Jurídica.
+            </h1>
+            <p className="text-slate-100 text-lg font-light leading-relaxed opacity-90 border-l-2 border-blue-500 pl-6">
+              Automação de notificações e gestão processual com a precisão que seu escritório exige. (Modo Demo Offline)
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Lado Direito */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 lg:p-16 bg-zinc-100 relative overflow-y-auto">
+        <div className="w-full max-w-[440px] bg-white p-8 lg:p-10 rounded-3xl shadow-lg border border-slate-100 relative overflow-hidden">
+          
+          <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-70"></div>
+          
+          <div className="flex flex-col items-center justify-center mb-8">
+             <div className="mb-3 transform hover:scale-105 transition-transform"><LogoY /></div>
+             <span className="text-2xl font-bold text-slate-900 tracking-tight">Notify</span>
+          </div>
+
+          <div className="flex justify-center space-x-1 mb-8 bg-slate-50 p-1.5 rounded-xl border border-slate-200/60">
+            <button 
+              onClick={() => { setIsRegistering(false); setError(''); }}
+              className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all ${!isRegistering ? 'bg-white text-slate-900 shadow-sm border border-slate-100' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              Entrar
+            </button>
+            <button 
+              onClick={() => { setIsRegistering(true); setError(''); }}
+              className={`flex-1 py-2.5 text-sm font-semibold rounded-lg transition-all ${isRegistering ? 'bg-white text-slate-900 shadow-sm border border-slate-100' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              Cadastrar
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <div className="p-4 bg-red-50 text-red-600 text-sm flex items-start rounded-xl">
+                 <AlertCircle size={18} className="mr-2 mt-0.5 flex-shrink-0" />
+                 <span>{error}</span>
+              </div>
+            )}
+
+            {isRegistering && (
+              <div className="space-y-4 animate-fade-in">
+                {/* Photo Upload */}
+                <div className="flex flex-col items-center mb-4">
+                    <div 
+                        className="w-24 h-24 rounded-full bg-slate-100 border-2 border-dashed border-slate-300 flex items-center justify-center cursor-pointer overflow-hidden relative group hover:border-blue-400 transition"
+                        onClick={() => fileInputRef.current?.click()}
+                    >
+                        {photoPreview ? (
+                            <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                        ) : (
+                            <Camera className="text-slate-400 group-hover:text-blue-500" size={28} />
+                        )}
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition text-white text-[10px] font-bold">
+                            ALTERAR
+                        </div>
+                    </div>
+                    <span className="text-xs text-slate-400 mt-2">Foto de Perfil (Opcional)</span>
+                    <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        className="hidden" 
+                        accept="image/*" 
+                        onChange={handlePhotoChange}
+                    />
+                </div>
+
+                <div className="relative group">
+                    <User className="absolute left-3.5 top-3.5 text-slate-400" size={18} />
+                    <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100" placeholder="Nome Completo" />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="relative group">
+                        <FileText className="absolute left-3.5 top-3.5 text-slate-400" size={18} />
+                        <input 
+                            type="text" 
+                            value={cpf} 
+                            maxLength={14}
+                            onChange={(e) => setCpf(MASKS.cpf(e.target.value))} 
+                            className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100" 
+                            placeholder="CPF" 
+                        />
+                    </div>
+                    <div className="relative group">
+                        <Phone className="absolute left-3.5 top-3.5 text-slate-400" size={18} />
+                        <input 
+                            type="text" 
+                            value={phone} 
+                            maxLength={15}
+                            onChange={(e) => setPhone(MASKS.phone(e.target.value))} 
+                            className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100" 
+                            placeholder="Telefone" 
+                        />
+                    </div>
+                </div>
+              </div>
+            )}
+
+            <div className="relative group">
+              <Mail className="absolute left-3.5 top-3.5 text-slate-400" size={18} />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100" placeholder="E-mail" />
+            </div>
+
+            <div className="relative group">
+              <Lock className="absolute left-3.5 top-3.5 text-slate-400" size={18} />
+              <input 
+                  type={showPassword ? "text" : "password"}
+                  value={password} 
+                  onChange={(e) => setPassword(e.target.value)} 
+                  className="w-full pl-10 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100" 
+                  placeholder="Senha" 
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3.5 top-3.5 text-slate-400 hover:text-slate-600 transition-colors focus:outline-none"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+
+            {isRegistering && (
+              <div className="relative group animate-fade-in">
+                <CheckCircle className="absolute left-3.5 top-3.5 text-slate-400" size={18} />
+                <input 
+                    type={showRepeatPassword ? "text" : "password"} 
+                    value={repeatPassword} 
+                    onChange={(e) => setRepeatPassword(e.target.value)} 
+                    className="w-full pl-10 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100" 
+                    placeholder="Confirme a senha" 
+                />
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-slate-900 text-white font-semibold py-3.5 rounded-xl hover:bg-slate-800 flex items-center justify-center group relative overflow-hidden"
+            >
+               {isLoading ? <Loader2 className="animate-spin" size={20} /> : (isRegistering ? 'Criar Conta' : 'Entrar')}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Login;

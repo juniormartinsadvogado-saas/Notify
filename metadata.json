@@ -1,0 +1,8 @@
+{
+  "name": "Notify",
+  "description": "Plataforma jurídica inteligente para criação, gestão e automação de notificações extrajudiciais com IA, agendamento de reuniões e monitoramento de processos.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
