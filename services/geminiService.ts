@@ -8,7 +8,9 @@ const getApiKey = () => {
     // Tenta obter via import.meta.env (Vite standard)
     const meta = import.meta as any;
     if (typeof meta !== 'undefined' && meta.env) {
-        key = meta.env.VITE_API_KEY_GEMINI || 
+        key = meta.env.API_KEY_NOTIFY_GEMINI || // Prioridade para a chave específica do usuário
+              meta.env.VITE_API_KEY_NOTIFY_GEMINI ||
+              meta.env.VITE_API_KEY_GEMINI || 
               meta.env.API_KEY_GEMINI || 
               meta.env.VITE_API_KEY || 
               meta.env.API_KEY || '';
@@ -19,7 +21,9 @@ const getApiKey = () => {
     try {
       // Fallback para process.env (Node/Vercel System Envs)
       if (typeof process !== 'undefined' && process.env) {
-        key = process.env.API_KEY_GEMINI || 
+        key = process.env.API_KEY_NOTIFY_GEMINI || // Prioridade para a chave específica do usuário
+              process.env.VITE_API_KEY_NOTIFY_GEMINI ||
+              process.env.API_KEY_GEMINI || 
               process.env.VITE_API_KEY_GEMINI || 
               process.env.API_KEY || '';
       }
@@ -66,7 +70,7 @@ export const generateNotificationText = async (
   try {
     const key = getApiKey();
     if (!key) {
-        throw new Error("API KEY não configurada. Verifique suas variáveis de ambiente.");
+        throw new Error("API KEY não configurada. Verifique se 'API_KEY_NOTIFY_GEMINI' está definida nas variáveis de ambiente.");
     }
 
     const parts: any[] = [];
@@ -135,7 +139,7 @@ export const generateNotificationText = async (
   } catch (error: any) {
     console.error("Erro Gemini Detalhado:", error);
     if (error.message.includes("API KEY")) {
-        throw new Error("Chave de API inválida ou não encontrada.");
+        throw new Error("Chave de API inválida ou não encontrada. Verifique 'API_KEY_NOTIFY_GEMINI'.");
     }
     throw new Error("Falha na comunicação com a IA. Tente novamente.");
   }

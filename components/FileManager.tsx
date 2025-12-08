@@ -63,12 +63,14 @@ const FileManager: React.FC = () => {
     setGeneratingSummaryId(file.id);
 
     try {
-        // Safe Env Access including API_KEY_GEMINI
+        // Safe Env Access including API_KEY_GEMINI and API_KEY_NOTIFY_GEMINI
         let apiKey = '';
         try {
             const meta = import.meta as any;
             if (typeof meta !== 'undefined' && meta.env) {
-                apiKey = meta.env.VITE_API_KEY_GEMINI || 
+                apiKey = meta.env.API_KEY_NOTIFY_GEMINI || 
+                         meta.env.VITE_API_KEY_NOTIFY_GEMINI ||
+                         meta.env.VITE_API_KEY_GEMINI || 
                          meta.env.API_KEY_GEMINI || 
                          meta.env.VITE_API_KEY || 
                          meta.env.API_KEY || '';
@@ -78,7 +80,9 @@ const FileManager: React.FC = () => {
         if (!apiKey) {
             try {
                 if (typeof process !== 'undefined' && process.env) {
-                    apiKey = process.env.API_KEY_GEMINI || 
+                    apiKey = process.env.API_KEY_NOTIFY_GEMINI || 
+                             process.env.VITE_API_KEY_NOTIFY_GEMINI ||
+                             process.env.API_KEY_GEMINI || 
                              process.env.VITE_API_KEY_GEMINI || 
                              process.env.API_KEY || '';
                 }
@@ -106,7 +110,7 @@ const FileManager: React.FC = () => {
 
     } catch (error) {
         console.error("AI Summary failed", error);
-        alert("Erro ao gerar resumo com IA.");
+        alert("Erro ao gerar resumo com IA. Verifique a API Key.");
     } finally {
         setGeneratingSummaryId(null);
     }

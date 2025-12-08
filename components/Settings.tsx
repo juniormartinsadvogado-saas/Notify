@@ -11,6 +11,22 @@ interface SettingsProps {
 
 type SecurityAction = 'UPDATE_PROFILE' | 'CHANGE_PASSWORD' | 'DELETE_ACCOUNT' | null;
 
+const MASKS = {
+    cpf: (value: string) => {
+        return value.replace(/\D/g, '')
+            .replace(/(\d{3})(\d)/, '$1.$2')
+            .replace(/(\d{3})(\d)/, '$1.$2')
+            .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
+            .substring(0, 14); 
+    },
+    phone: (value: string) => {
+      const v = value.replace(/\D/g, '');
+      return v.replace(/^(\d{2})(\d)/, '($1) $2')
+              .replace(/(\d)(\d{4})$/, '$1-$2')
+              .substring(0, 15);
+    }
+};
+
 const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange, initialTheme, user: propUser }) => {
   // Fallback para localStorage se não vier via prop (ex: refresh)
   const savedUser = localStorage.getItem('mock_session_user');
@@ -58,8 +74,8 @@ const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange,
             const demoData = {
                 name: profile?.name || user.displayName || 'Usuário Demo',
                 email: profile?.email || user.email || '',
-                cpf: profile?.cpf || '000.000.000-00',
-                phone: profile?.phone || '(11) 99999-9999'
+                cpf: profile?.cpf || '',
+                phone: profile?.phone || ''
             };
 
             setFormData(demoData);
@@ -84,7 +100,15 @@ const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange,
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    let newValue = value;
+
+    if (name === 'cpf') {
+        newValue = MASKS.cpf(value);
+    } else if (name === 'phone') {
+        newValue = MASKS.phone(value);
+    }
+
+    setFormData(prev => ({ ...prev, [name]: newValue }));
   };
 
   const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -305,6 +329,7 @@ const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange,
                                         <input 
                                         type="text" 
                                         name="cpf"
+                                        maxLength={14}
                                         value={formData.cpf} 
                                         onChange={handleInputChange}
                                         className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm text-slate-800 font-medium" 
@@ -319,6 +344,7 @@ const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange,
                                         <input 
                                         type="text" 
                                         name="phone"
+                                        maxLength={15}
                                         value={formData.phone} 
                                         onChange={handleInputChange}
                                         className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm text-slate-800 font-medium" 

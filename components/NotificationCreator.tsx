@@ -167,7 +167,7 @@ const MASKS = {
     }
 };
 
-const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputChange, onAddressChange, documentLabel = "CPF ou CNPJ", documentMask = MASKS.cpfCnpj, documentMaxLength = 18 }) => {
+const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputChange, onAddressChange, documentLabel = "CPF ou CNPJ", documentMask = MASKS.cpfCnpj, documentMaxLength = 18, documentPlaceholder }) => {
     const getIcon = () => {
         if (section === 'representative') return <UserCog className="mr-2" />;
         if (section === 'sender') return <UserCheck className="mr-2" />;
@@ -188,7 +188,7 @@ const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputCh
                 </div>
                 <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{documentLabel}</label>
-                    <input type="text" value={data.cpfCnpj} maxLength={documentMaxLength} onChange={e => onInputChange(section, 'cpfCnpj', documentMask(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm" placeholder={documentLabel} />
+                    <input type="text" value={data.cpfCnpj} maxLength={documentMaxLength} onChange={e => onInputChange(section, 'cpfCnpj', documentMask(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm" placeholder={documentPlaceholder || documentLabel} />
                 </div>
                 <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Telefone</label>
@@ -932,8 +932,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                                    <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                        <UserCheck size={24} />
                                    </div>
-                                   <h4 className="text-lg font-bold text-slate-800 mb-2">Sou o Próprio Notificante</h4>
-                                   <p className="text-sm text-slate-500">Estou preenchendo o documento em meu próprio nome ou da minha empresa.</p>
+                                   <h4 className="text-lg font-bold text-slate-800 mb-2">Pessoa Física (CPF)</h4>
+                                   <p className="text-sm text-slate-500">Para notificações em seu próprio nome. (Uso exclusivo de CPF)</p>
                                </button>
 
                                <button 
@@ -946,8 +946,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                                    <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                        <UserCog size={24} />
                                    </div>
-                                   <h4 className="text-lg font-bold text-slate-800 mb-2">Sou Representante Legal</h4>
-                                   <p className="text-sm text-slate-500">Sou advogado(a) ou procurador(a) preenchendo em nome de um cliente.</p>
+                                   <h4 className="text-lg font-bold text-slate-800 mb-2">Representante / Empresa</h4>
+                                   <p className="text-sm text-slate-500">Para Advogados, Procuradores ou notificações de Empresas (CNPJ).</p>
                                </button>
                            </div>
                        </div>
@@ -979,6 +979,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                                    onInputChange={handleInputChange} 
                                    onAddressChange={handleAddressChange}
                                    documentLabel="CPF"
+                                   documentPlaceholder="Seu CPF"
                                    documentMask={MASKS.cpf}
                                    documentMaxLength={14}
                                />
@@ -990,7 +991,11 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                                section="sender" 
                                colorClass="border-blue-500" 
                                onInputChange={handleInputChange} 
-                               onAddressChange={handleAddressChange} 
+                               onAddressChange={handleAddressChange}
+                               documentLabel="CPF"
+                               documentMask={role === 'self' ? MASKS.cpf : MASKS.cpfCnpj}
+                               documentMaxLength={role === 'self' ? 14 : 18}
+                               documentPlaceholder={role === 'self' ? "Seu CPF" : "Ou CNPJ"}
                            />
                            
                            <PersonForm 
