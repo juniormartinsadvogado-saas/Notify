@@ -190,7 +190,7 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (currentView) {
       case ViewState.DASHBOARD:
-        return <Dashboard notifications={notifications} meetings={meetings} transactions={transactions} onNavigate={setCurrentView} />;
+        return <Dashboard notifications={notifications} meetings={meetings} transactions={transactions} onNavigate={setCurrentView} user={user} />;
       case ViewState.CREATE_NOTIFICATION:
         return <NotificationCreator onSave={handleSaveNotification} user={user} />;
       case ViewState.RECEIVED_NOTIFICATIONS:
@@ -231,7 +231,7 @@ const App: React.FC = () => {
         // KEY prop is crucial here to force re-render when switching between Account and Platform tabs
         return <Settings key={currentView} user={user} subView={currentView === ViewState.SETTINGS_PLATFORM ? 'platform' : 'account'} onThemeChange={handleThemeChange} initialTheme={{darkMode, themeColor}} />;
       default:
-        return <Dashboard notifications={notifications} meetings={meetings} transactions={transactions} onNavigate={setCurrentView} />;
+        return <Dashboard notifications={notifications} meetings={meetings} transactions={transactions} onNavigate={setCurrentView} user={user} />;
     }
   };
 

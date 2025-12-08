@@ -32,8 +32,6 @@ const getApiKey = () => {
   return key;
 };
 
-const ai = new GoogleGenAI({ apiKey: getApiKey() });
-
 const fileToGenerativePart = async (file: File): Promise<{ inlineData: { data: string; mimeType: string } } | null> => {
     // Permite imagens e PDFs
     if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
@@ -69,9 +67,14 @@ export const generateNotificationText = async (
 ): Promise<string> => {
   try {
     const key = getApiKey();
+    
     if (!key) {
-        throw new Error("API KEY não configurada. Verifique se 'API_KEY_NOTIFY_GEMINI' está definida nas variáveis de ambiente.");
+        console.error("DEBUG: Nenhuma API Key encontrada nas variáveis de ambiente.");
+        throw new Error("API KEY não configurada. Verifique se 'API_KEY_NOTIFY_GEMINI' está definida.");
     }
+
+    // Instancia o cliente DAQUI de dentro para garantir que a chave foi carregada
+    const ai = new GoogleGenAI({ apiKey: key });
 
     const parts: any[] = [];
     
@@ -138,7 +141,7 @@ export const generateNotificationText = async (
     return response.text || "Não foi possível gerar o texto.";
   } catch (error: any) {
     console.error("Erro Gemini Detalhado:", error);
-    if (error.message.includes("API KEY")) {
+    if (error.message && error.message.includes("API KEY")) {
         throw new Error("Chave de API inválida ou não encontrada. Verifique 'API_KEY_NOTIFY_GEMINI'.");
     }
     throw new Error("Falha na comunicação com a IA. Tente novamente.");

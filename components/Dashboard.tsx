@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { ViewState, NotificationItem, Meeting, Transaction, NotificationStatus } from '../types';
-import { Plus, Monitor, Video, CreditCard, ChevronRight, FileText, Send, Clock, Calendar as CalendarIcon, CheckCircle, XCircle, AlertCircle, ChevronLeft } from 'lucide-react';
+import { Plus, Monitor, Video, CreditCard, ChevronRight, FileText, Send, Clock, Calendar as CalendarIcon, CheckCircle, XCircle, AlertCircle, ChevronLeft, User } from 'lucide-react';
 
 interface DashboardProps {
   notifications: NotificationItem[];
   meetings: Meeting[];
   transactions: Transaction[];
   onNavigate: (view: ViewState) => void;
+  user?: any; // Added user prop for profile duplication
 }
 
 // --- WIDGET: RELÓGIO ---
@@ -122,7 +123,7 @@ const MiniCalendar = ({ meetings }: { meetings: Meeting[] }) => {
 };
 
 
-const Dashboard: React.FC<DashboardProps> = ({ notifications, meetings, transactions, onNavigate }) => {
+const Dashboard: React.FC<DashboardProps> = ({ notifications, meetings, transactions, onNavigate, user }) => {
 
   // Cálculos de contagem
   const notifCreated = notifications.filter(n => n.status === NotificationStatus.DRAFT).length;
@@ -187,6 +188,27 @@ const Dashboard: React.FC<DashboardProps> = ({ notifications, meetings, transact
       {/* Elementos decorativos de fundo */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-blue-500/5 rounded-full blur-[120px] -z-10"></div>
       
+      {/* PROFILE WELCOME WIDGET */}
+      {user && (
+          <div className="w-full max-w-4xl px-4 mb-8 flex flex-col md:flex-row items-center justify-center gap-4 animate-slide-in-down">
+              <div className="bg-white rounded-full pl-2 pr-6 py-2 shadow-sm border border-slate-200 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-slate-100 bg-slate-100 shrink-0">
+                      {user.photoURL ? (
+                          <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" />
+                      ) : (
+                          <div className="w-full h-full flex items-center justify-center text-slate-400">
+                              <User size={24} />
+                          </div>
+                      )}
+                  </div>
+                  <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Bem-vindo(a)</p>
+                      <h2 className="text-sm font-bold text-slate-800">{user.displayName}</h2>
+                  </div>
+              </div>
+          </div>
+      )}
+
       <div className="text-center max-w-4xl mx-auto mb-10 px-4">
         <h1 className="text-3xl md:text-4xl font-bold text-slate-900 tracking-tight mb-2">
           Painel de Controle

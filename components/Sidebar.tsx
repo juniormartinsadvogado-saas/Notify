@@ -224,15 +224,15 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
       </nav>
 
       {/* Footer User/Logout */}
-      <div className="p-4 shrink-0">
-         <div className={`rounded-2xl bg-white/5 border border-white/5 p-4 ${isOpen ? '' : 'flex justify-center p-2'}`}>
+      <div className="p-4 shrink-0 border-t border-slate-800/50">
+         <div className={`rounded-xl transition-colors ${isOpen ? '' : 'flex justify-center p-2'}`}>
             <button 
             onClick={onLogout}
             title={!isOpen ? "Sair da conta" : ''}
-            className={`w-full flex items-center ${isOpen ? 'space-x-3' : 'justify-center'} text-slate-400 hover:text-red-400 transition-colors`}
+            className={`w-full flex items-center ${isOpen ? 'space-x-3 px-4 py-3' : 'justify-center p-2'} text-slate-400 hover:text-white hover:bg-red-500/10 rounded-xl group transition-all duration-200`}
             >
-            <LogOut size={20} />
-            <span className={`whitespace-nowrap font-medium text-sm transition-all duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 w-0 hidden'}`}>Encerrar Sessão</span>
+            <LogOut size={20} className="group-hover:text-red-400 transition-colors" />
+            <span className={`whitespace-nowrap font-bold text-sm transition-all duration-300 group-hover:text-red-400 ${isOpen ? 'opacity-100' : 'opacity-0 w-0 hidden'}`}>Sair da Conta</span>
             </button>
          </div>
       </div>

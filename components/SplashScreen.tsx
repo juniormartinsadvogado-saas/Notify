@@ -19,15 +19,15 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
   // Estágio 0: Marca Principal
   const titleLetters = "Notify".split("");
   
-  // Estágio 1: Subtítulo (Solicitado: "Notificação", letra por letra, Title Case)
+  // Estágio 1: Subtítulo
   const subtitleLetters = "Notificação".split("");
 
   useEffect(() => {
-    // Sequência de animação
-    const t1 = setTimeout(() => setStage(1), 3000); 
-    const t2 = setTimeout(() => setStage(2), 5500); 
-    const t3 = setTimeout(() => setOpacity(0), 7500); 
-    const t4 = setTimeout(onFinish, 8500); 
+    // Sequência de animação otimizada para login mais rápido
+    const t1 = setTimeout(() => setStage(1), 2500); 
+    const t2 = setTimeout(() => setStage(2), 4500); 
+    const t3 = setTimeout(() => setOpacity(0), 6000); 
+    const t4 = setTimeout(onFinish, 6800); 
 
     return () => {
       clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
@@ -36,7 +36,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
 
   return (
     <div 
-      className="fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center transition-opacity duration-1000 ease-in-out font-sans overflow-hidden"
+      className="fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center transition-opacity duration-700 ease-in-out font-sans overflow-hidden"
       style={{ opacity }}
     >
       {/* Background Effects */}
@@ -86,8 +86,8 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
                     <span 
                         key={index} 
                         className="text-xl text-zinc-400 font-light tracking-wider opacity-0 animate-letter-reveal"
-                        // Delay começa em 3s (início do estágio) + delay por letra
-                        style={{ animationDelay: `${3 + (index * 0.08)}s`, animationFillMode: 'forwards' }}
+                        // Delay começa em 2.5s (início do estágio) + delay por letra
+                        style={{ animationDelay: `${2.5 + (index * 0.08)}s`, animationFillMode: 'forwards' }}
                     >
                         {letter}
                     </span>
