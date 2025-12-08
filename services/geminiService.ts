@@ -1,7 +1,34 @@
 import { GoogleGenAI } from "@google/genai";
 import { Attachment } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Helper para obter API KEY de forma segura (suporta Vite, process.env e Vercel)
+const getApiKey = () => {
+  let key = '';
+  try {
+    // Tenta obter via import.meta.env (Vite standard)
+    const meta = import.meta as any;
+    if (typeof meta !== 'undefined' && meta.env) {
+        key = meta.env.VITE_API_KEY_GEMINI || 
+              meta.env.API_KEY_GEMINI || 
+              meta.env.VITE_API_KEY || 
+              meta.env.API_KEY || '';
+    }
+  } catch (e) {}
+
+  if (!key) {
+    try {
+      // Fallback para process.env (Node/Vercel System Envs)
+      if (typeof process !== 'undefined' && process.env) {
+        key = process.env.API_KEY_GEMINI || 
+              process.env.VITE_API_KEY_GEMINI || 
+              process.env.API_KEY || '';
+      }
+    } catch (e) {}
+  }
+  return key;
+};
+
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 const fileToGenerativePart = async (file: File): Promise<{ inlineData: { data: string; mimeType: string } } | null> => {
     if (!file.type.startsWith('image/')) return null;

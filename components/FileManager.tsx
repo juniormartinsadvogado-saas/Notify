@@ -63,7 +63,28 @@ const FileManager: React.FC = () => {
     setGeneratingSummaryId(file.id);
 
     try {
-        const apiKey = process.env.API_KEY || '';
+        // Safe Env Access including API_KEY_GEMINI
+        let apiKey = '';
+        try {
+            const meta = import.meta as any;
+            if (typeof meta !== 'undefined' && meta.env) {
+                apiKey = meta.env.VITE_API_KEY_GEMINI || 
+                         meta.env.API_KEY_GEMINI || 
+                         meta.env.VITE_API_KEY || 
+                         meta.env.API_KEY || '';
+            }
+        } catch(e) {}
+        
+        if (!apiKey) {
+            try {
+                if (typeof process !== 'undefined' && process.env) {
+                    apiKey = process.env.API_KEY_GEMINI || 
+                             process.env.VITE_API_KEY_GEMINI || 
+                             process.env.API_KEY || '';
+                }
+            } catch(e) {}
+        }
+
         const ai = new GoogleGenAI({ apiKey });
         
         const prompt = `Analise os metadados deste arquivo e crie um resumo executivo jurídico curto.
