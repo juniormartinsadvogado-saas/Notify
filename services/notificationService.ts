@@ -46,8 +46,11 @@ export const uploadEvidence = async (notificationId: string, file: File): Promis
             storagePath: storagePath,
             createdAt: new Date().toISOString()
         };
-    } catch (error) {
+    } catch (error: any) {
         console.error("Erro no upload de evidência:", error);
+        if (error.code === 'storage/unauthorized') {
+            throw new Error("Permissão de STORAGE negada. Configure as Regras de Segurança no Firebase Console.");
+        }
         throw error;
     }
 };
@@ -61,8 +64,11 @@ export const uploadSignedPdf = async (notificationId: string, pdfBlob: Blob): Pr
         await uploadBytes(storageRef, pdfBlob);
         const downloadUrl = await getDownloadURL(storageRef);
         return downloadUrl;
-    } catch (error) {
+    } catch (error: any) {
         console.error("Erro no upload do PDF:", error);
+        if (error.code === 'storage/unauthorized') {
+            throw new Error("Permissão de STORAGE negada. Configure as Regras de Segurança no Firebase Console.");
+        }
         throw error;
     }
 };
@@ -87,8 +93,11 @@ export const saveNotification = async (notification: NotificationItem) => {
         // Garantir que não existem campos undefined que o Firestore rejeita
         const dataToSave = JSON.parse(JSON.stringify(notification));
         await setDoc(docRef, dataToSave);
-    } catch (error) {
+    } catch (error: any) {
         console.error("Erro ao salvar notificação:", error);
+        if (error.code === 'permission-denied') {
+             throw new Error("Permissão de FIRESTORE negada. Configure as Regras de Segurança no Firebase Console.");
+        }
         throw error;
     }
 };

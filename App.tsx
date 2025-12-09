@@ -11,7 +11,7 @@ import FileManager from './components/FileManager';
 import Login from './components/Login';
 import SplashScreen from './components/SplashScreen'; 
 import { ViewState, NotificationItem, NotificationStatus, Meeting, Transaction } from './types';
-import { Bell, Search, Menu, X, CheckCircle, FileText, ArrowLeft, LogOut, Loader2 } from 'lucide-react';
+import { Bell, Search, Menu, X, CheckCircle, FileText, ArrowLeft, LogOut, Loader2, Settings as SettingsIcon } from 'lucide-react';
 import { ensureUserProfile, getUserProfile } from './services/userService';
 import { getNotificationsByRecipientCpf } from './services/notificationService';
 import { auth } from './services/firebase';
@@ -224,7 +224,7 @@ const App: React.FC = () => {
       case ViewState.DASHBOARD:
         return <Dashboard notifications={notifications} meetings={meetings} transactions={transactions} onNavigate={setCurrentView} user={user} />;
       case ViewState.CREATE_NOTIFICATION:
-        return <NotificationCreator onSave={handleSaveNotification} user={user} />;
+        return <NotificationCreator onSave={handleSaveNotification} user={user} onBack={() => setCurrentView(ViewState.DASHBOARD)} />;
       case ViewState.RECEIVED_NOTIFICATIONS:
         return <ReceivedNotifications />;
       case ViewState.MONITORING:
@@ -406,11 +406,13 @@ const App: React.FC = () => {
                  )}
              </div>
              
-             {user.photoURL && (
-                <div className={`w-10 h-10 rounded-full overflow-hidden border-2 cursor-pointer transition shrink-0 ${darkMode ? 'border-slate-600 hover:border-slate-400' : 'border-slate-200 hover:border-blue-500'}`} onClick={() => setCurrentView(ViewState.SETTINGS)}>
-                    <img src={user.photoURL} alt="Perfil" className="w-full h-full object-cover" />
-                </div>
-             )}
+             <button
+                onClick={() => setCurrentView(ViewState.SETTINGS)}
+                className={`w-10 h-10 rounded-full flex items-center justify-center border transition shrink-0 ${darkMode ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-600 hover:text-blue-600 hover:bg-blue-50'}`}
+                title="Configurações"
+             >
+                <SettingsIcon size={20} />
+             </button>
           </div>
         </header>
 

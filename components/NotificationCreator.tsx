@@ -752,9 +752,12 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
   const handlePayLater = async () => {
       // Como os dados já foram persistidos na transição para o passo 6, 
-      // "Pagar depois" apenas redireciona o usuário para o painel ou encerra o fluxo.
-      // O item já está como PENDING_PAYMENT.
-      if (onBack) onBack();
+      // "Pagar depois" deve avisar o App.tsx para atualizar a lista local
+      if (createdData.notif) {
+          onSave(createdData.notif, createdData.meet, createdData.trans);
+      } else if (onBack) {
+          onBack();
+      }
   };
 
   const handleConfirmPayment = async () => {
@@ -1506,7 +1509,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                          
                          <div className="p-6 md:p-8">
                             <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Protocolo Digital</h4>
+                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest Protocolo Digital">Protocolo Digital</h4>
                                 <div className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-1 rounded border border-green-200 uppercase">Confirmado</div>
                             </div>
                             
