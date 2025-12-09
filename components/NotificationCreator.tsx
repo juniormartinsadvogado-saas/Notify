@@ -2,18 +2,19 @@ import React, { useState, useRef, useEffect } from 'react';
 import { generateNotificationText } from '../services/geminiService';
 import { saveNotification, uploadEvidence, deleteEvidence, uploadSignedPdf } from '../services/notificationService';
 import { initiateCheckout } from '../services/paymentService';
-import { createMeeting } from '../services/meetingService'; // Import para persistir reunião
+import { createMeeting } from '../services/meetingService';
 import { NotificationItem, NotificationStatus, EvidenceItem, Meeting, Transaction, Attachment } from '../types';
 import { 
   Wand2, Scale, Users, 
   FileText, PenTool, CreditCard, Check, Loader2, 
   AlertCircle, Briefcase, ShoppingBag, Home, Heart, Gavel, Globe,
-  Building2, Calculator, Landmark, Stethoscope, Leaf, Anchor, Plane, Zap, Rocket, Laptop, Trophy, FileSignature, Scroll, UploadCloud, X, MapPin, UserCheck, UserCog, ExternalLink, ChevronDown, Calendar, Clock, Video, User, ShieldCheck, Download, Clock3, MessageCircle, Smartphone, Mail, Package, ZapIcon, Send, Lock, Unlock, AlertTriangle
+  Building2, Calculator, Landmark, Stethoscope, Leaf, Anchor, Plane, Zap, Rocket, Laptop, Trophy, FileSignature, Scroll, UploadCloud, X, MapPin, UserCheck, UserCog, Video, User, ShieldCheck, Clock3, MessageCircle, Smartphone, Mail, Package, ZapIcon, Send, Lock, Unlock, AlertTriangle, QrCode, Copy, CheckCircle2, ArrowRight, Calendar, Clock, CreditCard as CardIcon, ChevronLeft
 } from 'lucide-react';
 
 interface NotificationCreatorProps {
   onSave: (notification: NotificationItem, meeting?: Meeting, transaction?: Transaction) => void;
   user?: any;
+  onBack?: () => void;
 }
 
 const STEPS = [
@@ -226,7 +227,7 @@ const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputCh
     );
 };
 
-const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user }) => {
+const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user, onBack }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
@@ -244,6 +245,11 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
   const [isDrawing, setIsDrawing] = useState(false);
   const [signatureData, setSignatureData] = useState<string | null>(null);
   
+  // State for Generation Success View
+  const [showSuccessScreen, setShowSuccessScreen] = useState(false);
+  // State for Pix Copy Feedback
+  const [pixCopied, setPixCopied] = useState(false);
+
   const [formData, setFormData] = useState({
     areaId: '',
     species: '',
@@ -490,6 +496,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
               await generateContent();
               if (!formData.generatedContent) return;
           }
+          // Se já gerou e estamos na tela de sucesso, o botão continuar do footer deve levar para 5
     }
     if (currentStep === 5 && !formData.signed) return setError('Você precisa assinar o documento.');
 
@@ -501,6 +508,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
 
   const generateContent = async () => {
     setIsGenerating(true);
+    setShowSuccessScreen(false); // Reset para garantir animação
     setError(''); // Limpa erros anteriores
 
     try {
@@ -597,6 +605,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
       );
       
       setFormData(prev => ({ ...prev, generatedContent: text, subject: formData.species }));
+      setShowSuccessScreen(true); // Exibe tela de sucesso
     } catch (err: any) {
       console.error(err);
       // Mostra mensagem de erro real se disponível para ajudar na depuração (Ex: API Key Missing)
@@ -804,66 +813,12 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
       }
   };
 
-  const generateProtocolPDF = () => {
-      // Simulação simples de geração de PDF usando janela de impressão
-      if (!createdData.notif) return;
-      
-      const win = window.open('', '_blank');
-      if (win) {
-          win.document.write(`
-              <html>
-              <head>
-                  <title>Protocolo Digital - ${createdData.notif.id}</title>
-                  <style>
-                      body { font-family: sans-serif; padding: 40px; }
-                      .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
-                      .content { margin-bottom: 30px; line-height: 1.6; }
-                      .box { border: 1px solid #ccc; padding: 15px; background: #f9f9f9; margin-bottom: 20px; }
-                      .signature-box { text-align: center; margin-top: 50px; border-top: 1px solid #333; padding-top: 10px; width: 300px; margin-left: auto; margin-right: auto; }
-                  </style>
-              </head>
-              <body>
-                  <div class="header">
-                      <h1>PROTOCOLO DE REGISTRO</h1>
-                      <p>Notify Serviços Jurídicos</p>
-                  </div>
-                  <div class="content">
-                      <p>Este documento certifica que a notificação extrajudicial foi registrada e processada com sucesso em nossa plataforma.</p>
-                      
-                      <div class="box">
-                          <p><strong>Número do Protocolo:</strong> ${createdData.notif.id}</p>
-                          <p><strong>Data de Emissão:</strong> ${new Date().toLocaleString()}</p>
-                          <p><strong>Status Atual:</strong> ${createdData.notif.status}</p>
-                      </div>
-
-                      <h3>Dados do Documento</h3>
-                      <p><strong>Remetente:</strong> ${createdData.notif.senderName}</p>
-                      <p><strong>Destinatário:</strong> ${createdData.notif.recipientName}</p>
-                      <p><strong>Assunto:</strong> ${createdData.notif.species}</p>
-                      <hr/>
-                      <br/>
-                      <div style="font-family: serif; white-space: pre-wrap; font-size: 12px; color: #555;">${createdData.notif.content.substring(0, 500)}... (Resumo do conteúdo)</div>
-                  </div>
-
-                  ${createdData.notif.signatureBase64 ? `
-                    <div style="text-align: center; margin-top: 60px;">
-                        <img src="${createdData.notif.signatureBase64}" style="max-height: 80px;" />
-                        <div style="border-top: 1px solid #000; width: 300px; margin: 5px auto 0;"></div>
-                        <p><strong>${createdData.notif.senderName}</strong></p>
-                        <p style="font-size: 10px; color: #666; margin-top: 5px;">
-                            ID: ${createdData.notif.id}<br/>
-                            HASH: ${btoa(createdData.notif.id).substring(0, 24)}...
-                        </p>
-                    </div>
-                  ` : ''}
-              </body>
-              </html>
-          `);
-          win.document.close();
-          win.print();
-      }
+  const handleCopyPix = () => {
+      navigator.clipboard.writeText("00020126360014BR.GOV.BCB.PIX0114+551199999999520400005303986540510.005802BR5913NOTIFY SERVICOS6009SAO PAULO62070503***6304E2CA");
+      setPixCopied(true);
+      setTimeout(() => setPixCopied(false), 3000);
   };
-  
+
   const getFactsPlaceholder = () => {
       const area = formData.areaId;
       const spec = formData.species;
@@ -878,7 +833,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
 
   const renderStepContent = () => {
       switch(currentStep) {
-          // ... (Existing cases 1, 2, 3 remain identical)
+          // ... (Cases 1, 2, 3, 4 remain identical)
           case 1: return (
             <div className="pb-12 relative">
                 <h3 className="text-xl font-bold text-slate-800 mb-6 text-center">Qual é a natureza jurídica?</h3>
@@ -909,22 +864,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                                     {area.desc}
                                 </span>
                             </div>
-                            {formData.areaId === area.id && (
-                                <div className="absolute top-3 right-3">
-                                    <span className="flex h-2 w-2">
-                                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                                      <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                                    </span>
-                                </div>
-                            )}
                         </button>
                     ))}
-                </div>
-                <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-white via-white/90 to-transparent flex items-end justify-center pointer-events-none pb-4">
-                     <div className="flex flex-col items-center animate-bounce text-slate-400">
-                         <span className="text-[10px] font-bold uppercase mb-1 tracking-widest">Mais Opções</span>
-                         <ChevronDown size={20} />
-                     </div>
                 </div>
             </div>
           );
@@ -951,7 +892,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                    <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:bg-slate-50 relative bg-slate-50 transition-colors">
                         {isUploadingFile ? <Loader2 className="animate-spin mx-auto text-blue-500" /> : <UploadCloud className="mx-auto text-slate-400 mb-2" size={32} />}
                         <p className="text-sm text-slate-500 font-medium">{isUploadingFile ? 'Carregando arquivo...' : 'Toque para anexar evidências'}</p>
-                        <p className="text-xs text-slate-400">(Fotos, Vídeos, PDF)</p>
                         <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleFileSelect} disabled={isUploadingFile} />
                    </div>
                    {evidences.length > 0 && (
@@ -959,9 +899,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                            {evidences.map((ev, idx) => (
                                <div key={ev.id} className="bg-white border border-slate-200 p-3 rounded-lg text-sm flex justify-between items-center shadow-sm">
                                    <span className="truncate flex-1 mr-2 flex items-center">
-                                       {ev.isLoading ? (
-                                           <Loader2 className="animate-spin mr-2 h-3 w-3 text-blue-500" />
-                                       ) : null}
+                                       {ev.isLoading ? <Loader2 className="animate-spin mr-2 h-3 w-3 text-blue-500" /> : null}
                                        {ev.name}
                                    </span>
                                    {!ev.isLoading && (
@@ -1092,10 +1030,10 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                       </div>
                   )}
 
-                  {/* AGENDAMENTO E IA CONFIG */}
+                  {/* AGENDAMENTO E IA CONFIG (Topo) */}
                   <div className={`bg-slate-900 text-white p-6 rounded-xl shrink-0 transition-opacity ${formData.signed ? 'opacity-30' : 'opacity-100'}`}>
                       <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-bold">IA Generation</h4>
+                        <h4 className="font-bold">Geração Inteligente (IA)</h4>
                         <Wand2 className="text-purple-400" />
                       </div>
                       
@@ -1164,52 +1102,101 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                         disabled={isGenerating || formData.signed} 
                         className="w-full bg-purple-600 hover:bg-purple-500 py-3 rounded-lg font-bold flex justify-center items-center transition shadow-lg shadow-purple-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                          {isGenerating ? <Loader2 className="animate-spin mr-2"/> : <Wand2 className="mr-2"/>} {formData.generatedContent ? 'Regerar Minuta' : 'Gerar Minuta'}
+                          {isGenerating ? <Loader2 className="animate-spin mr-2"/> : <Wand2 className="mr-2"/>} {formData.generatedContent && !showSuccessScreen ? 'Regerar Minuta' : 'Gerar Notificação com IA'}
                       </button>
                   </div>
                   
-                  {/* EDITOR */}
-                  <div className={`flex-1 bg-slate-50 p-4 rounded-xl border border-slate-200 min-h-[400px] transition-opacity ${formData.signed ? 'opacity-50' : 'opacity-100'}`}>
-                      <textarea 
-                        value={formData.generatedContent} 
-                        onChange={e => setFormData(p=>({...p, generatedContent: e.target.value}))} 
-                        className="w-full h-full bg-transparent resize-none outline-none font-serif text-sm leading-relaxed text-slate-800 disabled:cursor-not-allowed" 
-                        placeholder="A minuta aparecerá aqui e poderá ser editada..." 
-                        disabled={formData.signed}
-                      />
+                  {/* ÁREA DINÂMICA: SUCESSO OU EDITOR */}
+                  <div className={`flex-1 min-h-[400px] rounded-xl border transition-all relative overflow-hidden ${formData.signed ? 'opacity-50' : 'opacity-100'} ${showSuccessScreen ? 'bg-white border-blue-200' : 'bg-slate-50 border-slate-200'}`}>
+                      
+                      {showSuccessScreen && formData.generatedContent ? (
+                          // TELA DE SUCESSO ANIMADA (Substitui o editor)
+                          <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center animate-fade-in">
+                              <div className="mb-6 relative">
+                                  <div className="absolute inset-0 bg-blue-100 rounded-full animate-ping opacity-75"></div>
+                                  <div className="relative bg-white p-4 rounded-full border-4 border-blue-50 shadow-lg">
+                                      <CheckCircle2 size={64} className="text-green-500" />
+                                  </div>
+                              </div>
+                              
+                              <h3 className="text-2xl font-bold text-slate-800 mb-2">Documento Gerado com Sucesso!</h3>
+                              <p className="text-slate-500 text-sm max-w-md mb-8 leading-relaxed">
+                                  A inteligência artificial processou seus dados e criou a minuta jurídica completa. O texto está pronto para ser revisado e assinado na próxima etapa.
+                              </p>
+
+                              <div className="flex flex-col w-full max-w-sm gap-3">
+                                  <button 
+                                      onClick={() => { setCurrentStep(5); window.scrollTo(0,0); }}
+                                      className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg shadow-slate-200 hover:bg-slate-800 transition transform hover:scale-105 flex items-center justify-center"
+                                  >
+                                      Revisar e Assinar <ArrowRight className="ml-2" size={18} />
+                                  </button>
+                                  
+                                  <button 
+                                      onClick={() => setShowSuccessScreen(false)}
+                                      className="text-xs text-slate-400 hover:text-slate-600 font-medium mt-2 underline"
+                                  >
+                                      Visualizar ou editar manualmente agora
+                                  </button>
+                              </div>
+                          </div>
+                      ) : (
+                          // EDITOR PADRÃO (Para visualização manual se o usuário optar por editar ou antes da geração)
+                          <textarea 
+                            value={formData.generatedContent} 
+                            onChange={e => setFormData(p=>({...p, generatedContent: e.target.value}))} 
+                            className="w-full h-full bg-transparent resize-none outline-none font-serif text-sm leading-relaxed text-slate-800 disabled:cursor-not-allowed p-6" 
+                            placeholder={isGenerating ? "Aguarde, a IA está escrevendo seu documento..." : "O texto da notificação aparecerá aqui após a geração."}
+                            disabled={formData.signed || isGenerating}
+                          />
+                      )}
                   </div>
               </div>
           );
           case 5: return (
-              <div className="pb-12 text-center">
-                   <div className="prose prose-sm max-w-none bg-white p-4 md:p-8 border shadow-sm mx-auto text-left h-80 overflow-y-auto mb-6 rounded-xl">
-                       {/* MODO LEITURA - ASSINATURA */}
-                       <pre className="whitespace-pre-wrap font-serif text-slate-800 text-sm">{formData.generatedContent}</pre>
+              <div className="pb-12 text-center animate-fade-in">
+                   <div className="flex items-center justify-center mb-6">
+                       <h3 className="text-xl font-bold text-slate-800">Revisão e Assinatura</h3>
+                   </div>
+                   
+                   {/* DOCUMENT PREVIEW CONTAINER */}
+                   <div className="max-w-3xl mx-auto bg-white p-8 md:p-12 border border-slate-200 shadow-xl rounded-sm text-left h-[500px] overflow-y-auto mb-8 relative">
+                       {/* Watermark-like background */}
+                       <div className="absolute inset-0 flex items-center justify-center opacity-[0.03] pointer-events-none">
+                           <Scale size={200} />
+                       </div>
                        
-                       {/* ÁREA DA ASSINATURA FINALIZADA */}
+                       <div className="font-serif text-slate-800 text-sm leading-7 whitespace-pre-wrap relative z-10">
+                           {formData.generatedContent}
+                       </div>
+                       
                        {formData.signed && signatureData && (
-                           <div className="mt-8 pt-4 border-t border-slate-200 flex flex-col items-center">
-                               <img src={signatureData} alt="Assinatura" className="h-20 object-contain mb-2" />
-                               <div className="border-t border-black w-64 mb-2"></div>
-                               <p className="font-bold text-slate-900 uppercase text-sm">{formData.sender.name}</p>
+                           <div className="mt-12 pt-8 border-t border-slate-200 flex flex-col items-center relative z-10">
+                               <img src={signatureData} alt="Assinatura" className="h-16 object-contain mb-2" />
+                               <div className="border-t border-slate-800 w-64 mb-2"></div>
+                               <p className="font-bold text-slate-900 uppercase text-xs tracking-wider">{formData.sender.name}</p>
                                
-                               {/* HASH E ID DO DOCUMENTO */}
-                               <div className="mt-4 text-[10px] text-slate-400 font-mono text-center bg-slate-50 p-2 rounded border border-slate-100 inline-block">
-                                   <p className="mb-1"><strong>ID DO DOCUMENTO:</strong> {notificationId}</p>
-                                   <p><strong>HASH DE INTEGRIDADE:</strong> {btoa(notificationId + formData.sender.cpfCnpj).substring(0, 32)}...</p>
-                                   <p className="text-green-600 flex items-center justify-center mt-1 gap-1"><ShieldCheck size={10} /> Documento assinado eletronicamente</p>
+                               <div className="mt-6 flex flex-col items-center bg-slate-50 px-4 py-2 rounded border border-slate-100">
+                                   <div className="text-[10px] text-slate-400 font-mono text-center">
+                                       <p className="mb-1"><strong>ID DO DOCUMENTO:</strong> {notificationId}</p>
+                                       <p><strong>HASH DE INTEGRIDADE:</strong> {btoa(notificationId + formData.sender.cpfCnpj).substring(0, 32)}...</p>
+                                   </div>
+                                   <p className="text-green-600 flex items-center justify-center mt-2 gap-1 text-[10px] font-bold uppercase"><ShieldCheck size={12} /> Documento assinado eletronicamente</p>
                                </div>
                            </div>
                        )}
                    </div>
 
                    {!formData.signed && (
-                       <div className="w-full max-w-md mx-auto">
-                           <p className="text-sm font-bold text-slate-500 mb-2 uppercase">Assine no quadro abaixo</p>
-                           <div ref={containerRef} className="border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 overflow-hidden touch-none mb-3">
+                       <div className="w-full max-w-md mx-auto bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                           <div className="flex justify-between items-center mb-3">
+                               <p className="text-xs font-bold text-slate-500 uppercase flex items-center"><PenTool size={12} className="mr-1"/> Assine no quadro abaixo</p>
+                               <button onClick={clearSignature} className="text-red-500 text-xs hover:underline font-medium">Limpar</button>
+                           </div>
+                           <div ref={containerRef} className="border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 overflow-hidden touch-none mb-4 relative cursor-crosshair hover:border-slate-400 transition-colors">
                                <canvas 
                                 ref={canvasRef} 
-                                height={180} 
+                                height={160} 
                                 onMouseDown={startDrawing} 
                                 onMouseMove={draw} 
                                 onMouseUp={stopDrawing} 
@@ -1217,105 +1204,324 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                                 onTouchStart={startDrawing}
                                 onTouchMove={draw}
                                 onTouchEnd={stopDrawing}
-                                className="w-full cursor-crosshair block" 
+                                className="w-full block" 
                                 style={{touchAction: 'none'}}
                                />
+                               {!isDrawing && !signatureData && (
+                                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40">
+                                       <span className="text-4xl text-slate-300 font-handwriting select-none">Assinar Aqui</span>
+                                   </div>
+                               )}
                            </div>
                            <div className="flex gap-3">
-                               <button onClick={clearSignature} className="flex-1 py-2 text-red-500 text-sm font-bold border border-red-100 rounded-lg hover:bg-red-50">Limpar</button>
-                               <button onClick={confirmSignature} className="flex-1 py-2 bg-blue-600 text-white font-bold text-sm rounded-lg hover:bg-blue-700 shadow-sm">Confirmar Assinatura</button>
+                               <button 
+                                onClick={confirmSignature} 
+                                className="w-full py-3 bg-slate-900 text-white font-bold text-sm rounded-xl hover:bg-slate-800 shadow-lg transition-transform active:scale-95 flex items-center justify-center"
+                               >
+                                   <Check size={18} className="mr-2" />
+                                   Confirmar Assinatura
+                               </button>
                            </div>
                        </div>
                    )}
               </div>
           );
-          // ... (Case 6 remains unchanged)
           case 6: 
+             // STAGE 1: PLAN SELECTION
              if (paymentStage === 'selection') return (
-                 <div className="pb-12 space-y-4">
-                     <h3 className="text-xl font-bold text-slate-800 text-center mb-6">Escolha como prosseguir</h3>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* OPÇÃO 1: ENVIO AVULSO */}
-                        <div onClick={() => setPaymentPlan('single')} className={`p-6 border-2 rounded-xl cursor-pointer transition relative overflow-hidden group ${paymentPlan==='single' ? 'border-blue-500 bg-blue-50/50 ring-1 ring-blue-200 shadow-lg' : 'border-slate-200 hover:border-blue-200 hover:shadow-md'}`}>
-                             {paymentPlan === 'single' && <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg">SELECIONADO</div>}
-                             <div className="flex items-center gap-3 mb-4">
-                                <div className={`p-3 rounded-full ${paymentPlan==='single' ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'}`}>
-                                    <Send size={24} />
-                                </div>
-                                <div>
-                                    <h4 className="font-bold text-slate-800 text-lg">Envio Avulso (Combo Digital)</h4>
-                                    <p className="text-xs text-slate-500">Pagamento único por este documento.</p>
-                                </div>
-                             </div>
+                 <div className="pb-12 space-y-6 animate-fade-in">
+                     <div className="text-center mb-8">
+                         <h3 className="text-2xl font-bold text-slate-800">Escolha como prosseguir</h3>
+                         <p className="text-slate-500 text-sm">Selecione o plano ideal para sua necessidade jurídica.</p>
+                     </div>
+                     
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+                        {/* PLANO AVULSO */}
+                        <div onClick={() => setPaymentPlan('single')} className={`relative p-8 rounded-2xl cursor-pointer transition-all duration-300 group overflow-hidden ${paymentPlan==='single' ? 'bg-white ring-2 ring-blue-500 shadow-xl scale-[1.02]' : 'bg-white border border-slate-200 hover:border-blue-300 hover:shadow-lg'}`}>
+                             {paymentPlan === 'single' && <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl shadow-sm">SELECIONADO</div>}
                              
-                             <div className="mb-4">
-                                <p className="text-3xl font-bold text-slate-900">R$ 57,92</p>
-                                <p className="text-xs text-slate-400">cobrança única</p>
-                             </div>
+                             <div className="flex flex-col h-full">
+                                 <div className="mb-6">
+                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-4 transition-colors ${paymentPlan==='single' ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'}`}>
+                                        <Send size={28} />
+                                    </div>
+                                    <h4 className="font-bold text-slate-900 text-xl">Envio Avulso</h4>
+                                    <p className="text-sm text-slate-500 mt-1">Combo Digital Completo</p>
+                                 </div>
+                                 
+                                 <div className="mb-8">
+                                    <p className="text-4xl font-bold text-slate-900 tracking-tight">R$ 57,92</p>
+                                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mt-1">pagamento único</p>
+                                 </div>
 
-                             <div className="space-y-2 border-t border-slate-200/50 pt-4">
-                                 <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Itens Inclusos no Combo:</p>
-                                 <div className="flex items-center gap-2 text-sm text-slate-700">
-                                     <Check className="text-green-500" size={16} /> Envio via WhatsApp
-                                 </div>
-                                 <div className="flex items-center gap-2 text-sm text-slate-700">
-                                     <Check className="text-green-500" size={16} /> Envio via SMS
-                                 </div>
-                                 <div className="flex items-center gap-2 text-sm text-slate-700">
-                                     <Check className="text-green-500" size={16} /> Envio via E-mail
-                                 </div>
-                                 <div className="flex items-center gap-2 text-sm text-slate-700">
-                                     <Check className="text-green-500" size={16} /> Certificado de Entrega
+                                 <div className="space-y-3 pt-6 border-t border-slate-100 mt-auto">
+                                     {[
+                                         'Envio Imediato via WhatsApp',
+                                         'Envio via SMS Certificado',
+                                         'Envio via E-mail com Rastreio',
+                                         'Certificado de Entrega Digital'
+                                     ].map((feat, i) => (
+                                         <div key={i} className="flex items-center gap-3 text-sm text-slate-600">
+                                             <div className="p-0.5 rounded-full bg-green-100 text-green-600"><Check size={10} /></div>
+                                             {feat}
+                                         </div>
+                                     ))}
                                  </div>
                              </div>
                         </div>
 
-                        {/* OPÇÃO 2: ASSINATURA */}
-                        <div onClick={() => setPaymentPlan('subscription')} className={`p-6 border-2 rounded-xl cursor-pointer transition relative overflow-hidden group ${paymentPlan==='subscription' ? 'border-purple-500 bg-purple-50/50 ring-1 ring-purple-200 shadow-lg' : 'border-slate-200 hover:border-purple-200 hover:shadow-md'}`}>
-                             {paymentPlan === 'subscription' && <div className="absolute top-0 right-0 bg-purple-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg">MAIS VANTAJOSO</div>}
-                             <div className="flex items-center gap-3 mb-4">
-                                <div className={`p-3 rounded-full ${paymentPlan==='subscription' ? 'bg-purple-100 text-purple-600' : 'bg-slate-100 text-slate-400'}`}>
-                                    <ZapIcon size={24} />
-                                </div>
-                                <div>
-                                    <h4 className="font-bold text-slate-800 text-lg">Assinatura Mensal</h4>
-                                    <p className="text-xs text-slate-500">Ideal para advogados e empresas.</p>
-                                </div>
-                             </div>
+                        {/* PLANO ASSINATURA */}
+                        <div onClick={() => setPaymentPlan('subscription')} className={`relative p-8 rounded-2xl cursor-pointer transition-all duration-300 group overflow-hidden ${paymentPlan==='subscription' ? 'bg-slate-900 ring-2 ring-purple-500 shadow-2xl scale-[1.02]' : 'bg-white border border-slate-200 hover:border-purple-300 hover:shadow-lg'}`}>
+                             {paymentPlan === 'subscription' && <div className="absolute top-0 right-0 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl shadow-sm flex items-center"><ZapIcon size={10} className="mr-1 text-yellow-300" /> RECOMENDADO</div>}
                              
-                             <div className="mb-4">
-                                <p className="text-3xl font-bold text-slate-900">R$ 259,97 <span className="text-sm font-normal text-slate-500">/mês</span></p>
-                                <p className="text-xs text-purple-600 font-bold">~R$ 26,00 por envio</p>
-                             </div>
+                             <div className="flex flex-col h-full">
+                                 <div className="mb-6">
+                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-4 transition-colors ${paymentPlan==='subscription' ? 'bg-purple-500/20 text-purple-400' : 'bg-slate-100 text-slate-400'}`}>
+                                        <Package size={28} />
+                                    </div>
+                                    <h4 className={`font-bold text-xl ${paymentPlan==='subscription' ? 'text-white' : 'text-slate-900'}`}>Assinatura Pro</h4>
+                                    <p className={`text-sm mt-1 ${paymentPlan==='subscription' ? 'text-slate-400' : 'text-slate-500'}`}>Para advogados e empresas</p>
+                                 </div>
+                                 
+                                 <div className="mb-8">
+                                    <p className={`text-4xl font-bold tracking-tight ${paymentPlan==='subscription' ? 'text-white' : 'text-slate-900'}`}>R$ 259,97 <span className="text-sm font-normal opacity-60">/mês</span></p>
+                                    <p className={`text-xs font-bold uppercase tracking-wide mt-1 ${paymentPlan==='subscription' ? 'text-purple-400' : 'text-purple-600'}`}>~R$ 26,00 por notificação</p>
+                                 </div>
 
-                             <div className="space-y-2 border-t border-slate-200/50 pt-4">
-                                 <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Vantagens Exclusivas:</p>
-                                 <div className="flex items-center gap-2 text-sm text-slate-700">
-                                     <Package className="text-purple-500" size={16} /> <strong>10 Créditos</strong> de envio mensal
-                                 </div>
-                                 <div className="flex items-center gap-2 text-sm text-slate-700">
-                                     <Clock3 className="text-purple-500" size={16} /> Créditos válidos por 30 dias
-                                 </div>
-                                 <div className="flex items-center gap-2 text-sm text-slate-700">
-                                     <Check className="text-purple-500" size={16} /> Prioridade no suporte
-                                 </div>
-                                 <div className="mt-2 text-xs bg-purple-100 text-purple-700 p-2 rounded-lg">
-                                     Ao assinar, 1 crédito será usado agora e você terá mais <strong>9 créditos</strong> para usar este mês.
+                                 <div className={`space-y-3 pt-6 border-t mt-auto ${paymentPlan==='subscription' ? 'border-slate-700' : 'border-slate-100'}`}>
+                                     <div className={`flex items-center gap-3 text-sm ${paymentPlan==='subscription' ? 'text-slate-300' : 'text-slate-600'}`}>
+                                         <div className="p-0.5 rounded-full bg-purple-500/20 text-purple-400"><Check size={10} /></div>
+                                         <strong>10 Créditos</strong> de envio mensal
+                                     </div>
+                                     <div className={`flex items-center gap-3 text-sm ${paymentPlan==='subscription' ? 'text-slate-300' : 'text-slate-600'}`}>
+                                         <div className="p-0.5 rounded-full bg-purple-500/20 text-purple-400"><Check size={10} /></div>
+                                         Créditos cumulativos (30 dias)
+                                     </div>
+                                     <div className={`flex items-center gap-3 text-sm ${paymentPlan==='subscription' ? 'text-slate-300' : 'text-slate-600'}`}>
+                                         <div className="p-0.5 rounded-full bg-purple-500/20 text-purple-400"><Check size={10} /></div>
+                                         Suporte prioritário via WhatsApp
+                                     </div>
                                  </div>
                              </div>
                         </div>
                      </div>
                      
-                     <div className="flex items-center justify-between py-4 border-t border-slate-100 mt-4">
-                         <div className="text-sm text-slate-500">
-                             Total a pagar hoje:
+                     <div className="max-w-md mx-auto pt-6">
+                         <div className="flex items-center justify-between py-4 border-t border-slate-100 mb-4">
+                             <div className="text-sm text-slate-500 font-medium">Total a pagar agora:</div>
+                             <div className="text-right font-bold text-3xl text-slate-900">R$ {calculateTotal().toFixed(2)}</div>
                          </div>
-                         <div className="text-right font-bold text-2xl text-slate-900">R$ {calculateTotal().toFixed(2)}</div>
+
+                         <button onClick={() => setPaymentStage('input')} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-xl shadow-slate-200 flex items-center justify-center hover:bg-slate-800 transition transform hover:scale-105 active:scale-95 group">
+                             Ir para Pagamento <ArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" size={18} />
+                         </button>
+                     </div>
+                 </div>
+             );
+             
+             // STAGE 2: PAYMENT INPUT
+             if (paymentStage === 'input') return (
+                <div className="pb-12 max-w-md mx-auto animate-fade-in">
+                    <button 
+                        onClick={() => setPaymentStage('selection')}
+                        className="mb-6 text-slate-400 hover:text-slate-600 flex items-center text-sm font-medium transition-colors"
+                    >
+                        <ChevronLeft size={16} className="mr-1" /> Voltar para planos
+                    </button>
+
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xl shadow-slate-100">
+                        <div className="text-center mb-6">
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Valor Total</p>
+                            <p className="text-3xl font-bold text-slate-900">R$ {calculateTotal().toFixed(2)}</p>
+                        </div>
+
+                        <div className="flex bg-slate-50 p-1 rounded-xl mb-6 border border-slate-100">
+                            <button 
+                                onClick={() => setPaymentMethod('pix')}
+                                className={`flex-1 py-2.5 rounded-lg flex items-center justify-center text-sm font-bold transition-all duration-300 ${paymentMethod === 'pix' ? 'bg-white text-green-700 shadow-sm ring-1 ring-green-500/20' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                <QrCode size={16} className="mr-2" /> Pix
+                            </button>
+                            <button 
+                                onClick={() => setPaymentMethod('credit_card')}
+                                className={`flex-1 py-2.5 rounded-lg flex items-center justify-center text-sm font-bold transition-all duration-300 ${paymentMethod === 'credit_card' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-500/20' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                <CardIcon size={16} className="mr-2" /> Cartão
+                            </button>
+                        </div>
+
+                        {paymentMethod === 'pix' ? (
+                            <div className="text-center space-y-5 animate-fade-in">
+                                <div className="p-4 bg-white border-2 border-slate-100 rounded-xl inline-block shadow-inner relative group">
+                                    <QrCode size={160} className="text-slate-800 opacity-90 group-hover:opacity-100 transition-opacity" />
+                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <div className="bg-white/80 backdrop-blur px-2 py-1 rounded text-[10px] font-bold text-slate-900">Scan Me</div>
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <p className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center justify-center">
+                                        <Copy size={12} className="mr-1" /> Código Pix Copia e Cola
+                                    </p>
+                                    <div className="flex items-center bg-slate-50 rounded-xl border border-slate-200 overflow-hidden group hover:border-blue-300 transition-colors">
+                                        <input 
+                                            readOnly 
+                                            value="00020126360014BR.GOV.BCB.PIX0114+551199999999520400005303986540510.005802BR5913NOTIFY SERVICOS6009SAO PAULO62070503***6304E2CA"
+                                            className="bg-transparent text-xs text-slate-600 w-full outline-none truncate font-mono px-3 py-3"
+                                        />
+                                        <button 
+                                            onClick={handleCopyPix}
+                                            className={`p-3 transition-colors ${pixCopied ? 'bg-green-500 text-white' : 'bg-white border-l border-slate-200 text-blue-600 hover:bg-blue-50'}`}
+                                            title="Copiar"
+                                        >
+                                            {pixCopied ? <Check size={16} /> : <Copy size={16} />}
+                                        </button>
+                                    </div>
+                                    <p className={`text-[10px] mt-2 transition-colors font-medium ${pixCopied ? 'text-green-600' : 'text-slate-400'}`}>
+                                        {pixCopied ? 'Código copiado com sucesso!' : 'Aguardando confirmação automática...'}
+                                    </p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-4 animate-fade-in">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Número do Cartão</label>
+                                    <div className="relative">
+                                        <CardIcon className="absolute left-3 top-3 text-slate-400" size={16} />
+                                        <input 
+                                            type="text" 
+                                            placeholder="0000 0000 0000 0000" 
+                                            maxLength={19}
+                                            value={cardData.number}
+                                            onChange={e => setCardData(p => ({...p, number: MASKS.card(e.target.value)}))}
+                                            className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-mono focus:ring-2 focus:ring-blue-100 transition focus:bg-white"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Nome no Cartão</label>
+                                    <div className="relative">
+                                        <User className="absolute left-3 top-3 text-slate-400" size={16} />
+                                        <input 
+                                            type="text" 
+                                            placeholder="COMO NO CARTÃO" 
+                                            value={cardData.name}
+                                            onChange={e => setCardData(p => ({...p, name: e.target.value.toUpperCase()}))}
+                                            className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-100 transition focus:bg-white"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase">Validade</label>
+                                        <div className="relative">
+                                            <Calendar className="absolute left-3 top-3 text-slate-400" size={16} />
+                                            <input 
+                                                type="text" 
+                                                placeholder="MM/AA" 
+                                                maxLength={5}
+                                                value={cardData.expiry}
+                                                onChange={e => setCardData(p => ({...p, expiry: MASKS.expiry(e.target.value)}))}
+                                                className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-100 transition focus:bg-white"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-bold text-slate-400 uppercase">CVV</label>
+                                        <div className="relative">
+                                            <Lock className="absolute left-3 top-3 text-slate-400" size={16} />
+                                            <input 
+                                                type="text" 
+                                                placeholder="123" 
+                                                maxLength={4}
+                                                value={cardData.cvv}
+                                                onChange={e => setCardData(p => ({...p, cvv: e.target.value.replace(/\D/g,'')}))}
+                                                className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-100 transition focus:bg-white"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <button 
+                        onClick={handleConfirmPayment} 
+                        disabled={isProcessingPayment}
+                        className="w-full mt-6 bg-slate-900 text-white py-4 rounded-xl font-bold shadow-xl shadow-slate-200 flex items-center justify-center hover:bg-slate-800 transition transform active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
+                    >
+                        {isProcessingPayment ? <Loader2 className="animate-spin mr-2"/> : <Check size={20} className="mr-2" />}
+                        {isProcessingPayment ? 'Processando...' : `Confirmar Pagamento`}
+                    </button>
+                    
+                    {/* Botão Pagar Depois */}
+                    <button 
+                        onClick={handlePayLater}
+                        disabled={isProcessingPayment}
+                        className="w-full mt-3 bg-transparent text-slate-500 py-2 text-xs font-bold hover:text-slate-800 transition uppercase tracking-wide"
+                    >
+                        Pagar depois e salvar pendência
+                    </button>
+                </div>
+             );
+
+             // STAGE 3: PROTOCOL & SUCCESS
+             if (paymentStage === 'protocol') return (
+                 <div className="pb-12 max-w-lg mx-auto text-center animate-fade-in">
+                     <div className="relative inline-block mb-8 mt-4">
+                         <div className="absolute inset-0 bg-green-200 rounded-full animate-ping opacity-50"></div>
+                         <div className="relative w-24 h-24 bg-gradient-to-br from-green-400 to-emerald-600 text-white rounded-full flex items-center justify-center shadow-xl border-4 border-white">
+                             <CheckCircle2 size={48} />
+                         </div>
+                     </div>
+                     
+                     <h2 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight">Sucesso!</h2>
+                     <p className="text-slate-500 mb-10 max-w-xs mx-auto leading-relaxed">Sua notificação foi processada e registrada com segurança.</p>
+
+                     <div className="bg-white rounded-2xl border border-slate-200 shadow-lg text-left mb-8 relative overflow-hidden group hover:border-blue-200 transition-colors">
+                         {/* Receipt jagged edge effect - simulated with CSS or simple border */}
+                         <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-blue-500 via-purple-500 to-indigo-500"></div>
+                         
+                         <div className="p-6 md:p-8">
+                            <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
+                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Protocolo Digital</h4>
+                                <div className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-1 rounded border border-green-200 uppercase">Confirmado</div>
+                            </div>
+                            
+                            <div className="space-y-4">
+                                <div className="flex justify-between">
+                                    <span className="text-sm text-slate-500">ID da Transação</span>
+                                    <span className="text-sm font-mono font-bold text-slate-800 select-all">{createdData.trans?.id}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-sm text-slate-500">Notificação ID</span>
+                                    <span className="text-sm font-mono font-bold text-slate-800 select-all">{createdData.notif?.id}</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-sm text-slate-500">Data de Emissão</span>
+                                    <span className="text-sm text-slate-800 font-medium">{new Date().toLocaleDateString()}</span>
+                                </div>
+                                {createdData.meet && (
+                                    <div className="flex justify-between pt-2 border-t border-dashed border-slate-100 mt-2">
+                                        <span className="text-sm text-purple-600 font-bold flex items-center"><Video size={12} className="mr-1"/> Reunião Criada</span>
+                                        <span className="text-sm text-slate-800">{createdData.meet.date.split('-').reverse().join('/')}</span>
+                                    </div>
+                                )}
+                            </div>
+                         </div>
+                         <div className="bg-slate-50 p-4 text-center border-t border-slate-100">
+                             <p className="text-[10px] text-slate-400">Este comprovante foi enviado para seu e-mail.</p>
+                         </div>
                      </div>
 
-                     <button onClick={() => setPaymentStage('input')} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg flex items-center justify-center hover:bg-slate-800 transition transform active:scale-95">
-                         Ir para Pagamento <ArrowRightIcon className="ml-2" size={18} />
-                     </button>
+                     <div className="space-y-3">
+                         <button 
+                             onClick={handleFinishProtocol}
+                             className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-xl shadow-slate-300 flex items-center justify-center hover:bg-slate-800 transition transform active:scale-95 group"
+                         >
+                             Voltar ao Painel de Controle <ArrowRight size={18} className="ml-2 group-hover:translate-x-1 transition-transform"/>
+                         </button>
+                     </div>
                  </div>
              );
       }
@@ -1359,10 +1565,12 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                                 setCurrentStep(c => c - 1);
                                 window.scrollTo(0,0);
                             }
+                        } else {
+                            // VOLTA PARA O PAINEL SE FOR ETAPA 1
+                            if (onBack) onBack();
                         }
                     }} 
-                    disabled={currentStep===1} 
-                    className="px-6 py-3 rounded-xl text-slate-600 font-bold hover:bg-slate-100 disabled:opacity-30 transition"
+                    className="px-6 py-3 rounded-xl text-slate-600 font-bold hover:bg-slate-100 transition"
                 >
                     Voltar
                 </button>

@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { ViewState, NotificationItem, Meeting, Transaction, NotificationStatus } from '../types';
-import { Plus, Monitor, Video, CreditCard, ChevronRight, FileText, Send, Clock, Calendar as CalendarIcon, CheckCircle, XCircle, AlertCircle, ChevronLeft, User } from 'lucide-react';
+import { Plus, Monitor, Video, CreditCard, ChevronRight, FileText, Send, Clock, Calendar as CalendarIcon, CheckCircle, XCircle, AlertCircle, ChevronLeft, User, Sparkles } from 'lucide-react';
 
 interface DashboardProps {
   notifications: NotificationItem[];
   meetings: Meeting[];
   transactions: Transaction[];
   onNavigate: (view: ViewState) => void;
-  user?: any; // Added user prop for profile duplication
+  user?: any;
 }
 
 // --- WIDGET: RELÓGIO ---
@@ -20,21 +20,21 @@ const MiniClock = () => {
     }, []);
 
     return (
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between h-full relative overflow-hidden group hover:border-blue-300 transition-all">
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between h-full relative overflow-hidden group hover:border-blue-300 transition-all min-h-[160px]">
             <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition">
                 <Clock size={64} className="text-slate-900" />
             </div>
             <div>
-                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-1">Horário Oficial</h3>
-                <div className="text-4xl md:text-5xl font-bold text-slate-800 tracking-tight font-mono">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Horário Oficial</h3>
+                <div className="text-3xl md:text-4xl font-bold text-slate-800 tracking-tight font-mono">
                     {time.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                    <span className="text-lg text-slate-400 font-normal ml-1">
+                    <span className="text-sm text-slate-400 font-normal ml-1">
                          {time.toLocaleTimeString('pt-BR', { second: '2-digit' })}
                     </span>
                 </div>
             </div>
             <div className="mt-4 pt-4 border-t border-slate-100">
-                <p className="text-sm text-slate-600 capitalize">
+                <p className="text-xs text-slate-600 capitalize font-medium">
                     {time.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}
                 </p>
             </div>
@@ -61,7 +61,6 @@ const MiniCalendar = ({ meetings }: { meetings: Meeting[] }) => {
     const hasMeeting = (day: number) => {
         return meetings.some(m => {
             if (m.status === 'canceled') return false;
-            // m.date formato YYYY-MM-DD
             const [mYear, mMonth, mDay] = m.date.split('-').map(Number);
             return mYear === year && (mMonth - 1) === month && mDay === day;
         });
@@ -72,35 +71,35 @@ const MiniCalendar = ({ meetings }: { meetings: Meeting[] }) => {
     };
 
     return (
-        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 h-full flex flex-col group hover:border-purple-300 transition-all">
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Agenda de Prazos</h3>
-                <div className="flex gap-2">
-                    <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-slate-100 rounded text-slate-500"><ChevronLeft size={16} /></button>
-                    <span className="text-sm font-bold text-slate-800 w-24 text-center capitalize">
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 h-full flex flex-col group hover:border-purple-300 transition-all min-h-[160px]">
+            <div className="flex justify-between items-center mb-2">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Agenda</h3>
+                <div className="flex gap-1 items-center">
+                    <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-slate-100 rounded text-slate-500"><ChevronLeft size={14} /></button>
+                    <span className="text-xs font-bold text-slate-800 w-20 text-center capitalize truncate">
                         {currDate.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })}
                     </span>
-                    <button onClick={() => changeMonth(1)} className="p-1 hover:bg-slate-100 rounded text-slate-500"><ChevronRight size={16} /></button>
+                    <button onClick={() => changeMonth(1)} className="p-1 hover:bg-slate-100 rounded text-slate-500"><ChevronRight size={14} /></button>
                 </div>
             </div>
             
-            <div className="grid grid-cols-7 gap-1 text-center mb-2">
+            <div className="grid grid-cols-7 gap-1 text-center mb-1">
                 {['D','S','T','Q','Q','S','S'].map(d => (
-                    <span key={d} className="text-[10px] font-bold text-slate-400">{d}</span>
+                    <span key={d} className="text-[9px] font-bold text-slate-400">{d}</span>
                 ))}
             </div>
             
-            <div className="grid grid-cols-7 gap-1 text-center flex-1">
+            <div className="grid grid-cols-7 gap-0.5 text-center flex-1 content-start">
                 {blanksArray.map(b => <div key={`blank-${b}`} />)}
                 {daysArray.map(day => {
                     const isToday = day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
                     const meetingDay = hasMeeting(day);
                     
                     return (
-                        <div key={day} className="flex flex-col items-center justify-center relative h-8 w-8 mx-auto">
+                        <div key={day} className="flex flex-col items-center justify-center relative h-6 w-full">
                             <span 
                                 className={`
-                                    text-xs font-medium h-7 w-7 flex items-center justify-center rounded-full transition-colors
+                                    text-[10px] font-medium h-5 w-5 flex items-center justify-center rounded-full transition-colors
                                     ${isToday ? 'bg-slate-900 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}
                                     ${meetingDay && !isToday ? 'font-bold text-purple-600 bg-purple-50' : ''}
                                 `}
@@ -108,15 +107,11 @@ const MiniCalendar = ({ meetings }: { meetings: Meeting[] }) => {
                                 {day}
                             </span>
                             {meetingDay && (
-                                <span className="absolute bottom-0.5 h-1 w-1 bg-purple-500 rounded-full"></span>
+                                <span className="absolute bottom-0 h-0.5 w-0.5 bg-purple-500 rounded-full"></span>
                             )}
                         </div>
                     );
                 })}
-            </div>
-            <div className="mt-2 text-[10px] text-slate-400 text-center flex items-center justify-center gap-2">
-                <span className="flex items-center"><span className="w-1.5 h-1.5 bg-slate-900 rounded-full mr-1"></span> Hoje</span>
-                <span className="flex items-center"><span className="w-1.5 h-1.5 bg-purple-500 rounded-full mr-1"></span> Conciliações</span>
             </div>
         </div>
     );
@@ -149,32 +144,31 @@ const Dashboard: React.FC<DashboardProps> = ({ notifications, meetings, transact
     colorClass: string, 
     items: { label: string, count: number, view: ViewState, subIcon: any }[] 
   }) => (
-    <div className="bg-white rounded-[2rem] p-6 shadow-sm border border-slate-200 hover:shadow-md transition-shadow">
-        <div className="flex items-center gap-3 mb-6">
-            <div className={`p-3 rounded-2xl ${colorClass}`}>
-                <Icon size={24} />
+    <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 hover:shadow-md transition-shadow h-full flex flex-col">
+        <div className="flex items-center gap-3 mb-5">
+            <div className={`p-2.5 rounded-xl ${colorClass}`}>
+                <Icon size={20} />
             </div>
-            <h3 className="text-xl font-bold text-slate-800">{title}</h3>
+            <h3 className="text-lg font-bold text-slate-800">{title}</h3>
         </div>
         
-        <div className="space-y-3">
+        <div className="space-y-2 flex-1">
             {items.map((item, idx) => (
                 <button 
                     key={idx}
                     onClick={() => onNavigate(item.view)}
-                    className="w-full flex items-center justify-between p-4 rounded-xl bg-slate-50 border border-slate-100 hover:bg-slate-100 hover:border-slate-300 transition-all group"
+                    className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 hover:bg-slate-100 hover:border-slate-300 transition-all group"
                 >
                     <div className="flex items-center gap-3">
                         <div className="text-slate-400 group-hover:text-slate-600 transition-colors">
-                            <item.subIcon size={18} />
+                            <item.subIcon size={16} />
                         </div>
-                        <span className="font-medium text-slate-700 text-sm">{item.label}</span>
+                        <span className="font-medium text-slate-700 text-xs">{item.label}</span>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <span className="font-bold text-slate-900 bg-white px-2 py-1 rounded-md shadow-sm border border-slate-100 text-xs">
+                    <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-900 bg-white px-2 py-0.5 rounded-md shadow-sm border border-slate-100 text-xs min-w-[24px]">
                             {item.count}
                         </span>
-                        <ChevronRight size={16} className="text-slate-300 group-hover:text-blue-500" />
                     </div>
                 </button>
             ))}
@@ -183,72 +177,81 @@ const Dashboard: React.FC<DashboardProps> = ({ notifications, meetings, transact
   );
 
   return (
-    <div className="flex flex-col items-center justify-start min-h-[calc(100vh-12rem)] animate-fade-in relative overflow-hidden max-w-[1600px] mx-auto w-full pt-6">
+    <div className="w-full max-w-[1600px] mx-auto animate-fade-in relative overflow-hidden pb-10">
       
       {/* Elementos decorativos de fundo */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-blue-500/5 rounded-full blur-[120px] -z-10"></div>
-      
-      {/* PROFILE WELCOME WIDGET */}
-      {user && (
-          <div className="w-full max-w-4xl px-4 mb-8 flex flex-col md:flex-row items-center justify-center gap-4 animate-slide-in-down">
-              <div className="bg-white rounded-full pl-2 pr-6 py-2 shadow-sm border border-slate-200 flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-slate-100 bg-slate-100 shrink-0">
-                      {user.photoURL ? (
-                          <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" />
-                      ) : (
-                          <div className="w-full h-full flex items-center justify-center text-slate-400">
-                              <User size={24} />
-                          </div>
-                      )}
-                  </div>
-                  <div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Bem-vindo(a)</p>
-                      <h2 className="text-sm font-bold text-slate-800">{user.displayName}</h2>
-                  </div>
-              </div>
-          </div>
-      )}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-blue-500/5 rounded-full blur-[120px] -z-10 pointer-events-none"></div>
 
-      <div className="text-center max-w-4xl mx-auto mb-10 px-4">
-        <h1 className="text-3xl md:text-4xl font-bold text-slate-900 tracking-tight mb-2">
-          Painel de Controle
-        </h1>
-        <p className="text-slate-500 mb-6 font-light">
-          Visão geral e administração de tarefas.
-        </p>
+      {/* --- SEÇÃO SUPERIOR: PERFIL + AÇÕES RÁPIDAS --- */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-6">
+        
+        {/* Bloco de Boas-Vindas e Perfil (Esquerda) */}
+        <div className="lg:col-span-7 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col justify-center relative overflow-hidden">
+             {/* Efeito de fundo sutil */}
+             <div className="absolute top-0 right-0 p-4 opacity-5">
+                 <Sparkles size={120} className="text-slate-900"/>
+             </div>
 
-        {/* Action Buttons Area */}
-        <div className="flex flex-col md:flex-row gap-4 justify-center items-center w-full max-w-2xl mx-auto mb-8">
+             <div className="flex items-center gap-5 relative z-10">
+                <div className="w-20 h-20 rounded-full border-4 border-slate-50 shadow-md overflow-hidden shrink-0 bg-slate-100">
+                    {user?.photoURL ? (
+                        <img src={user.photoURL} alt="Perfil" className="w-full h-full object-cover" />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-400">
+                            <User size={32} />
+                        </div>
+                    )}
+                </div>
+                <div>
+                    <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
+                        Olá, {user?.displayName?.split(' ')[0] || 'Doutor(a)'}!
+                    </h2>
+                    <p className="text-slate-500 text-sm mb-2">Painel de Controle</p>
+                    <div className="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 text-xs font-bold border border-emerald-200">
+                        <CheckCircle size={12} className="mr-1.5" />
+                        Sistema Operacional
+                    </div>
+                </div>
+             </div>
+        </div>
+
+        {/* Botões de Ação (Direita) - MESMO TAMANHO */}
+        <div className="lg:col-span-5 grid grid-cols-2 gap-4 h-full">
             <button 
-            onClick={() => onNavigate(ViewState.CREATE_NOTIFICATION)}
-            className="flex-1 w-full group relative inline-flex items-center justify-center px-6 py-4 text-sm font-bold text-white transition-all duration-300 bg-slate-900 rounded-xl hover:scale-105 focus:outline-none 
-            border border-cyan-500/30 shadow-[0_0_15px_rgba(34,211,238,0.2)]"
+                onClick={() => onNavigate(ViewState.CREATE_NOTIFICATION)}
+                className="h-full w-full group relative flex flex-col items-center justify-center p-4 text-white transition-all duration-300 bg-slate-900 rounded-2xl hover:bg-slate-800 focus:outline-none border border-cyan-500/30 shadow-[0_4px_20px_rgba(34,211,238,0.15)] hover:shadow-[0_4px_25px_rgba(34,211,238,0.25)] hover:-translate-y-1"
             >
-                <Plus className="w-5 h-5 mr-2 text-cyan-400" />
-                <span className="tracking-wide text-cyan-50">NOVA NOTIFICAÇÃO</span>
+                <div className="p-3 bg-white/10 rounded-full mb-3 group-hover:bg-cyan-500 group-hover:text-white transition-colors">
+                     <Plus className="w-6 h-6 text-cyan-400 group-hover:text-white" />
+                </div>
+                <span className="text-sm font-bold tracking-wide text-cyan-50">NOVA NOTIFICAÇÃO</span>
             </button>
 
             <button 
-            onClick={() => window.open('https://meet.google.com/gvd-nmhs-jjv', '_blank')}
-            className="flex-1 w-full group relative inline-flex items-center justify-center px-6 py-4 text-sm font-bold text-white transition-all duration-300 bg-slate-900 rounded-xl hover:scale-105 focus:outline-none
-            border border-purple-500/30 shadow-[0_0_15px_rgba(168,85,247,0.2)]"
+                onClick={() => window.open('https://meet.google.com/gvd-nmhs-jjv', '_blank')}
+                className="h-full w-full group relative flex flex-col items-center justify-center p-4 text-white transition-all duration-300 bg-slate-900 rounded-2xl hover:bg-slate-800 focus:outline-none border border-purple-500/30 shadow-[0_4px_20px_rgba(168,85,247,0.15)] hover:shadow-[0_4px_25px_rgba(168,85,247,0.25)] hover:-translate-y-1"
             >
-                <Video className="w-5 h-5 mr-2 text-purple-400" />
-                <span className="tracking-wide text-purple-50">VIDEOCONFERÊNCIA</span>
+                <div className="p-3 bg-white/10 rounded-full mb-3 group-hover:bg-purple-500 group-hover:text-white transition-colors">
+                     <Video className="w-6 h-6 text-purple-400 group-hover:text-white" />
+                </div>
+                <span className="text-sm font-bold tracking-wide text-purple-50">VIDEOCONFERÊNCIA</span>
             </button>
         </div>
+
       </div>
 
-      {/* --- WIDGETS DE TEMPO --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-3xl mx-auto px-4 mb-10">
-          <MiniClock />
-          <MiniCalendar meetings={meetings} />
+      {/* --- SEÇÃO INTERMEDIÁRIA: WIDGETS --- */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+          <div className="lg:col-span-2 h-full">
+               <MiniClock />
+          </div>
+          <div className="lg:col-span-2 h-full">
+               <MiniCalendar meetings={meetings} />
+          </div>
       </div>
 
-      {/* Grid de Cards (Pastas) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full px-4 md:px-8 pb-10">
-            
-            {/* CARD NOTIFICAÇÕES */}
+      {/* --- SEÇÃO INFERIOR: CARDS DE STATUS --- */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <CardSection 
                 title="Notificações" 
                 icon={Monitor} 
@@ -260,7 +263,6 @@ const Dashboard: React.FC<DashboardProps> = ({ notifications, meetings, transact
                 ]}
             />
 
-            {/* CARD CONCILIAÇÕES */}
             <CardSection 
                 title="Conciliações" 
                 icon={Video} 
@@ -272,7 +274,6 @@ const Dashboard: React.FC<DashboardProps> = ({ notifications, meetings, transact
                 ]}
             />
 
-            {/* CARD PAGAMENTOS */}
             <CardSection 
                 title="Pagamentos" 
                 icon={CreditCard} 
@@ -283,7 +284,6 @@ const Dashboard: React.FC<DashboardProps> = ({ notifications, meetings, transact
                     { label: 'Reembolsados', count: payRefunded, view: ViewState.PAYMENTS_REFUNDED, subIcon: AlertCircle }
                 ]}
             />
-
       </div>
     </div>
   );

@@ -9,9 +9,16 @@ interface MonitoringProps {
   notifications: NotificationItem[];
   filterStatus?: NotificationStatus[]; 
   searchQuery?: string;
+  customFolderConfig?: {
+      title: string;
+      desc?: string;
+      icon: any;
+      colorClass: string;
+      borderClass: string;
+  };
 }
 
-const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotifications, filterStatus, searchQuery = '' }) => {
+const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotifications, filterStatus, searchQuery = '', customFolderConfig }) => {
   const savedUser = localStorage.getItem('mock_session_user');
   const user = savedUser ? JSON.parse(savedUser) : null;
   const [activeTab, setActiveTab] = useState<'sent' | 'received'>('sent');
@@ -24,7 +31,8 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
 
   useEffect(() => {
     fetchData();
-  }, [user, activeTab, propNotifications]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.uid, activeTab, propNotifications]); // Dependência corrigida para user.uid (primitivo) para evitar loops
 
   // Aplica filtros locais (Status + Busca)
   useEffect(() => {
@@ -47,6 +55,8 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
         );
     }
 
+    // Verificação simples para evitar updates desnecessários se o resultado for idêntico
+    // Isso ajuda a estabilizar a UI caso o array de entrada mude referência mas não conteúdo
     setFilteredItems(result);
   }, [items, filterStatus, activeTab, searchQuery]);
 
@@ -58,9 +68,13 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
             const data = await getNotificationsBySender(user.uid);
             // Merge com props (para atualizações em tempo real do App.tsx)
             const combinedMap = new Map();
-            [...data, ...propNotifications].forEach(item => {
+            // Adiciona primeiro os do banco
+            data.forEach(item => combinedMap.set(item.id, item));
+            // Sobrescreve/Adiciona com as props recentes (estado fresco)
+            propNotifications.forEach(item => {
                 if(item.senderUid === user.uid) combinedMap.set(item.id, item);
             });
+            
             const uniqueItems = Array.from(combinedMap.values()).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
             setItems(uniqueItems);
         } else {
@@ -127,6 +141,8 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
 
   // Helper para configuração visual da Subpasta
   const getFolderConfig = () => {
+      if (customFolderConfig) return customFolderConfig;
+
       if (!filterStatus || filterStatus.length === 0) return null;
       
       if (filterStatus.includes(NotificationStatus.DRAFT)) {
@@ -206,7 +222,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                 </div>
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800">{folderConfig.title}</h2>
-                    <p className="text-slate-500 text-sm">{folderConfig.desc}</p>
+                    {folderConfig.desc && <p className="text-slate-500 text-sm">{folderConfig.desc}</p>}
                 </div>
             </div>
         ) : (

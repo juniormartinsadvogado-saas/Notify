@@ -11,9 +11,22 @@ import FileManager from './components/FileManager';
 import Login from './components/Login';
 import SplashScreen from './components/SplashScreen'; 
 import { ViewState, NotificationItem, NotificationStatus, Meeting, Transaction } from './types';
-import { Bell, Search, Menu, X, CheckCircle } from 'lucide-react';
+import { Bell, Search, Menu, X, CheckCircle, FileText, ArrowLeft, LogOut, Loader2 } from 'lucide-react';
 import { ensureUserProfile, getUserProfile } from './services/userService';
 import { getNotificationsByRecipientCpf } from './services/notificationService';
+
+// Constantes de Filtros para evitar re-renderizações desnecessárias
+const FILTER_CREATED = [NotificationStatus.DRAFT];
+const FILTER_DELIVERED = [NotificationStatus.SENT, NotificationStatus.DELIVERED, NotificationStatus.READ];
+const FILTER_PENDING = [NotificationStatus.PENDING_PAYMENT];
+
+const FILTER_MEETING_SCHEDULED = ['scheduled'];
+const FILTER_MEETING_DONE = ['completed'];
+const FILTER_MEETING_CANCELED = ['canceled'];
+
+const FILTER_PAYMENT_CONFIRMED = ['Pago'];
+const FILTER_PAYMENT_PENDING = ['Pendente'];
+const FILTER_PAYMENT_REFUNDED = ['Reembolsado'];
 
 const App: React.FC = () => {
   const [showSplash, setShowSplash] = useState(true);
@@ -21,6 +34,9 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.DASHBOARD);
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Logout Animation State
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   
   // Theme & Settings State
   const [darkMode, setDarkMode] = useState(false);
@@ -158,9 +174,17 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('mock_session_user');
-    setUser(null);
-    setCurrentView(ViewState.DASHBOARD);
+    // 1. Inicia animação de saída
+    setIsSidebarOpen(false); // Fecha sidebar para visual mais limpo
+    setIsLoggingOut(true);
+
+    // 2. Aguarda 3.5 segundos e limpa sessão
+    setTimeout(() => {
+        localStorage.removeItem('mock_session_user');
+        setUser(null);
+        setCurrentView(ViewState.DASHBOARD);
+        setIsLoggingOut(false);
+    }, 3500); 
   };
 
   const handleSaveNotification = (notification: NotificationItem, meeting?: Meeting, transaction?: Transaction) => {
@@ -199,25 +223,25 @@ const App: React.FC = () => {
         return <Monitoring notifications={notifications} searchQuery={searchQuery} />;
       
       case ViewState.NOTIFICATIONS_CREATED:
-        return <Monitoring notifications={notifications} filterStatus={[NotificationStatus.DRAFT]} searchQuery={searchQuery} />;
+        return <Monitoring notifications={notifications} filterStatus={FILTER_CREATED} searchQuery={searchQuery} />;
       case ViewState.NOTIFICATIONS_DELIVERED:
-        return <Monitoring notifications={notifications} filterStatus={[NotificationStatus.SENT, NotificationStatus.DELIVERED, NotificationStatus.READ]} searchQuery={searchQuery} />;
+        return <Monitoring notifications={notifications} filterStatus={FILTER_DELIVERED} searchQuery={searchQuery} />;
       case ViewState.NOTIFICATIONS_PENDING:
-        return <Monitoring notifications={notifications} filterStatus={[NotificationStatus.PENDING_PAYMENT]} searchQuery={searchQuery} />;
+        return <Monitoring notifications={notifications} filterStatus={FILTER_PENDING} searchQuery={searchQuery} />;
       
       case ViewState.CONCILIATIONS_SCHEDULED:
-          return <MeetingScheduler filterStatus={['scheduled']} meetingsProp={meetings} />;
+          return <MeetingScheduler filterStatus={FILTER_MEETING_SCHEDULED} meetingsProp={meetings} />;
       case ViewState.CONCILIATIONS_DONE:
-          return <MeetingScheduler filterStatus={['completed']} meetingsProp={meetings} />;
+          return <MeetingScheduler filterStatus={FILTER_MEETING_DONE} meetingsProp={meetings} />;
       case ViewState.CONCILIATIONS_CANCELED:
-          return <MeetingScheduler filterStatus={['canceled']} meetingsProp={meetings} />;
+          return <MeetingScheduler filterStatus={FILTER_MEETING_CANCELED} meetingsProp={meetings} />;
       
       case ViewState.PAYMENTS_CONFIRMED:
-          return <Billing transactions={transactions} filterStatus={['Pago']} onRefund={handleRefund} />;
+          return <Billing transactions={transactions} filterStatus={FILTER_PAYMENT_CONFIRMED} onRefund={handleRefund} />;
       case ViewState.PAYMENTS_PENDING:
-          return <Billing transactions={transactions} filterStatus={['Pendente']} onRefund={handleRefund} />;
+          return <Billing transactions={transactions} filterStatus={FILTER_PAYMENT_PENDING} onRefund={handleRefund} />;
       case ViewState.PAYMENTS_REFUNDED:
-          return <Billing transactions={transactions} filterStatus={['Reembolsado']} onRefund={handleRefund} />;
+          return <Billing transactions={transactions} filterStatus={FILTER_PAYMENT_REFUNDED} onRefund={handleRefund} />;
 
       case ViewState.MEETINGS:
         return <MeetingScheduler meetingsProp={meetings} />;
@@ -228,7 +252,6 @@ const App: React.FC = () => {
       case ViewState.SETTINGS:
       case ViewState.SETTINGS_ACCOUNT:
       case ViewState.SETTINGS_PLATFORM:
-        // KEY prop is crucial here to force re-render when switching between Account and Platform tabs
         return <Settings key={currentView} user={user} subView={currentView === ViewState.SETTINGS_PLATFORM ? 'platform' : 'account'} onThemeChange={handleThemeChange} initialTheme={{darkMode, themeColor}} />;
       default:
         return <Dashboard notifications={notifications} meetings={meetings} transactions={transactions} onNavigate={setCurrentView} user={user} />;
@@ -237,6 +260,32 @@ const App: React.FC = () => {
 
   if (showSplash) {
     return <SplashScreen onFinish={() => setShowSplash(false)} />;
+  }
+
+  // LOGOUT ANIMATION SCREEN
+  if (isLoggingOut) {
+      return (
+          <div className="fixed inset-0 z-50 bg-slate-900 flex flex-col items-center justify-center text-white animate-fade-in">
+              <div className="mb-8 p-6 bg-white/5 rounded-full backdrop-blur-sm border border-white/10 relative">
+                  <div className="absolute inset-0 bg-red-500/20 rounded-full animate-ping opacity-50"></div>
+                  <LogOut size={48} className="text-slate-200 relative z-10" />
+              </div>
+              
+              <h2 className="text-3xl font-bold mb-2 tracking-tight animate-fade-in-up">Saindo da Conta</h2>
+              <p className="text-slate-400 text-sm mb-8 font-light">Sincronizando dados e encerrando sessão segura...</p>
+              
+              <div className="w-64 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-blue-500 to-purple-500 animate-[loading_3.5s_ease-in-out_forwards] w-full origin-left transform scale-x-0"></div>
+              </div>
+
+              <style>{`
+                @keyframes loading {
+                    0% { transform: scaleX(0); }
+                    100% { transform: scaleX(1); }
+                }
+              `}</style>
+          </div>
+      );
   }
 
   if (!user) {
@@ -276,14 +325,17 @@ const App: React.FC = () => {
                 <Menu size={24} />
             </button>
 
-            <div>
-              <h1 className={`text-2xl md:text-3xl font-bold capitalize tracking-tight truncate max-w-[200px] md:max-w-none ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                {currentView === ViewState.CREATE_NOTIFICATION ? 'Nova Notificação' : currentView.includes('settings') ? 'Configurações' : currentView === ViewState.RECEIVED_NOTIFICATIONS ? 'Caixa de Entrada' : currentView === ViewState.FILES ? 'Meus Arquivos' : currentView.replace(/_/g, ' ').replace('notifications', 'Notificações').replace('conciliations', 'Conciliações').replace('payments', 'Pagamentos')}
-              </h1>
-              <p className={`text-xs md:text-sm mt-1 font-light truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                Painel do usuário, <span className={`font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{user.displayName || 'Usuário'}</span>.
-              </p>
-            </div>
+            {/* Header Title Hidden on Dashboard to avoid duplication with Dashboard's welcome widget */}
+            {currentView !== ViewState.DASHBOARD && (
+                <div>
+                  <h1 className={`text-2xl md:text-3xl font-bold capitalize tracking-tight truncate max-w-[200px] md:max-w-none ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+                    {currentView === ViewState.CREATE_NOTIFICATION ? 'Nova Notificação' : currentView.includes('settings') ? 'Configurações' : currentView === ViewState.RECEIVED_NOTIFICATIONS ? 'Caixa de Entrada' : currentView === ViewState.FILES ? 'Meus Arquivos' : currentView.replace(/_/g, ' ').replace('notifications', 'Notificações').replace('conciliations', 'Conciliações').replace('payments', 'Pagamentos')}
+                  </h1>
+                  <p className={`text-xs md:text-sm mt-1 font-light truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Painel do usuário, <span className={`font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{user.displayName || 'Usuário'}</span>.
+                  </p>
+                </div>
+            )}
           </div>
           
           <div className="flex items-center space-x-3 md:space-x-6 w-full md:w-auto justify-end">
@@ -347,6 +399,20 @@ const App: React.FC = () => {
 
         {renderContent()}
       </main>
+
+      {/* FLOATING BACK BUTTON FOR NAVIGATION */}
+      {currentView !== ViewState.DASHBOARD && currentView !== ViewState.CREATE_NOTIFICATION && (
+          <button
+            onClick={() => setCurrentView(ViewState.DASHBOARD)}
+            className="fixed bottom-6 right-6 z-50 p-4 bg-slate-900 text-white rounded-full shadow-2xl hover:bg-slate-800 transition-all transform hover:scale-105 flex items-center gap-2 group border border-slate-700"
+            title="Voltar ao Painel"
+          >
+            <ArrowLeft size={20} />
+            <span className="max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 whitespace-nowrap font-bold text-sm">
+              Voltar ao Início
+            </span>
+          </button>
+      )}
 
       {isSidebarOpen && (
           <div 

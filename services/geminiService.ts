@@ -6,7 +6,6 @@ const getApiKey = () => {
   let key = '';
 
   // 1. Tenta via import.meta.env (Padrão Vite / Navegador)
-  // É a forma mais garantida em aplicações React criadas com Vite.
   try {
     // @ts-ignore
     if (import.meta && import.meta.env) {
@@ -72,15 +71,14 @@ export const generateNotificationText = async (
   try {
     const apiKey = getApiKey();
     
-    // Verificação de erro detalhada para ajudar no debug
+    // Se a chave não existir, o SDK irá falhar internamente ou podemos lançar erro genérico aqui
+    // para ser capturado pelo catch abaixo e transformado na mensagem solicitada.
     if (!apiKey) {
-        console.error("DEBUG INFO: Tentativa de leitura de chaves falhou.");
-        console.error("Ambiente detectado: Navegador/Client-Side.");
-        console.error("Ação necessária: No Vercel, crie uma variável 'VITE_GOOGLE_GENERATIVE_AI_API_KEY' com o valor da sua chave.");
-        throw new Error("MISSING_KEY");
+        // Log para desenvolvedor apenas no console
+        console.warn("API Key não detectada. Tentando execução para cair no fallback.");
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey: apiKey || 'dummy-key-to-trigger-sdk-flow' });
 
     const parts: any[] = [];
     
@@ -148,15 +146,17 @@ export const generateNotificationText = async (
       }
     });
 
-    return response.text || "Não foi possível gerar o texto.";
+    if (!response.text) {
+        throw new Error("Resposta vazia da IA.");
+    }
+
+    return response.text;
+
   } catch (error: any) {
-    console.error("Erro Gemini Service:", error);
-    if (error.message === "MISSING_KEY") {
-        throw new Error("⚠️ Configuração Necessária: No painel da Vercel, adicione a variável 'VITE_GOOGLE_GENERATIVE_AI_API_KEY'. Chaves sem prefixo VITE_ são bloqueadas no navegador por segurança.");
-    }
-    if (error.message && (error.message.includes("API key") || error.message.includes("403"))) {
-        throw new Error("Chave de API inválida ou expirada. Verifique suas configurações.");
-    }
-    throw new Error("Falha na comunicação com a IA. Tente novamente.");
+    // Tratamento de Erro "Silencioso" para o Usuário
+    console.error("System Error (AI Generation):", error);
+    
+    // Mensagem Genérica Solicitada
+    throw new Error("Instabilidade temporária no sistema de inteligência artificial. Por favor, tente novamente em alguns instantes.");
   }
 };
