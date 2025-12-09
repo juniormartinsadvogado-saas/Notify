@@ -1,14 +1,33 @@
 import { GoogleGenAI } from "@google/genai";
 import { Attachment } from "../types";
 
-// Função dedicada para obter a chave via process.env
+// --- ROBUST API KEY LOADER ---
 const getApiKey = () => {
-  // Acessa estritamente a variável de ambiente solicitada.
-  // Nota: Certifique-se de que seu bundler/deploy injeta 'process.env.GOOGLE_AI_API_KEY' no build.
-  if (typeof process !== 'undefined' && process.env && process.env.GOOGLE_AI_API_KEY) {
-    return process.env.GOOGLE_AI_API_KEY;
+  let key = '';
+
+  // 1. Tenta via process.env (Padrão Google AI Studio / Vercel / Node)
+  // Prioridade solicitada: GOOGLE_GENERATIVE_AI_API_KEY
+  if (typeof process !== 'undefined' && process.env) {
+      if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) return process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+      if (process.env.GOOGLE_AI_API_KEY) return process.env.GOOGLE_AI_API_KEY;
+      if (process.env.VITE_GOOGLE_AI_API_KEY) return process.env.VITE_GOOGLE_AI_API_KEY;
+      if (process.env.REACT_APP_GOOGLE_AI_API_KEY) return process.env.REACT_APP_GOOGLE_AI_API_KEY;
   }
-  return '';
+
+  // 2. Fallback: Tenta via VITE (Client-side standard)
+  try {
+    // @ts-ignore
+    if (import.meta && import.meta.env) {
+       // @ts-ignore
+       if (import.meta.env.VITE_GOOGLE_AI_API_KEY) key = import.meta.env.VITE_GOOGLE_AI_API_KEY;
+       // @ts-ignore
+       else if (import.meta.env.GOOGLE_GENERATIVE_AI_API_KEY) key = import.meta.env.GOOGLE_GENERATIVE_AI_API_KEY;
+       // @ts-ignore
+       else if (import.meta.env.GOOGLE_AI_API_KEY) key = import.meta.env.GOOGLE_AI_API_KEY;
+    }
+  } catch (e) {}
+
+  return key;
 };
 
 const fileToGenerativePart = async (file: File): Promise<{ inlineData: { data: string; mimeType: string } } | null> => {
@@ -48,8 +67,8 @@ export const generateNotificationText = async (
     const apiKey = getApiKey();
     
     if (!apiKey) {
-        console.error("DEBUG: process.env.GOOGLE_AI_API_KEY está vazio ou indefinido.");
-        throw new Error("A variável de ambiente 'GOOGLE_AI_API_KEY' não está configurada.");
+        console.error("CRITICAL: API Key not found. Checked process.env.GOOGLE_GENERATIVE_AI_API_KEY and others.");
+        throw new Error("MISSING_KEY");
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -123,9 +142,12 @@ export const generateNotificationText = async (
     return response.text || "Não foi possível gerar o texto.";
   } catch (error: any) {
     console.error("Erro Gemini Service:", error);
-    if (error.message && error.message.includes("GOOGLE_AI_API_KEY")) {
-        throw new Error("Erro de Configuração: GOOGLE_AI_API_KEY não encontrada.");
+    if (error.message === "MISSING_KEY") {
+        throw new Error("A Chave de API não foi encontrada. Configure 'GOOGLE_GENERATIVE_AI_API_KEY' nas variáveis de ambiente.");
     }
-    throw new Error(error.message || "Falha na comunicação com a IA.");
+    if (error.message && (error.message.includes("API key") || error.message.includes("403"))) {
+        throw new Error("Chave de API inválida ou expirada. Verifique suas configurações.");
+    }
+    throw new Error("Falha na comunicação com a IA. Tente novamente.");
   }
 };

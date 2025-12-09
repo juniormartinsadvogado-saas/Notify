@@ -8,7 +8,7 @@ import {
   Wand2, Scale, Users, 
   FileText, PenTool, CreditCard, Check, Loader2, 
   AlertCircle, Briefcase, ShoppingBag, Home, Heart, Gavel, Globe,
-  Building2, Calculator, Landmark, Stethoscope, Leaf, Anchor, Plane, Zap, Rocket, Laptop, Trophy, FileSignature, Scroll, UploadCloud, X, MapPin, UserCheck, UserCog, ExternalLink, ChevronDown, Calendar, Clock, Video, User, ShieldCheck, Download, Clock3, MessageCircle, Smartphone, Mail, Package, ZapIcon, Send, Lock, Unlock
+  Building2, Calculator, Landmark, Stethoscope, Leaf, Anchor, Plane, Zap, Rocket, Laptop, Trophy, FileSignature, Scroll, UploadCloud, X, MapPin, UserCheck, UserCog, ExternalLink, ChevronDown, Calendar, Clock, Video, User, ShieldCheck, Download, Clock3, MessageCircle, Smartphone, Mail, Package, ZapIcon, Send, Lock, Unlock, AlertTriangle
 } from 'lucide-react';
 
 interface NotificationCreatorProps {
@@ -500,9 +500,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
   };
 
   const generateContent = async () => {
-    // MODIFICAÇÃO: Removida a validação bloqueante.
-    // O usuário solicitou que a geração ocorra independente dos dados de agendamento estarem completos.
-    
     setIsGenerating(true);
     setError(''); // Limpa erros anteriores
 
@@ -558,7 +555,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
           
           INSTRUÇÃO OBRIGATÓRIA: Adicione um parágrafo de destaque no corpo da notificação (antes dos pedidos ou das consequências) convidando formalmente o Notificado para esta audiência de tentativa de conciliação extrajudicial, citando expressamente a data, hora e o link de acesso acima.`;
       } else if (formData.scheduleMeeting) {
-          // Caso esteja marcado mas sem dados, avisamos visualmente mas geramos o texto sem o agendamento
           setError("Aviso: Texto gerado sem dados de agendamento (Data/Hora não preenchidos).");
       }
 
@@ -882,6 +878,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
 
   const renderStepContent = () => {
       switch(currentStep) {
+          // ... (Existing cases 1, 2, 3 remain identical)
           case 1: return (
             <div className="pb-12 relative">
                 <h3 className="text-xl font-bold text-slate-800 mb-6 text-center">Qual é a natureza jurídica?</h3>
@@ -1232,6 +1229,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
                    )}
               </div>
           );
+          // ... (Case 6 remains unchanged)
           case 6: 
              if (paymentStage === 'selection') return (
                  <div className="pb-12 space-y-4">
@@ -1342,7 +1340,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user 
        <div className="bg-white p-4 md:p-8 rounded-2xl border shadow-sm min-h-[500px] flex flex-col relative">
            <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
                <h2 className="text-xl md:text-2xl font-bold text-slate-800">{STEPS[currentStep-1].label}</h2>
-               {error && <span className="text-red-500 text-xs md:text-sm font-bold bg-red-50 px-3 py-1 rounded-full animate-pulse">{error}</span>}
+               {error && <span className="text-red-500 text-xs md:text-sm font-bold bg-red-50 px-3 py-1 rounded-full animate-pulse flex items-center"><AlertTriangle size={14} className="mr-1"/> {error}</span>}
            </div>
            
            <div className="flex-1">
