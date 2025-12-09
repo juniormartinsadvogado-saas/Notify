@@ -11,9 +11,11 @@ import FileManager from './components/FileManager';
 import Login from './components/Login';
 import SplashScreen from './components/SplashScreen'; 
 import { ViewState, NotificationItem, NotificationStatus, Meeting, Transaction } from './types';
-import { Bell, Search, Menu, X, CheckCircle } from 'lucide-react';
+import { Bell, Search, Menu, X, CheckCircle, FileText, ArrowLeft, LogOut, Loader2, Settings as SettingsIcon } from 'lucide-react';
 import { ensureUserProfile, getUserProfile } from './services/userService';
 import { getNotificationsByRecipientCpf } from './services/notificationService';
+import { auth } from './services/firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 // Constantes de Filtros para evitar re-renderizações desnecessárias
 const FILTER_CREATED = [NotificationStatus.DRAFT];
@@ -31,9 +33,13 @@ const FILTER_PAYMENT_REFUNDED = ['Reembolsado'];
 const App: React.FC = () => {
   const [showSplash, setShowSplash] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.DASHBOARD);
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Logout Animation State
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   
   // Theme & Settings State
   const [darkMode, setDarkMode] = useState(false);
@@ -67,21 +73,26 @@ const App: React.FC = () => {
     };
     window.addEventListener('resize', handleResize);
     
-    const checkSession = async () => {
-        const savedUser = localStorage.getItem('mock_session_user');
-        if (savedUser) {
-            try {
-                const parsedUser = JSON.parse(savedUser);
-                setUser(parsedUser);
-                await ensureUserProfile(parsedUser);
-                checkSystemNotifications(parsedUser.uid);
-            } catch (e) {
-                console.error("Erro ao recuperar sessão:", e);
-                localStorage.removeItem('mock_session_user');
+    // FIREBASE AUTH LISTENER
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        if (currentUser) {
+            if (currentUser.emailVerified) {
+                // Usuário logado e verificado
+                setUser(currentUser);
+                localStorage.setItem('mock_session_user', JSON.stringify(currentUser)); // Mantido para compatibilidade com partes não migradas
+                await ensureUserProfile(currentUser);
+                checkSystemNotifications(currentUser.uid);
+            } else {
+                // Email não verificado, força logout se tentar persistir (segurança extra)
+                // A UI de Login lida com isso, aqui é apenas state sync
+                setUser(null);
             }
+        } else {
+            setUser(null);
+            localStorage.removeItem('mock_session_user');
         }
-    };
-    checkSession();
+        setLoadingAuth(false);
+    });
 
     // Carregar preferências salvas
     const savedTheme = localStorage.getItem('app_theme_pref');
@@ -93,6 +104,7 @@ const App: React.FC = () => {
 
     return () => {
         window.removeEventListener('resize', handleResize);
+        unsubscribe();
     };
   }, []);
 
@@ -102,7 +114,6 @@ const App: React.FC = () => {
           if (profile && profile.cpf) {
               const cleanCpf = profile.cpf.replace(/\D/g, '');
               const received = await getNotificationsByRecipientCpf(cleanCpf);
-              // Filtra notificações não lidas ou recentes (Simulação: todas recebidas)
               setSystemNotifications(received);
               if (received.length > 0) {
                   setBadgeCounts(prev => ({ ...prev, [ViewState.RECEIVED_NOTIFICATIONS]: received.length }));
@@ -163,17 +174,25 @@ const App: React.FC = () => {
       alert("Reembolso processado com sucesso.\n- Pagamento estornado\n- Notificação movida para Pendentes\n- Conciliação Cancelada");
   };
 
-  const handleLogin = (mockUser: any) => {
-      localStorage.setItem('mock_session_user', JSON.stringify(mockUser));
-      setUser(mockUser);
-      ensureUserProfile(mockUser); 
-      checkSystemNotifications(mockUser.uid);
+  // Função chamada pelo Login component apenas para atualizar estado local se necessário
+  const handleLogin = (firebaseUser: any) => {
+      setUser(firebaseUser);
+      // Logic handled by onAuthStateChanged mostly
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('mock_session_user');
-    setUser(null);
-    setCurrentView(ViewState.DASHBOARD);
+  const handleLogout = async () => {
+    // 1. Inicia animação de saída
+    setIsSidebarOpen(false); 
+    setIsLoggingOut(true);
+
+    // 2. Aguarda 3.5 segundos e faz logout do Firebase
+    setTimeout(async () => {
+        await signOut(auth);
+        localStorage.removeItem('mock_session_user');
+        setUser(null);
+        setCurrentView(ViewState.DASHBOARD);
+        setIsLoggingOut(false);
+    }, 3500); 
   };
 
   const handleSaveNotification = (notification: NotificationItem, meeting?: Meeting, transaction?: Transaction) => {
@@ -249,6 +268,41 @@ const App: React.FC = () => {
 
   if (showSplash) {
     return <SplashScreen onFinish={() => setShowSplash(false)} />;
+  }
+
+  // Enquanto verifica o Auth status
+  if (loadingAuth) {
+      return (
+          <div className="flex h-screen items-center justify-center bg-zinc-100">
+              <Loader2 className="animate-spin text-slate-400" size={32} />
+          </div>
+      );
+  }
+
+  // LOGOUT ANIMATION SCREEN
+  if (isLoggingOut) {
+      return (
+          <div className="fixed inset-0 z-50 bg-slate-900 flex flex-col items-center justify-center text-white animate-fade-in">
+              <div className="mb-8 p-6 bg-white/5 rounded-full backdrop-blur-sm border border-white/10 relative">
+                  <div className="absolute inset-0 bg-red-500/20 rounded-full animate-ping opacity-50"></div>
+                  <LogOut size={48} className="text-slate-200 relative z-10" />
+              </div>
+              
+              <h2 className="text-3xl font-bold mb-2 tracking-tight animate-fade-in-up">Saindo da Conta</h2>
+              <p className="text-slate-400 text-sm mb-8 font-light">Sincronizando dados e encerrando sessão segura...</p>
+              
+              <div className="w-64 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-blue-500 to-purple-500 animate-[loading_3.5s_ease-in-out_forwards] w-full origin-left transform scale-x-0"></div>
+              </div>
+
+              <style>{`
+                @keyframes loading {
+                    0% { transform: scaleX(0); }
+                    100% { transform: scaleX(1); }
+                }
+              `}</style>
+          </div>
+      );
   }
 
   if (!user) {
@@ -352,11 +406,13 @@ const App: React.FC = () => {
                  )}
              </div>
              
-             {user.photoURL && (
-                <div className={`w-10 h-10 rounded-full overflow-hidden border-2 cursor-pointer transition shrink-0 ${darkMode ? 'border-slate-600 hover:border-slate-400' : 'border-slate-200 hover:border-blue-500'}`} onClick={() => setCurrentView(ViewState.SETTINGS)}>
-                    <img src={user.photoURL} alt="Perfil" className="w-full h-full object-cover" />
-                </div>
-             )}
+             <button
+                onClick={() => setCurrentView(ViewState.SETTINGS)}
+                className={`w-10 h-10 rounded-full flex items-center justify-center border transition shrink-0 ${darkMode ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-600 hover:text-blue-600 hover:bg-blue-50'}`}
+                title="Configurações"
+             >
+                <SettingsIcon size={20} />
+             </button>
           </div>
         </header>
 

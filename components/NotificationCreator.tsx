@@ -4,11 +4,12 @@ import { saveNotification, uploadEvidence, deleteEvidence, uploadSignedPdf } fro
 import { initiateCheckout } from '../services/paymentService';
 import { createMeeting } from '../services/meetingService';
 import { NotificationItem, NotificationStatus, EvidenceItem, Meeting, Transaction, Attachment } from '../types';
+import { jsPDF } from "jspdf";
 import { 
   Wand2, Scale, Users, 
   FileText, PenTool, CreditCard, Check, Loader2, 
   AlertCircle, Briefcase, ShoppingBag, Home, Heart, Gavel, Globe,
-  Building2, Calculator, Landmark, Stethoscope, Leaf, Anchor, Plane, Zap, Rocket, Laptop, Trophy, FileSignature, Scroll, UploadCloud, X, MapPin, UserCheck, UserCog, Video, User, ShieldCheck, Clock3, MessageCircle, Smartphone, Mail, Package, ZapIcon, Send, Lock, Unlock, AlertTriangle, QrCode, Copy, CheckCircle2, ArrowRight, Calendar, Clock, CreditCard as CardIcon, ChevronLeft
+  Building2, Calculator, Landmark, Stethoscope, Leaf, Anchor, Plane, Zap, Rocket, Laptop, Trophy, FileSignature, Scroll, UploadCloud, X, MapPin, UserCheck, UserCog, Video, User, ShieldCheck, Clock3, MessageCircle, Smartphone, Mail, Package, ZapIcon, Send, Lock, Unlock, AlertTriangle, QrCode, Copy, CheckCircle2, ArrowRight, Calendar, Clock, CreditCard as CardIcon, ChevronLeft, Eye
 } from 'lucide-react';
 
 interface NotificationCreatorProps {
@@ -127,6 +128,14 @@ interface Address {
   state: string;
 }
 
+interface LocalAttachment {
+    id: string;
+    file: File;
+    previewUrl: string;
+    name: string;
+    type: 'image' | 'video' | 'document';
+}
+
 const initialAddress: Address = {
   cep: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: ''
 };
@@ -230,8 +239,8 @@ const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputCh
 const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user, onBack }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSavingData, setIsSavingData] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [error, setError] = useState('');
   const [notificationId] = useState(`NOT-${Math.random().toString(36).substr(2, 9).toUpperCase()}`);
   
@@ -266,7 +275,11 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     signed: false,
   });
 
-  const [evidences, setEvidences] = useState<EvidenceItem[]>([]);
+  // Alterado para LocalAttachment: arquivos ficam apenas no frontend até a assinatura
+  const [localFiles, setLocalFiles] = useState<LocalAttachment[]>([]);
+  // Evidencias confirmadas após upload (para referência)
+  const [uploadedEvidences, setUploadedEvidences] = useState<EvidenceItem[]>([]);
+
   const [paymentPlan, setPaymentPlan] = useState<'single' | 'subscription'>('single');
   
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'credit_card'>('pix');
@@ -340,87 +353,55 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   };
 
-  const saveDraftState = async (evidencesOverride?: EvidenceItem[]) => {
-     if (!user) return;
-     
-     const currentEvidences = evidencesOverride || evidences;
-     const validEvidences = currentEvidences.filter(e => !e.isLoading);
-
-     const draft: NotificationItem = {
-         id: notificationId,
-         senderUid: user.uid,
-         senderName: formData.sender.name || user.displayName || 'Desconhecido',
-         senderEmail: formData.sender.email || user.email || '',
-         senderPhotoUrl: user.photoURL,
-         recipientName: formData.recipient.name,
-         recipientEmail: formData.recipient.email,
-         recipientCpf: formData.recipient.cpfCnpj.replace(/\D/g, ''),
-         area: currentArea?.name || '',
-         species: formData.species,
-         facts: formData.facts,
-         subject: formData.subject || formData.species,
-         content: formData.generatedContent,
-         evidences: validEvidences, 
-         createdAt: new Date().toISOString(),
-         status: NotificationStatus.DRAFT,
-     };
-     await saveNotification(draft);
-  };
-
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-        setIsUploadingFile(true);
-        const file = e.target.files[0];
-        const tempId = `temp-${Date.now()}`;
-
-        const tempEvidence: EvidenceItem = {
-            id: tempId,
-            name: file.name,
-            url: '',
-            type: file.type.startsWith('image/') ? 'image' : 'document',
-            storagePath: '',
-            createdAt: new Date().toISOString(),
-            isLoading: true 
-        };
-
-        setEvidences(prev => [...prev, tempEvidence]);
-
-        try {
-            // Upload simulado funciona mesmo no modo demo
-            const newEvidence = await uploadEvidence(notificationId, file);
-            
-            const updatedList = [...evidences, newEvidence];
-            
-            setEvidences(prev => prev.map(ev => ev.id === tempId ? newEvidence : ev));
-            await saveDraftState(updatedList); 
-        } catch (err) {
-            console.error(err);
-            setError("Erro ao fazer upload do arquivo. Verifique sua conexão.");
-            setEvidences(prev => prev.filter(ev => ev.id !== tempId));
-        } finally {
-            setIsUploadingFile(false);
-            e.target.value = ''; 
-        }
-    }
-  };
-
-  const removeAttachment = async (index: number) => {
-    const evidence = evidences[index];
-    
-    if (evidence.isLoading) {
-        setEvidences(prev => prev.filter((_, i) => i !== index));
+  // Salva arquivos localmente (Sem upload)
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setError(''); // Limpa erros antigos
+    if (!user) {
+        setError("Você precisa estar autenticado para enviar arquivos.");
         return;
     }
 
-    try {
-        await deleteEvidence(evidence.storagePath);
-        const updatedList = evidences.filter((_, i) => i !== index);
-        setEvidences(updatedList);
-        await saveDraftState(updatedList);
-    } catch (err) {
-        console.error(err);
-        setError("Erro ao remover arquivo.");
+    if (e.target.files && e.target.files.length > 0) {
+        const filesToAdd: LocalAttachment[] = [];
+        const MAX_SIZE_MB = 10; // Limite de 10MB para evitar crash do browser no base64
+
+        Array.from(e.target.files).forEach((file: File) => {
+            // Validação de Tamanho
+            if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+                setError(`Arquivo "${file.name}" excede o limite de ${MAX_SIZE_MB}MB.`);
+                return;
+            }
+
+            let type: 'image' | 'video' | 'document' = 'document';
+            if (file.type.startsWith('image/')) {
+                type = 'image';
+            } else if (file.type.startsWith('video/')) {
+                type = 'video';
+            } else if (file.type === 'application/pdf') {
+                type = 'document'; // Garante que PDF é tratado como documento
+            } else {
+                // Fallback genérico, mas pode ser removido se o accept do input for estrito
+                type = 'document'; 
+            }
+
+            filesToAdd.push({
+                id: `local-${Date.now()}-${Math.random()}`,
+                file: file,
+                name: file.name,
+                type: type,
+                previewUrl: URL.createObjectURL(file)
+            });
+        });
+
+        if (filesToAdd.length > 0) {
+            setLocalFiles(prev => [...prev, ...filesToAdd]);
+        }
+        e.target.value = ''; 
     }
+  };
+
+  const removeAttachment = (index: number) => {
+    setLocalFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
@@ -482,7 +463,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
   const handleNext = async () => {
     setError('');
-    await saveDraftState();
 
     if (currentStep === 1 && !formData.areaId) return setError('Selecione uma área.');
     if (currentStep === 2 && (!formData.species || !formData.facts)) return setError('Preencha a espécie e os fatos.');
@@ -496,9 +476,13 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               await generateContent();
               if (!formData.generatedContent) return;
           }
-          // Se já gerou e estamos na tela de sucesso, o botão continuar do footer deve levar para 5
     }
-    if (currentStep === 5 && !formData.signed) return setError('Você precisa assinar o documento.');
+    if (currentStep === 5) {
+        if (!formData.signed) return setError('Você precisa assinar o documento.');
+        
+        // --- TRANSIÇÃO CRÍTICA: SALVAR TUDO E IR PARA PAGAMENTO ---
+        await handlePersistData();
+    }
 
     if (currentStep < STEPS.length) {
       setCurrentStep(curr => curr + 1);
@@ -566,27 +550,16 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           setError("Aviso: Texto gerado sem dados de agendamento (Data/Hora não preenchidos).");
       }
 
-      // Preparar arquivos para a IA
+      // Preparar arquivos LOCAIS para a IA
       const currentAttachments: Attachment[] = [];
-      if (evidences && evidences.length > 0) {
-          for (const ev of evidences) {
-              try {
-                  // Como é ambiente simulado, ev.url é um blob url local
-                  const response = await fetch(ev.url);
-                  const blob = await response.blob();
-                  const file = new File([blob], ev.name, { type: blob.type });
-                  
-                  // Aceita imagens e PDFs
-                  if (file.type.startsWith('image/') || file.type === 'application/pdf') {
-                      currentAttachments.push({
-                          file: file,
-                          preview: ev.url,
-                          type: file.type.startsWith('image/') ? 'image' : 'document'
-                      });
-                  }
-              } catch (e) {
-                  console.warn("Could not prepare file for AI", ev.name, e);
-              }
+      if (localFiles && localFiles.length > 0) {
+          for (const lf of localFiles) {
+              // Passa diretamente o objeto File local
+              currentAttachments.push({
+                  file: lf.file,
+                  preview: lf.previewUrl,
+                  type: lf.type
+              });
           }
       }
 
@@ -608,110 +581,109 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       setShowSuccessScreen(true); // Exibe tela de sucesso
     } catch (err: any) {
       console.error(err);
-      // Mostra mensagem de erro real se disponível para ajudar na depuração (Ex: API Key Missing)
       setError(err.message || 'Erro ao gerar texto: Verifique sua conexão.');
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const handlePayLater = async () => {
-    setIsProcessingPayment(true);
-    setError('');
-    
-    try {
-        if(!user) return;
-        const pdfContent = `DOC: ${notificationId}\n...\n${formData.generatedContent}\n...`; // Mock
-        const pdfBlob = new Blob([pdfContent], { type: 'application/pdf' });
-        const pdfUrl = await uploadSignedPdf(notificationId, pdfBlob);
+  // --- PDF GENERATION LOGIC ---
+  const generateSignedPdfBlob = async (): Promise<Blob> => {
+      // Cria instância do jsPDF
+      const doc = new jsPDF({
+          orientation: "portrait",
+          unit: "mm",
+          format: "a4"
+      });
 
-        const totalAmount = calculateTotal();
-        
-        const finalNotification: NotificationItem = {
-            id: notificationId,
-            senderUid: user.uid,
-            senderName: formData.sender.name,
-            senderEmail: formData.sender.email,
-            senderPhotoUrl: user.photoURL || undefined,
-            recipientName: formData.recipient.name,
-            recipientEmail: formData.recipient.email,
-            recipientCpf: formData.recipient.cpfCnpj.replace(/\D/g, ''),
-            area: currentArea?.name || '',
-            species: formData.species,
-            facts: formData.facts,
-            subject: formData.subject || formData.species,
-            content: formData.generatedContent,
-            evidences: evidences,
-            pdfUrl: pdfUrl,
-            signatureBase64: signatureData || undefined, // Salva a assinatura
-            createdAt: new Date().toISOString(),
-            status: NotificationStatus.PENDING_PAYMENT,
-            paymentMethod,
-            paymentAmount: totalAmount
-        };
+      // Configurações de fonte
+      doc.setFont("times", "normal");
+      doc.setFontSize(12);
 
-        // Salvar como PENDING_PAYMENT
-        await saveNotification(finalNotification);
+      // Margens
+      const marginLeft = 20;
+      const marginTop = 20;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const contentWidth = pageWidth - (marginLeft * 2);
 
-        // Cria Transação como PENDENTE
-        const newTransaction: Transaction = {
-            id: `TX-${Date.now()}`,
-            description: paymentPlan === 'subscription' ? 'Assinatura Mensal - 10 Créditos' : `Notificação - ${formData.species}`,
-            amount: totalAmount,
-            date: new Date().toISOString(),
-            status: 'Pendente'
-        };
+      // Título
+      doc.setFont("times", "bold");
+      doc.setFontSize(16);
+      doc.text("NOTIFICAÇÃO EXTRAJUDICIAL", pageWidth / 2, marginTop, { align: "center" });
 
-        // Cria Reunião como CANCELADA (só ativa ao pagar)
-        let newMeeting: Meeting | undefined = undefined;
-        if (formData.scheduleMeeting) {
-            const code = `${Math.random().toString(36).substr(2, 3)}-${Math.random().toString(36).substr(2, 4)}-${Math.random().toString(36).substr(2, 3)}`;
-            newMeeting = {
-                id: `MEET-${Date.now()}`,
-                hostUid: user.uid,
-                hostName: user.displayName || 'Anfitrião',
-                title: `Conciliação: ${formData.species}`,
-                date: formData.meetingDate,
-                time: formData.meetingTime,
-                guestEmail: formData.recipient.email,
-                guestCpf: formData.recipient.cpfCnpj,
-                meetLink: `https://meet.google.com/${code}`,
-                createdAt: new Date().toISOString(),
-                status: 'canceled' // Regra: Cancelada até pagar
-            };
-            await createMeeting(newMeeting);
-        }
+      // Dados do Remetente/Destinatário (Pequeno cabeçalho técnico)
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Notificante: ${formData.sender.name}`, marginLeft, marginTop + 15);
+      doc.text(`Notificado: ${formData.recipient.name}`, marginLeft, marginTop + 20);
+      doc.text(`Data de Emissão: ${new Date().toLocaleDateString()}`, marginLeft, marginTop + 25);
+      
+      // Linha separadora
+      doc.line(marginLeft, marginTop + 30, pageWidth - marginLeft, marginTop + 30);
 
-        setCreatedData({ notif: finalNotification, meet: newMeeting, trans: newTransaction });
-        setPaymentStage('protocol');
+      // Conteúdo Principal
+      doc.setFont("times", "normal");
+      doc.setFontSize(12);
+      
+      // Divide o texto para caber na largura da página
+      const splitText = doc.splitTextToSize(formData.generatedContent, contentWidth);
+      
+      // Adiciona o texto iniciando após o cabeçalho
+      // O 'marginTop + 40' é a posição Y inicial do texto
+      doc.text(splitText, marginLeft, marginTop + 40);
 
-    } catch (e) {
-        console.error(e);
-        setError("Erro ao salvar pendência.");
-    } finally {
-        setIsProcessingPayment(false);
-    }
-  };
+      // Adicionar Assinatura se existir
+      if (signatureData) {
+          // Calcula a posição Y final do texto para colocar a assinatura abaixo
+          // Aproximação: número de linhas * altura da linha (aprox 5-7mm)
+          const textHeight = splitText.length * 5; 
+          let signatureY = marginTop + 40 + textHeight + 20;
 
-  const handleConfirmPayment = async () => {
-      // Validação Cartão de Crédito
-      if (paymentMethod === 'credit_card') {
-          if (!cardData.number || !cardData.name || !cardData.expiry || !cardData.cvv) {
-              setError("Preencha todos os dados do cartão.");
-              return;
+          // Se a assinatura cair fora da página, adiciona nova página
+          if (signatureY > doc.internal.pageSize.getHeight() - 40) {
+              doc.addPage();
+              signatureY = 40; // Margem superior da nova página
           }
+
+          doc.addImage(signatureData, 'PNG', pageWidth / 2 - 25, signatureY, 50, 20);
+          doc.line(pageWidth / 2 - 40, signatureY + 22, pageWidth / 2 + 40, signatureY + 22);
+          doc.setFontSize(10);
+          doc.text(formData.sender.name, pageWidth / 2, signatureY + 27, { align: "center" });
+          doc.text(`CPF: ${formData.sender.cpfCnpj}`, pageWidth / 2, signatureY + 32, { align: "center" });
+          doc.setTextColor(150);
+          doc.setFontSize(8);
+          doc.text(`Assinado digitalmente via Notify Platform - ID: ${notificationId}`, pageWidth / 2, signatureY + 38, { align: "center" });
       }
 
-      setIsProcessingPayment(true);
+      return doc.output('blob');
+  };
+
+  // --- LOGICA DE PERSISTENCIA (UPLOAD E SALVAR NO BANCO) ---
+  const handlePersistData = async () => {
+      setIsSavingData(true);
       setError('');
       try {
-          if(!user) return;
-          const pdfContent = `DOC: ${notificationId}\n...\n${formData.generatedContent}\n...`; // Mock
-          const pdfBlob = new Blob([pdfContent], { type: 'application/pdf' });
+          if (!user) throw new Error("Usuário não autenticado");
+
+          // 1. Gerar PDF Assinado (Client Side)
+          const pdfBlob = await generateSignedPdfBlob();
+
+          // 2. Upload do PDF para Storage
           const pdfUrl = await uploadSignedPdf(notificationId, pdfBlob);
 
+          // 3. Upload das Evidências (Arquivos Locais -> Firebase)
+          const newEvidenceItems: EvidenceItem[] = [];
+          if (localFiles.length > 0) {
+              for (const lf of localFiles) {
+                  const uploaded = await uploadEvidence(notificationId, lf.file);
+                  newEvidenceItems.push(uploaded);
+              }
+          }
+          setUploadedEvidences(newEvidenceItems); // Atualiza estado com URLs remotas
+
           const totalAmount = calculateTotal();
-          
+
+          // 4. Montar Objeto da Notificação
           const finalNotification: NotificationItem = {
               id: notificationId,
               senderUid: user.uid,
@@ -726,54 +698,28 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               facts: formData.facts,
               subject: formData.subject || formData.species,
               content: formData.generatedContent,
-              evidences: evidences,
-              pdfUrl: pdfUrl,
-              signatureBase64: signatureData || undefined, // Salva a assinatura
+              evidences: newEvidenceItems, // Usa as evidências com URL remota
+              pdfUrl: pdfUrl, // URL real do Storage
+              signatureBase64: signatureData || undefined,
               createdAt: new Date().toISOString(),
-              status: NotificationStatus.PENDING_PAYMENT,
-              paymentMethod,
+              status: NotificationStatus.PENDING_PAYMENT, // Cria como Pendente
+              paymentMethod: 'pix', // Default, atualizado no passo 6
               paymentAmount: totalAmount
           };
 
-          // Salvar inicialmente como pendente
+          // 5. Salvar no Firestore
           await saveNotification(finalNotification);
 
-          // Iniciar tentativa de pagamento
-          const checkoutResponse = await initiateCheckout(finalNotification);
-
-          if (!checkoutResponse.success) {
-             setError(checkoutResponse.error || "Erro ao iniciar pagamento. Tente novamente.");
-             return;
-          }
-
-          if (checkoutResponse.checkoutUrl) {
-             window.location.href = checkoutResponse.checkoutUrl;
-             return;
-          }
-
-          // ** LÓGICA DE FINALIZAÇÃO E DISTRIBUIÇÃO **
-          
-          // Verifica se pagamento foi sucesso (mock assume sim se chegou aqui sem URL de checkout)
-          const isPaymentSuccess = true; // Mock para fluxo direto
-
-          // 1. Atualiza Status da Notificação
-          if (isPaymentSuccess) {
-              finalNotification.status = NotificationStatus.SENT;
-              await saveNotification(finalNotification);
-          }
-
-          // 2. Cria Transação
+          // 6. Preparar Transação e Reunião (Ainda sem salvar no banco, apenas preparo para checkout)
           const newTransaction: Transaction = {
               id: `TX-${Date.now()}`,
-              description: paymentPlan === 'subscription' ? 'Assinatura Mensal - 10 Créditos' : `Notificação Avulsa - ${formData.species}`,
+              description: paymentPlan === 'subscription' ? 'Assinatura Mensal' : `Notificação - ${formData.species}`,
               amount: totalAmount,
               date: new Date().toISOString(),
-              status: isPaymentSuccess ? 'Pago' : 'Pendente'
+              status: 'Pendente'
           };
 
-          // 3. Cria Reunião (Se agendada)
           let newMeeting: Meeting | undefined = undefined;
-          
           if (formData.scheduleMeeting) {
               const code = `${Math.random().toString(36).substr(2, 3)}-${Math.random().toString(36).substr(2, 4)}-${Math.random().toString(36).substr(2, 3)}`;
               newMeeting = {
@@ -787,14 +733,76 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                   guestCpf: formData.recipient.cpfCnpj,
                   meetLink: `https://meet.google.com/${code}`,
                   createdAt: new Date().toISOString(),
-                  // REGRA DE NEGÓCIO: Se pagamento pendente/falha, conciliação é CANCELADA.
-                  status: isPaymentSuccess ? 'scheduled' : 'canceled' 
+                  status: 'canceled' // Começa cancelada/pendente até pagar
               };
-              await createMeeting(newMeeting);
+              await createMeeting(newMeeting); // Cria reunião já
           }
 
-          // ARMAZENA DADOS PARA O BOTÃO FINAL
+          // Armazena dados para a etapa final
           setCreatedData({ notif: finalNotification, meet: newMeeting, trans: newTransaction });
+
+      } catch (e: any) {
+          console.error(e);
+          setError("Erro ao salvar notificação: " + e.message);
+          throw e; // Interrompe a navegação
+      } finally {
+          setIsSavingData(false);
+      }
+  };
+
+  const handlePayLater = async () => {
+      // Como os dados já foram persistidos na transição para o passo 6, 
+      // "Pagar depois" apenas redireciona o usuário para o painel ou encerra o fluxo.
+      // O item já está como PENDING_PAYMENT.
+      if (onBack) onBack();
+  };
+
+  const handleConfirmPayment = async () => {
+      // Validação Cartão de Crédito
+      if (paymentMethod === 'credit_card') {
+          if (!cardData.number || !cardData.name || !cardData.expiry || !cardData.cvv) {
+              setError("Preencha todos os dados do cartão.");
+              return;
+          }
+      }
+
+      setIsProcessingPayment(true);
+      setError('');
+      try {
+          if(!user || !createdData.notif) return;
+
+          // Iniciar tentativa de pagamento
+          const checkoutResponse = await initiateCheckout(createdData.notif);
+
+          if (!checkoutResponse.success) {
+             setError(checkoutResponse.error || "Erro ao iniciar pagamento. Tente novamente.");
+             return;
+          }
+
+          if (checkoutResponse.checkoutUrl) {
+             window.location.href = checkoutResponse.checkoutUrl;
+             return;
+          }
+
+          // ** SUCESSO NO PAGAMENTO **
+          const isPaymentSuccess = true; 
+
+          // 1. Atualiza Status da Notificação
+          const updatedNotif = { ...createdData.notif, status: NotificationStatus.SENT };
+          await saveNotification(updatedNotif);
+
+          // 2. Atualiza Status da Transação (Local state -> Final callback)
+          const updatedTrans = { ...createdData.trans!, status: 'Pago' as const };
+
+          // 3. Atualiza Reunião (Se agendada)
+          let updatedMeeting = createdData.meet;
+          if (createdData.meet) {
+              updatedMeeting = { ...createdData.meet, status: 'scheduled' };
+              await createMeeting(updatedMeeting);
+          }
+
+          // Atualiza CreatedData para exibição no recibo
+          setCreatedData({ notif: updatedNotif, meet: updatedMeeting, trans: updatedTrans });
 
           // AVANÇA PARA A TELA DE PROTOCOLO
           setPaymentStage('protocol');
@@ -890,24 +898,38 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                    </div>
                    
                    <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:bg-slate-50 relative bg-slate-50 transition-colors">
-                        {isUploadingFile ? <Loader2 className="animate-spin mx-auto text-blue-500" /> : <UploadCloud className="mx-auto text-slate-400 mb-2" size={32} />}
-                        <p className="text-sm text-slate-500 font-medium">{isUploadingFile ? 'Carregando arquivo...' : 'Toque para anexar evidências'}</p>
-                        <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleFileSelect} disabled={isUploadingFile} />
+                        <UploadCloud className="mx-auto text-slate-400 mb-2" size={32} />
+                        <p className="text-sm text-slate-500 font-medium">Toque para anexar evidências</p>
+                        <p className="text-xs text-slate-400 mt-1">Fotos, PDFs ou Vídeos (Máx 10MB)</p>
+                        <input type="file" multiple accept="image/*,video/*,application/pdf" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleFileSelect} />
                    </div>
-                   {evidences.length > 0 && (
+                   
+                   {/* VISUALIZAÇÃO DE ARQUIVOS LOCAIS */}
+                   {localFiles.length > 0 && (
                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                           {evidences.map((ev, idx) => (
-                               <div key={ev.id} className="bg-white border border-slate-200 p-3 rounded-lg text-sm flex justify-between items-center shadow-sm">
-                                   <span className="truncate flex-1 mr-2 flex items-center">
-                                       {ev.isLoading ? <Loader2 className="animate-spin mr-2 h-3 w-3 text-blue-500" /> : null}
+                           {localFiles.map((ev, idx) => (
+                               <div key={ev.id} className="bg-white border border-slate-200 p-2 rounded-lg text-sm flex items-center shadow-sm">
+                                   <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center mr-3 overflow-hidden shrink-0">
+                                       {ev.type === 'image' ? (
+                                           <img src={ev.previewUrl} alt="Preview" className="w-full h-full object-cover" />
+                                       ) : ev.type === 'video' ? (
+                                           <Video size={18} className="text-slate-400" />
+                                       ) : (
+                                           <FileText size={18} className="text-slate-400" />
+                                       )}
+                                   </div>
+                                   <span className="truncate flex-1 mr-2 text-xs font-medium text-slate-600">
                                        {ev.name}
                                    </span>
-                                   {!ev.isLoading && (
-                                       <button onClick={() => removeAttachment(idx)} className="text-red-500 bg-red-50 p-1.5 rounded-full hover:bg-red-100 transition"><X size={14}/></button>
-                                   )}
+                                   <button onClick={() => removeAttachment(idx)} className="text-red-500 bg-red-50 p-1.5 rounded-full hover:bg-red-100 transition"><X size={14}/></button>
                                </div>
                            ))}
                        </div>
+                   )}
+                   {localFiles.length > 0 && (
+                       <p className="text-[10px] text-purple-600 bg-purple-50 p-2 rounded border border-purple-100 flex items-center">
+                           <Eye size={12} className="mr-1"/> Estes {localFiles.length} arquivos serão analisados pela IA na geração do documento.
+                       </p>
                    )}
               </div>
           );
@@ -1528,7 +1550,16 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   };
 
   return (
-    <div className="max-w-5xl mx-auto pb-24">
+    <div className="max-w-5xl mx-auto pb-24 relative">
+       {/* LOADER DE SALVAMENTO BLOQUEANTE */}
+       {isSavingData && (
+           <div className="fixed inset-0 z-50 bg-white/90 backdrop-blur flex flex-col items-center justify-center animate-fade-in">
+               <div className="w-16 h-16 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+               <h3 className="text-lg font-bold text-slate-800">Processando</h3>
+               <p className="text-slate-500 text-sm">Salvando notificação na aba pendentes...</p>
+           </div>
+       )}
+
        {/* Responsive Scrollable Steps Bar */}
        <div className="bg-white p-2 md:p-4 rounded-xl border shadow-sm mb-6 sticky top-0 z-20">
            <div className="flex overflow-x-auto gap-2 md:gap-0 md:justify-between scrollbar-hide snap-x py-1">
@@ -1580,8 +1611,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                 </div>
 
                 {currentStep < 6 && (
-                    <button onClick={handleNext} className="px-8 py-3 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 shadow-lg shadow-slate-300 transition transform active:scale-95">
-                        Continuar
+                    <button onClick={handleNext} disabled={isSavingData} className="px-8 py-3 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 shadow-lg shadow-slate-300 transition transform active:scale-95 disabled:opacity-50">
+                        {currentStep === 5 ? 'Salvar e Continuar' : 'Continuar'}
                     </button>
                 )}
            </div>

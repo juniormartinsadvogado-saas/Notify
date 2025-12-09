@@ -36,8 +36,12 @@ const getApiKey = () => {
 };
 
 const fileToGenerativePart = async (file: File): Promise<{ inlineData: { data: string; mimeType: string } } | null> => {
-    // Permite imagens e PDFs
-    if (!file.type.startsWith('image/') && file.type !== 'application/pdf') {
+    // Permite imagens, PDFs e Vídeos
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+    const isPdf = file.type === 'application/pdf';
+
+    if (!isImage && !isVideo && !isPdf) {
         console.warn(`Tipo de arquivo não suportado para IA: ${file.type}`);
         return null;
     }
@@ -47,6 +51,7 @@ const fileToGenerativePart = async (file: File): Promise<{ inlineData: { data: s
         reader.onloadend = () => {
             const base64String = reader.result as string;
             // Separa o cabeçalho "data:image/png;base64," do conteúdo
+            // Isso funciona para video/mp4, application/pdf, etc.
             const base64Data = base64String.split(',')[1];
             resolve({
                 inlineData: {

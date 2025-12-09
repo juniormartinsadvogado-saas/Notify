@@ -23,16 +23,24 @@ const getMediaType = (mimeType: string): 'fotos' | 'videos' | 'documentos' => {
 export const uploadEvidence = async (notificationId: string, file: File): Promise<EvidenceItem> => {
     try {
         const mediaType = getMediaType(file.type);
-        // Caminho exato: notificacoes/{ID_da_Notificacao}/{Tipo_de_Mídia}/{Nome_do_Arquivo}
-        const storagePath = `notificacoes/${notificationId}/${mediaType}/${file.name}`;
+        
+        // Sanitização do nome do arquivo para evitar erros de permissão com caracteres especiais
+        // Substitui tudo que não for letra, número, ponto, traço ou sublinhado por '_'
+        const sanitizedName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+        
+        // Adiciona timestamp para garantir unicidade e evitar conflitos
+        const fileName = `${Date.now()}_${sanitizedName}`;
+        
+        const storagePath = `notificacoes/${notificationId}/${mediaType}/${fileName}`;
         const storageRef = ref(storage, storagePath);
 
+        // Upload simples
         await uploadBytes(storageRef, file);
         const downloadUrl = await getDownloadURL(storageRef);
 
         return {
-            id: `ev-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-            name: file.name,
+            id: `ev-${Date.now()}`,
+            name: file.name, // Mantém nome original para exibição na UI
             url: downloadUrl,
             type: mediaType === 'fotos' ? 'image' : mediaType === 'videos' ? 'video' : 'document',
             storagePath: storagePath,
@@ -47,7 +55,6 @@ export const uploadEvidence = async (notificationId: string, file: File): Promis
 export const uploadSignedPdf = async (notificationId: string, pdfBlob: Blob): Promise<string> => {
     try {
         const fileName = `notificacao_assinada_${notificationId}.pdf`;
-        // Caminho exato: notificacoes/{ID_da_Notificacao}/documentos/{Nome_do_Arquivo}
         const storagePath = `notificacoes/${notificationId}/documentos/${fileName}`;
         const storageRef = ref(storage, storagePath);
 
@@ -68,7 +75,6 @@ export const deleteEvidence = async (storagePath: string) => {
         return true;
     } catch (error) {
         console.error("Erro ao deletar evidência:", error);
-        // Não lança erro para não travar a UI se o arquivo já não existir
         return false;
     }
 };
@@ -77,12 +83,9 @@ export const deleteEvidence = async (storagePath: string) => {
 
 export const saveNotification = async (notification: NotificationItem) => {
     try {
-        // Salva/Atualiza o documento na coleção 'notificacoes' usando o ID da notificação
         const docRef = doc(db, NOTIFICATIONS_COLLECTION, notification.id);
-        
-        // Remove campos undefined para o Firestore não reclamar
+        // Garantir que não existem campos undefined que o Firestore rejeita
         const dataToSave = JSON.parse(JSON.stringify(notification));
-        
         await setDoc(docRef, dataToSave);
     } catch (error) {
         console.error("Erro ao salvar notificação:", error);
@@ -92,12 +95,9 @@ export const saveNotification = async (notification: NotificationItem) => {
 
 export const deleteNotification = async (notification: NotificationItem) => {
     try {
-        // 1. Deletar arquivos do Storage
         if (notification.evidences && notification.evidences.length > 0) {
             await Promise.all(notification.evidences.map(ev => deleteEvidence(ev.storagePath)));
         }
-        
-        // 2. Deletar documento do Firestore
         await deleteDoc(doc(db, NOTIFICATIONS_COLLECTION, notification.id));
     } catch (error) {
         console.error("Erro ao excluir notificação:", error);
@@ -105,7 +105,6 @@ export const deleteNotification = async (notification: NotificationItem) => {
     }
 };
 
-// CONSULTA PARA O CRIADOR (REMETENTE)
 export const getNotificationsBySender = async (senderUid: string): Promise<NotificationItem[]> => {
     try {
         const q = query(
@@ -119,7 +118,6 @@ export const getNotificationsBySender = async (senderUid: string): Promise<Notif
             items.push(doc.data() as NotificationItem);
         });
         
-        // Ordenação no cliente para evitar necessidade de índice composto imediato
         return items.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     } catch (error) {
         console.error("Erro ao buscar notificações enviadas:", error);
@@ -127,10 +125,8 @@ export const getNotificationsBySender = async (senderUid: string): Promise<Notif
     }
 };
 
-// CONSULTA PARA O NOTIFICADO (DESTINATÁRIO) - CRUCIAL 3.1
 export const getNotificationsByRecipientCpf = async (cpf: string): Promise<NotificationItem[]> => {
     try {
-        // O CPF deve ser exato (apenas números, conforme salvo)
         const q = query(
             collection(db, NOTIFICATIONS_COLLECTION),
             where("recipientCpf", "==", cpf)
@@ -140,8 +136,6 @@ export const getNotificationsByRecipientCpf = async (cpf: string): Promise<Notif
         const items: NotificationItem[] = [];
         querySnapshot.forEach((doc) => {
             const data = doc.data() as NotificationItem;
-            // Filtra rascunhos e pendentes, pois o destinatário só deve ver o que foi "Enviado"
-            // A menos que a regra de negócio permita ver 'Pendente'
             if (data.status !== NotificationStatus.DRAFT && data.status !== NotificationStatus.PENDING_PAYMENT) {
                 items.push(data);
             }
@@ -157,7 +151,6 @@ export const getNotificationsByRecipientCpf = async (cpf: string): Promise<Notif
 export const confirmPayment = async (notificationId: string) => {
     try {
         const docRef = doc(db, NOTIFICATIONS_COLLECTION, notificationId);
-        // Atualiza apenas o status
         await setDoc(docRef, { status: NotificationStatus.SENT }, { merge: true });
     } catch (error) {
         console.error("Erro ao confirmar pagamento:", error);
