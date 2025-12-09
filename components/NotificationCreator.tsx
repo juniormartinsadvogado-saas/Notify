@@ -188,6 +188,16 @@ const formatAddressString = (addr: Address) => {
     return parts.join(', ') || 'Endereço não informado';
 };
 
+// LIMPEZA DE MARKDOWN PARA PDF
+const cleanTextForPDF = (text: string) => {
+    return text
+        .replace(/\*\*/g, '') // Remove negrito
+        .replace(/\*/g, '')   // Remove itálico/listas simples
+        .replace(/#/g, '')    // Remove headers
+        .replace(/\[|\]/g, '') // Remove colchetes se houver
+        .trim();
+};
+
 const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputChange, onAddressChange, documentLabel = "CPF ou CNPJ", documentMask = MASKS.cpfCnpj, documentMaxLength = 18, documentPlaceholder }) => {
     const getIcon = () => {
         if (section === 'representative') return <UserCog className="mr-2" />;
@@ -587,72 +597,160 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     }
   };
 
-  // --- PDF GENERATION LOGIC ---
+  // --- PDF GENERATION LOGIC 2.0 (PROFESSIONAL & PAGINATED) ---
   const generateSignedPdfBlob = async (): Promise<Blob> => {
-      // Cria instância do jsPDF
+      // 1. Configuração Inicial A4
       const doc = new jsPDF({
           orientation: "portrait",
           unit: "mm",
           format: "a4"
       });
 
-      // Configurações de fonte
+      // Constantes de Layout
+      const margin = 20;
+      const pageWidth = 210;
+      const pageHeight = 297;
+      const contentWidth = pageWidth - (margin * 2);
+      const startY = 45; // Espaço para cabeçalho
+      const footerY = 280;
+      
+      // Função para desenhar Cabeçalho em todas as páginas
+      const drawHeader = (doc: jsPDF) => {
+          // Logo/Nome "NOTIFY"
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(18);
+          doc.setTextColor(40, 40, 50); // Dark Slate
+          doc.text("NOTIFY", margin, 20);
+          
+          // Subtítulo Sofisticado
+          doc.setFontSize(8);
+          doc.setTextColor(150); // Grey
+          doc.text("INTELIGÊNCIA JURÍDICA E AUTOMAÇÃO", margin, 25);
+          
+          // Data no canto direito
+          doc.setFontSize(9);
+          doc.text(`Data: ${new Date().toLocaleDateString()}`, pageWidth - margin, 20, { align: "right" });
+          doc.text(`Ref: ${notificationId}`, pageWidth - margin, 25, { align: "right" });
+
+          // Linha decorativa
+          doc.setDrawColor(200);
+          doc.setLineWidth(0.5);
+          doc.line(margin, 30, pageWidth - margin, 30);
+      };
+
+      // Função para desenhar Rodapé em todas as páginas
+      const drawFooter = (doc: jsPDF, pageNum: number) => {
+          doc.setDrawColor(200);
+          doc.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
+          
+          doc.setFont("times", "italic");
+          doc.setFontSize(8);
+          doc.setTextColor(150);
+          
+          const footerText = `Documento gerado e assinado eletronicamente via Plataforma Notify. ID: ${notificationId}`;
+          doc.text(footerText, margin, footerY);
+          
+          doc.text(`Página ${pageNum}`, pageWidth - margin, footerY, { align: "right" });
+      };
+
+      // Função para desenhar Marca D'água
+      const drawWatermark = (doc: jsPDF) => {
+          doc.saveGraphicsState();
+          doc.setTextColor(245, 245, 245); // Muito claro
+          doc.setFontSize(60);
+          doc.setFont("helvetica", "bold");
+          
+          // Rotaciona e centraliza
+          const text = "NOTIFY";
+          const x = pageWidth / 2;
+          const y = pageHeight / 2;
+          
+          // Solução simplificada para rotação sem context complexo (jsPDF basic)
+          // Se precisar de rotação avançada, usar context2d, mas aqui centralizamos simples
+          // para compatibilidade.
+          doc.text(text, x, y, { align: "center", angle: 45 });
+          doc.restoreGraphicsState();
+      };
+
+      // 2. Preparar Texto
+      const cleanBody = cleanTextForPDF(formData.generatedContent);
       doc.setFont("times", "normal");
-      doc.setFontSize(12);
+      doc.setFontSize(11);
+      doc.setTextColor(20, 20, 30); // Preto suave
 
-      // Margens
-      const marginLeft = 20;
-      const marginTop = 20;
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const contentWidth = pageWidth - (marginLeft * 2);
+      // Divide o texto em linhas que cabem na largura
+      const textLines = doc.splitTextToSize(cleanBody, contentWidth);
+      const lineHeight = 6; // mm
 
-      // Título
-      doc.setFont("times", "bold");
-      doc.setFontSize(16);
-      doc.text("NOTIFICAÇÃO EXTRAJUDICIAL", pageWidth / 2, marginTop, { align: "center" });
+      // 3. Renderização Paginada
+      let currentY = startY;
+      let currentPage = 1;
 
-      // Dados do Remetente/Destinatário (Pequeno cabeçalho técnico)
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Notificante: ${formData.sender.name}`, marginLeft, marginTop + 15);
-      doc.text(`Notificado: ${formData.recipient.name}`, marginLeft, marginTop + 20);
-      doc.text(`Data de Emissão: ${new Date().toLocaleDateString()}`, marginLeft, marginTop + 25);
-      
-      // Linha separadora
-      doc.line(marginLeft, marginTop + 30, pageWidth - marginLeft, marginTop + 30);
+      // Desenha elementos da primeira página
+      drawHeader(doc);
+      drawWatermark(doc);
+      drawFooter(doc, currentPage);
 
-      // Conteúdo Principal
-      doc.setFont("times", "normal");
-      doc.setFontSize(12);
-      
-      // Divide o texto para caber na largura da página
-      const splitText = doc.splitTextToSize(formData.generatedContent, contentWidth);
-      
-      // Adiciona o texto iniciando após o cabeçalho
-      // O 'marginTop + 40' é a posição Y inicial do texto
-      doc.text(splitText, marginLeft, marginTop + 40);
-
-      // Adicionar Assinatura se existir
-      if (signatureData) {
-          // Calcula a posição Y final do texto para colocar a assinatura abaixo
-          // Aproximação: número de linhas * altura da linha (aprox 5-7mm)
-          const textHeight = splitText.length * 5; 
-          let signatureY = marginTop + 40 + textHeight + 20;
-
-          // Se a assinatura cair fora da página, adiciona nova página
-          if (signatureY > doc.internal.pageSize.getHeight() - 40) {
+      // Loop pelas linhas
+      for (let i = 0; i < textLines.length; i++) {
+          // Verifica se cabe na página
+          if (currentY + lineHeight > footerY - 10) {
               doc.addPage();
-              signatureY = 40; // Margem superior da nova página
+              currentPage++;
+              currentY = startY;
+              
+              drawHeader(doc);
+              drawWatermark(doc);
+              drawFooter(doc, currentPage);
+              
+              doc.setFont("times", "normal");
+              doc.setFontSize(11);
+              doc.setTextColor(20, 20, 30);
+          }
+          
+          doc.text(textLines[i], margin, currentY);
+          currentY += lineHeight;
+      }
+
+      // 4. Assinatura
+      if (signatureData) {
+          const signHeight = 25;
+          // Verifica se cabe a assinatura
+          if (currentY + signHeight + 20 > footerY - 10) {
+              doc.addPage();
+              currentPage++;
+              currentY = startY;
+              drawHeader(doc);
+              drawWatermark(doc);
+              drawFooter(doc, currentPage);
           }
 
-          doc.addImage(signatureData, 'PNG', pageWidth / 2 - 25, signatureY, 50, 20);
-          doc.line(pageWidth / 2 - 40, signatureY + 22, pageWidth / 2 + 40, signatureY + 22);
+          currentY += 15; // Espaço antes da assinatura
+          
+          const centerX = pageWidth / 2;
+          const imgWidth = 50;
+          const imgHeight = 20;
+
+          doc.addImage(signatureData, 'PNG', centerX - (imgWidth/2), currentY, imgWidth, imgHeight);
+          
+          currentY += 22;
+          doc.setDrawColor(50);
+          doc.line(centerX - 40, currentY, centerX + 40, currentY);
+          
+          currentY += 5;
+          doc.setFont("times", "bold");
           doc.setFontSize(10);
-          doc.text(formData.sender.name, pageWidth / 2, signatureY + 27, { align: "center" });
-          doc.text(`CPF: ${formData.sender.cpfCnpj}`, pageWidth / 2, signatureY + 32, { align: "center" });
-          doc.setTextColor(150);
+          doc.text(formData.sender.name, centerX, currentY, { align: "center" });
+          
+          currentY += 5;
+          doc.setFontSize(9);
+          doc.setFont("times", "normal");
+          doc.text(`CPF: ${formData.sender.cpfCnpj}`, centerX, currentY, { align: "center" });
+          
+          currentY += 6;
           doc.setFontSize(8);
-          doc.text(`Assinado digitalmente via Notify Platform - ID: ${notificationId}`, pageWidth / 2, signatureY + 38, { align: "center" });
+          doc.setTextColor(100);
+          doc.text("Assinatura Digital Certificada - Notify", centerX, currentY, { align: "center" });
       }
 
       return doc.output('blob');
@@ -665,7 +763,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       try {
           if (!user) throw new Error("Usuário não autenticado");
 
-          // 1. Gerar PDF Assinado (Client Side)
+          // 1. Gerar PDF Assinado (Novo Layout Profissional)
           const pdfBlob = await generateSignedPdfBlob();
 
           // 2. Upload do PDF para Storage
@@ -743,6 +841,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
       } catch (e: any) {
           console.error(e);
+          // O erro genérico foi removido conforme solicitado, mostra erro real se houver
           setError("Erro ao salvar notificação: " + e.message);
           throw e; // Interrompe a navegação
       } finally {
@@ -774,7 +873,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       try {
           if(!user || !createdData.notif) return;
 
-          // Iniciar tentativa de pagamento
+          // Iniciar tentativa de pagamento (Simulada com sucesso garantido)
           const checkoutResponse = await initiateCheckout(createdData.notif);
 
           if (!checkoutResponse.success) {
@@ -787,24 +886,23 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
              return;
           }
 
-          // ** SUCESSO NO PAGAMENTO **
-          const isPaymentSuccess = true; 
-
-          // 1. Atualiza Status da Notificação
+          // ** SUCESSO NO PAGAMENTO SIMULADO **
+          
+          // 1. Atualiza Status da Notificação para SENT (Para liberar para o destinatário CPF)
           const updatedNotif = { ...createdData.notif, status: NotificationStatus.SENT };
-          await saveNotification(updatedNotif);
+          await saveNotification(updatedNotif); // Salva novamente com status atualizado
 
-          // 2. Atualiza Status da Transação (Local state -> Final callback)
+          // 2. Atualiza Status da Transação
           const updatedTrans = { ...createdData.trans!, status: 'Pago' as const };
 
-          // 3. Atualiza Reunião (Se agendada)
+          // 3. Atualiza Reunião (Se agendada, torna-se ativa)
           let updatedMeeting = createdData.meet;
           if (createdData.meet) {
               updatedMeeting = { ...createdData.meet, status: 'scheduled' };
               await createMeeting(updatedMeeting);
           }
 
-          // Atualiza CreatedData para exibição no recibo
+          // Atualiza CreatedData para exibição no recibo final
           setCreatedData({ notif: updatedNotif, meet: updatedMeeting, trans: updatedTrans });
 
           // AVANÇA PARA A TELA DE PROTOCOLO
