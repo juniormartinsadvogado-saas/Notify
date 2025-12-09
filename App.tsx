@@ -14,6 +14,8 @@ import { ViewState, NotificationItem, NotificationStatus, Meeting, Transaction }
 import { Bell, Search, Menu, X, CheckCircle, FileText, ArrowLeft, LogOut, Loader2 } from 'lucide-react';
 import { ensureUserProfile, getUserProfile } from './services/userService';
 import { getNotificationsByRecipientCpf } from './services/notificationService';
+import { auth } from './services/firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 // Constantes de Filtros para evitar re-renderizações desnecessárias
 const FILTER_CREATED = [NotificationStatus.DRAFT];
@@ -31,6 +33,7 @@ const FILTER_PAYMENT_REFUNDED = ['Reembolsado'];
 const App: React.FC = () => {
   const [showSplash, setShowSplash] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.DASHBOARD);
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,21 +73,26 @@ const App: React.FC = () => {
     };
     window.addEventListener('resize', handleResize);
     
-    const checkSession = async () => {
-        const savedUser = localStorage.getItem('mock_session_user');
-        if (savedUser) {
-            try {
-                const parsedUser = JSON.parse(savedUser);
-                setUser(parsedUser);
-                await ensureUserProfile(parsedUser);
-                checkSystemNotifications(parsedUser.uid);
-            } catch (e) {
-                console.error("Erro ao recuperar sessão:", e);
-                localStorage.removeItem('mock_session_user');
+    // FIREBASE AUTH LISTENER
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+        if (currentUser) {
+            if (currentUser.emailVerified) {
+                // Usuário logado e verificado
+                setUser(currentUser);
+                localStorage.setItem('mock_session_user', JSON.stringify(currentUser)); // Mantido para compatibilidade com partes não migradas
+                await ensureUserProfile(currentUser);
+                checkSystemNotifications(currentUser.uid);
+            } else {
+                // Email não verificado, força logout se tentar persistir (segurança extra)
+                // A UI de Login lida com isso, aqui é apenas state sync
+                setUser(null);
             }
+        } else {
+            setUser(null);
+            localStorage.removeItem('mock_session_user');
         }
-    };
-    checkSession();
+        setLoadingAuth(false);
+    });
 
     // Carregar preferências salvas
     const savedTheme = localStorage.getItem('app_theme_pref');
@@ -96,6 +104,7 @@ const App: React.FC = () => {
 
     return () => {
         window.removeEventListener('resize', handleResize);
+        unsubscribe();
     };
   }, []);
 
@@ -105,7 +114,6 @@ const App: React.FC = () => {
           if (profile && profile.cpf) {
               const cleanCpf = profile.cpf.replace(/\D/g, '');
               const received = await getNotificationsByRecipientCpf(cleanCpf);
-              // Filtra notificações não lidas ou recentes (Simulação: todas recebidas)
               setSystemNotifications(received);
               if (received.length > 0) {
                   setBadgeCounts(prev => ({ ...prev, [ViewState.RECEIVED_NOTIFICATIONS]: received.length }));
@@ -166,20 +174,20 @@ const App: React.FC = () => {
       alert("Reembolso processado com sucesso.\n- Pagamento estornado\n- Notificação movida para Pendentes\n- Conciliação Cancelada");
   };
 
-  const handleLogin = (mockUser: any) => {
-      localStorage.setItem('mock_session_user', JSON.stringify(mockUser));
-      setUser(mockUser);
-      ensureUserProfile(mockUser); 
-      checkSystemNotifications(mockUser.uid);
+  // Função chamada pelo Login component apenas para atualizar estado local se necessário
+  const handleLogin = (firebaseUser: any) => {
+      setUser(firebaseUser);
+      // Logic handled by onAuthStateChanged mostly
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     // 1. Inicia animação de saída
-    setIsSidebarOpen(false); // Fecha sidebar para visual mais limpo
+    setIsSidebarOpen(false); 
     setIsLoggingOut(true);
 
-    // 2. Aguarda 3.5 segundos e limpa sessão
-    setTimeout(() => {
+    // 2. Aguarda 3.5 segundos e faz logout do Firebase
+    setTimeout(async () => {
+        await signOut(auth);
         localStorage.removeItem('mock_session_user');
         setUser(null);
         setCurrentView(ViewState.DASHBOARD);
@@ -260,6 +268,15 @@ const App: React.FC = () => {
 
   if (showSplash) {
     return <SplashScreen onFinish={() => setShowSplash(false)} />;
+  }
+
+  // Enquanto verifica o Auth status
+  if (loadingAuth) {
+      return (
+          <div className="flex h-screen items-center justify-center bg-zinc-100">
+              <Loader2 className="animate-spin text-slate-400" size={32} />
+          </div>
+      );
   }
 
   // LOGOUT ANIMATION SCREEN

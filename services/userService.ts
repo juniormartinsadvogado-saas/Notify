@@ -1,3 +1,6 @@
+import { db, storage } from './firebase';
+import { doc, setDoc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { FileItem } from '../types';
 
 export interface UserData {
@@ -10,10 +13,7 @@ export interface UserData {
   createdAt: string;
 }
 
-const USER_STORAGE_KEY = 'mock_users_profile';
-const FILES_STORAGE_KEY = 'mock_user_files';
-
-// --- MOCK PROFILE ---
+// --- FIRESTORE PROFILE ---
 
 export const createUserProfile = async (user: any, additionalData: { cpf: string; phone: string; photoUrl?: string }) => {
   const userData: UserData = {
@@ -26,21 +26,34 @@ export const createUserProfile = async (user: any, additionalData: { cpf: string
       createdAt: new Date().toISOString()
   };
   
-  // Salva no localStorage mapeado por UID
-  const allProfiles = JSON.parse(localStorage.getItem(USER_STORAGE_KEY) || '{}');
-  allProfiles[user.uid] = userData;
-  localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(allProfiles));
+  try {
+    await setDoc(doc(db, "users", user.uid), userData);
+  } catch (e) {
+    console.error("Erro ao criar perfil no Firestore:", e);
+  }
 
   return userData;
 };
 
 export const getUserProfile = async (uid: string): Promise<UserData | null> => {
-  const allProfiles = JSON.parse(localStorage.getItem(USER_STORAGE_KEY) || '{}');
-  return allProfiles[uid] || null;
+  try {
+    const docRef = doc(db, "users", uid);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      return docSnap.data() as UserData;
+    } else {
+      return null;
+    }
+  } catch (e) {
+    console.error("Erro ao buscar perfil:", e);
+    return null;
+  }
 };
 
 export const ensureUserProfile = async (user: any): Promise<UserData | null> => {
     let profile = await getUserProfile(user.uid);
+    // Se não existir perfil no Firestore (ex: login social ou erro anterior), cria um básico
     if (!profile) {
       profile = await createUserProfile(user, { cpf: '', phone: '' });
     }
@@ -48,26 +61,37 @@ export const ensureUserProfile = async (user: any): Promise<UserData | null> => 
 };
 
 export const updateUserProfile = async (uid: string, data: Partial<UserData>) => {
-    const allProfiles = JSON.parse(localStorage.getItem(USER_STORAGE_KEY) || '{}');
-    if (allProfiles[uid]) {
-        allProfiles[uid] = { ...allProfiles[uid], ...data };
-        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(allProfiles));
+    try {
+        const docRef = doc(db, "users", uid);
+        await updateDoc(docRef, data);
+    } catch (e) {
+        console.error("Erro ao atualizar perfil:", e);
     }
 };
 
 export const uploadUserPhoto = async (uid: string, file: File): Promise<string> => {
-    await new Promise(r => setTimeout(r, 800));
-    return URL.createObjectURL(file);
+    const storageRef = ref(storage, `profile_photos/${uid}`);
+    await uploadBytes(storageRef, file);
+    const url = await getDownloadURL(storageRef);
+    return url;
 };
 
 export const deleteFullUserAccount = async (user: any) => {
-    const allProfiles = JSON.parse(localStorage.getItem(USER_STORAGE_KEY) || '{}');
-    delete allProfiles[user.uid];
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(allProfiles));
-    return true;
+    try {
+        await deleteDoc(doc(db, "users", user.uid));
+        // Nota: A deleção do Auth deve ser chamada do client side (deleteUser)
+        return true;
+    } catch (e) {
+        console.error(e);
+        return false;
+    }
 };
 
-// --- MOCK FILE MANAGER ---
+// --- FILE MANAGER (Mantido local por enquanto ou pode expandir para Firestore Files collection futuramente) ---
+// Para simplificar a transição, manteremos a lógica de arquivos simulada ou local, 
+// já que o foco do pedido foi Auth e Profile.
+
+const FILES_STORAGE_KEY = 'mock_user_files';
 
 export const uploadUserFile = async (uid: string, file: File, notes: string = ''): Promise<FileItem> => {
     await new Promise(r => setTimeout(r, 800));

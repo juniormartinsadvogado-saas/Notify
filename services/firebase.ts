@@ -3,41 +3,19 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
-// Tenta obter variáveis de ambiente de forma segura
-const getEnv = (key: string) => {
-  try {
-    return (import.meta as any).env[key];
-  } catch (e) {
-    return undefined;
-  }
-};
-
 const firebaseConfig = {
-  apiKey: getEnv('VITE_FIREBASE_API_KEY') || 'mock-key',
-  authDomain: getEnv('VITE_FIREBASE_AUTH_DOMAIN'),
-  projectId: getEnv('VITE_FIREBASE_PROJECT_ID'),
-  storageBucket: getEnv('VITE_FIREBASE_STORAGE_BUCKET'),
-  messagingSenderId: getEnv('VITE_FIREBASE_MESSAGING_SENDER_ID'),
-  appId: getEnv('VITE_FIREBASE_APP_ID')
+  apiKey: "AIzaSyBI-WwHPWQuQ6pchhTREXGPJowlOHDpAQY",
+  authDomain: "notify-jma.firebaseapp.com",
+  projectId: "notify-jma",
+  storageBucket: "notify-jma.firebasestorage.app",
+  messagingSenderId: "1087756182176",
+  appId: "1:1087756182176:web:ecb1506775d57a21635fc5"
 };
 
-let app;
-let auth: any = {};
-let db: any = {};
-let storage: any = {};
-
-try {
-  // Só inicializa se houver config mínima válida
-  if (firebaseConfig.apiKey && firebaseConfig.apiKey !== 'mock-key') {
-     app = initializeApp(firebaseConfig);
-     auth = getAuth(app);
-     db = getFirestore(app);
-     storage = getStorage(app);
-  } else {
-     console.warn("Firebase config missing. Running in full mock mode.");
-  }
-} catch (e) {
-  console.warn("Error initializing Firebase, falling back to mock objects.", e);
-}
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const storage = getStorage(app);
 
 export { auth, db, storage };
