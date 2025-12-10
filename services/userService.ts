@@ -1,6 +1,6 @@
 import { db, storage } from './firebase';
-import { doc, setDoc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { doc, setDoc, getDoc, updateDoc, deleteDoc, collection, addDoc, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { FileItem } from '../types';
 
 export interface UserData {
@@ -11,6 +11,12 @@ export interface UserData {
   phone: string;
   photoUrl?: string;
   createdAt: string;
+  // Campos de Assinatura adicionados ao perfil
+  subscriptionActive?: boolean;
+  subscriptionPlan?: string;
+  creditsTotal?: number;
+  creditsUsed?: number;
+  nextBillingDate?: string;
 }
 
 // --- FIRESTORE PROFILE ---
@@ -23,7 +29,11 @@ export const createUserProfile = async (user: any, additionalData: { cpf: string
       cpf: additionalData.cpf || '',
       phone: additionalData.phone || '',
       photoUrl: additionalData.photoUrl || user.photoURL || '',
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      subscriptionActive: false,
+      subscriptionPlan: 'Plano Gratuito',
+      creditsTotal: 0,
+      creditsUsed: 0
   };
   
   try {
@@ -87,51 +97,101 @@ export const deleteFullUserAccount = async (user: any) => {
     }
 };
 
-// --- FILE MANAGER (Mantido local por enquanto ou pode expandir para Firestore Files collection futuramente) ---
-// Para simplificar a transição, manteremos a lógica de arquivos simulada ou local, 
-// já que o foco do pedido foi Auth e Profile.
+// --- FILE MANAGER (AGORA NO FIREBASE) ---
 
-const FILES_STORAGE_KEY = 'mock_user_files';
+const FILES_COLLECTION = 'files';
 
 export const uploadUserFile = async (uid: string, file: File, notes: string = ''): Promise<FileItem> => {
-    await new Promise(r => setTimeout(r, 800));
-    
-    const newFile: FileItem = {
-        id: `file-${Date.now()}`,
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        url: URL.createObjectURL(file), // Local URL
-        storagePath: 'mock/path',
-        createdAt: new Date().toISOString(),
-        userNotes: notes
-    };
+    try {
+        // 1. Upload do arquivo físico para o Storage
+        const storagePath = `user_files/${uid}/${Date.now()}_${file.name}`;
+        const storageRef = ref(storage, storagePath);
+        
+        await uploadBytes(storageRef, file);
+        const downloadUrl = await getDownloadURL(storageRef);
 
-    const allFiles = JSON.parse(localStorage.getItem(FILES_STORAGE_KEY) || '[]');
-    allFiles.push({ ...newFile, uid }); // Adiciona UID para filtro
-    localStorage.setItem(FILES_STORAGE_KEY, JSON.stringify(allFiles));
+        // 2. Criação do metadado no Firestore
+        const newFile: FileItem = {
+            id: '', // Será preenchido após addDoc
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            url: downloadUrl,
+            storagePath: storagePath,
+            createdAt: new Date().toISOString(),
+            userNotes: notes
+        };
 
-    return newFile;
+        const docRef = await addDoc(collection(db, FILES_COLLECTION), {
+            ...newFile,
+            uid: uid // Vínculo com usuário
+        });
+
+        // Retorna o objeto completo com o ID gerado pelo Firestore
+        return { ...newFile, id: docRef.id };
+
+    } catch (error) {
+        console.error("Erro ao fazer upload de arquivo:", error);
+        throw error;
+    }
 };
 
 export const getUserFiles = async (uid: string): Promise<FileItem[]> => {
-    const allFiles = JSON.parse(localStorage.getItem(FILES_STORAGE_KEY) || '[]');
-    return allFiles.filter((f: any) => f.uid === uid).sort((a: any,b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    try {
+        const q = query(
+            collection(db, FILES_COLLECTION),
+            where("uid", "==", uid)
+        );
+        
+        const querySnapshot = await getDocs(q);
+        const files: FileItem[] = [];
+        
+        querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            files.push({
+                id: doc.id,
+                name: data.name,
+                type: data.type,
+                size: data.size,
+                url: data.url,
+                storagePath: data.storagePath,
+                createdAt: data.createdAt,
+                userNotes: data.userNotes,
+                aiSummary: data.aiSummary
+            });
+        });
+
+        return files.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } catch (error) {
+        console.error("Erro ao buscar arquivos:", error);
+        return [];
+    }
 };
 
 export const deleteUserFile = async (uid: string, fileId: string, storagePath: string) => {
-   const allFiles = JSON.parse(localStorage.getItem(FILES_STORAGE_KEY) || '[]');
-   const filtered = allFiles.filter((f: FileItem) => f.id !== fileId);
-   localStorage.setItem(FILES_STORAGE_KEY, JSON.stringify(filtered));
-   return true;
+    try {
+        // 1. Deleta do Firestore
+        await deleteDoc(doc(db, FILES_COLLECTION, fileId));
+
+        // 2. Deleta do Storage
+        if (storagePath && !storagePath.includes('mock')) {
+             const storageRef = ref(storage, storagePath);
+             await deleteObject(storageRef);
+        }
+        return true;
+    } catch (error) {
+        console.error("Erro ao deletar arquivo:", error);
+        throw error;
+    }
 };
 
 export const updateFileMetadata = async (uid: string, fileId: string, data: Partial<FileItem>) => {
-    const allFiles = JSON.parse(localStorage.getItem(FILES_STORAGE_KEY) || '[]');
-    const index = allFiles.findIndex((f: FileItem) => f.id === fileId);
-    if (index >= 0) {
-        allFiles[index] = { ...allFiles[index], ...data };
-        localStorage.setItem(FILES_STORAGE_KEY, JSON.stringify(allFiles));
+    try {
+        const docRef = doc(db, FILES_COLLECTION, fileId);
+        await updateDoc(docRef, data);
+        return true;
+    } catch (error) {
+        console.error("Erro ao atualizar metadados do arquivo:", error);
+        throw error;
     }
-    return true;
 };

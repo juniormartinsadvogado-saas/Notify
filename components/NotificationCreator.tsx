@@ -1,15 +1,15 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { generateNotificationText } from '../services/geminiService';
-import { saveNotification, uploadEvidence, deleteEvidence, uploadSignedPdf } from '../services/notificationService';
+import { saveNotification, uploadEvidence, uploadSignedPdf } from '../services/notificationService';
 import { initiateCheckout } from '../services/paymentService';
 import { createMeeting } from '../services/meetingService';
 import { NotificationItem, NotificationStatus, EvidenceItem, Meeting, Transaction, Attachment } from '../types';
-import { jsPDF } from "jspdf";
 import { 
   Wand2, Scale, Users, 
   FileText, PenTool, CreditCard, Check, Loader2, 
-  AlertCircle, Briefcase, ShoppingBag, Home, Heart, Gavel, Globe,
-  Building2, Calculator, Landmark, Stethoscope, Leaf, Anchor, Plane, Zap, Rocket, Laptop, Trophy, FileSignature, Scroll, UploadCloud, X, MapPin, UserCheck, UserCog, Video, User, ShieldCheck, Clock3, MessageCircle, Smartphone, Mail, Package, ZapIcon, Send, Lock, Unlock, AlertTriangle, QrCode, Copy, CheckCircle2, ArrowRight, Calendar, Clock, CreditCard as CardIcon, ChevronLeft, Eye, BrainCircuit, Sparkles
+  Briefcase, ShoppingBag, Home, Heart, FileSignature, Scroll, UploadCloud, X, User, Video, CheckCircle2, ArrowRight, Calendar, Lock, ChevronLeft, Sparkles,
+  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe
 } from 'lucide-react';
 
 interface NotificationCreatorProps {
@@ -18,103 +18,98 @@ interface NotificationCreatorProps {
   onBack?: () => void;
 }
 
+// --- FLUXO REORDENADO ---
 const STEPS = [
   { id: 1, label: 'Áreas', icon: Scale },
   { id: 2, label: 'Ocorrências', icon: FileText },
   { id: 3, label: 'Partes', icon: Users },
-  { id: 4, label: 'Geração', icon: Wand2 },
-  { id: 5, label: 'Assinatura', icon: PenTool },
-  { id: 6, label: 'Pagamento', icon: CreditCard },
+  { id: 4, label: 'Conciliação', icon: Video }, // NOVO PASSO ANTES DA IA
+  { id: 5, label: 'Geração IA', icon: Wand2 },
+  { id: 6, label: 'Assinatura', icon: PenTool },
+  { id: 7, label: 'Pagamento', icon: CreditCard },
 ];
 
-interface LawArea {
-    id: string;
-    name: string;
-    icon: any;
-    desc: string;
-    species: string[];
-}
-
-const LAW_AREAS: LawArea[] = [
+// --- 20 ÁREAS DO DIREITO ---
+const LAW_AREAS = [
   { 
-    id: 'civil', name: 'Civil', icon: Scale, desc: 'Relações privadas, obrigações e bens.',
-    species: ['Cobrança de dívidas', 'Rescisão de contratos', 'Restituição de valores', 'Indenização por atraso', 'Notificação de descumprimento contratual', 'Reparação de danos morais/materiais']
+    id: 'civil', name: 'Civil', icon: Scale, desc: 'Relações privadas, obrigações e responsabilidade civil.',
+    species: ['Cobrança de dívidas', 'Indenização por danos morais', 'Indenização por danos materiais', 'Cumprimento de obrigação', 'Notificação extrajudicial genérica']
   },
   { 
     id: 'trabalhista', name: 'Trabalhista', icon: Briefcase, desc: 'Relações de trabalho e emprego.',
-    species: ['Pagamento de salários atrasados', 'Rescisão indireta', 'Assédio moral', 'Verbas rescisórias', 'Horas extras não pagas', 'Reintegração de emprego']
+    species: ['Pagamento de verbas rescisórias', 'Assédio moral no trabalho', 'Reintegração de emprego', 'Solicitação de documentos', 'Justificativa de faltas']
   },
   { 
     id: 'consumidor', name: 'Consumidor', icon: ShoppingBag, desc: 'Defesa de quem adquire produtos/serviços.',
-    species: ['Cobrança indevida', 'Produto com defeito', 'Cancelamento de serviços', 'Falha na entrega', 'Garantia não cumprida', 'Publicidade enganosa']
+    species: ['Produto com defeito', 'Cobrança indevida', 'Falha na prestação de serviço', 'Cancelamento de contrato', 'Publicidade enganosa']
   },
   { 
     id: 'imobiliario', name: 'Imobiliário', icon: Home, desc: 'Posse, propriedade e locação.',
-    species: ['Cobrança de aluguel', 'Rescisão de contrato de locação', 'Multa por atraso', 'Danos ao imóvel', 'Notificação de despejo', 'Vícios construtivos']
+    species: ['Atraso no aluguel', 'Pedido de desocupação', 'Vícios no imóvel', 'Devolução de caução', 'Perturbação do sossego']
+  },
+  { 
+    id: 'familia', name: 'Família', icon: Heart, desc: 'Relações familiares e sucessões.',
+    species: ['Pagamento de pensão alimentícia', 'Regulamentação de visitas', 'Alienação parental', 'Pedido de divórcio consensual', 'Partilha de bens']
   },
   { 
     id: 'contratual', name: 'Contratual', icon: FileSignature, desc: 'Acordos firmados entre partes.',
-    species: ['Descumprimento de contrato', 'Alteração unilateral', 'Pagamento não realizado', 'Revisão contratual', 'Multa contratual', 'Distrato']
+    species: ['Descumprimento de cláusula', 'Rescisão contratual', 'Aplicação de multa', 'Revisão de contrato', 'Distrato']
   },
   { 
-    id: 'familia', name: 'Família', icon: Heart, desc: 'Relações familiares e parentais.',
-    species: ['Pensão alimentícia', 'Guarda de filhos', 'Divórcio amigável', 'Partilha de bens', 'Reconhecimento de união estável', 'Regulamentação de visitas']
+    id: 'criminal', name: 'Criminal', icon: Gavel, desc: 'Crimes contra honra e notificações penais.',
+    species: ['Calúnia, Injúria ou Difamação', 'Notificação para cessar ameaças', 'Pedido de explicações em juízo', 'Stalking/Perseguição']
   },
   { 
-    id: 'sucessoes', name: 'Sucessões', icon: Scroll, desc: 'Transferência de patrimônio pós-morte.',
-    species: ['Inventário extrajudicial', 'Partilha de bens', 'Testamento', 'Herança', 'Quitação de direitos hereditários', 'Sonegação de bens']
+    id: 'empresarial', name: 'Empresarial', icon: Building2, desc: 'Atividades empresariais e societárias.',
+    species: ['Dissolução de sociedade', 'Prestação de contas', 'Cobrança entre empresas', 'Uso indevido de marca', 'Concorrência desleal']
   },
   { 
-    id: 'empresarial', name: 'Empresarial', icon: Building2, desc: 'Atividades econômicas e sociedades.',
-    species: ['Cobrança entre empresas', 'Descumprimento de contrato B2B', 'Multa por inadimplência', 'Rescisão de sociedade', 'Notificação de inadimplência', 'Concorrência desleal']
+    id: 'tributario', name: 'Tributário', icon: Landmark, desc: 'Impostos, taxas e fisco.',
+    species: ['Defesa administrativa', 'Pedido de isenção', 'Restituição de imposto', 'Parcelamento de dívida']
   },
   { 
-    id: 'tributario', name: 'Tributário', icon: Calculator, desc: 'Relação com o Fisco e impostos.',
-    species: ['Contestação de tributos indevidos', 'Parcelamento de dívidas', 'Revisão de impostos', 'Notificação de débitos', 'Pedido de compensação', 'Isenção fiscal']
+    id: 'bancario', name: 'Bancário', icon: Banknote, desc: 'Relações com instituições financeiras.',
+    species: ['Juros abusivos', 'Fraude em empréstimo', 'Cartão não solicitado', 'Negativação indevida', 'Renegociação de dívida']
   },
   { 
-    id: 'criminal', name: 'Criminal', icon: Gavel, desc: 'Infrações penais e delitos.',
-    species: ['Crimes contra a honra', 'Ameaças', 'Violação de propriedade', 'Notificação de restituição', 'Acordo penal extrajudicial', 'Notícia-crime']
+    id: 'condominial', name: 'Condominial', icon: Key, desc: 'Vida em condomínio e vizinhança.',
+    species: ['Multa por barulho', 'Inadimplência de condomínio', 'Uso indevido de área comum', 'Danos causados por vizinho', 'Obras irregulares']
   },
   { 
-    id: 'administrativo', name: 'Administrativo', icon: Landmark, desc: 'Relação com órgãos públicos.',
-    species: ['Obrigações não cumpridas', 'Multa administrativa', 'Reclamação formal', 'Pedido de regularização', 'Comunicação de descumprimento', 'Recurso administrativo']
+    id: 'digital', name: 'Direito Digital', icon: Wifi, desc: 'Internet, dados e crimes virtuais.',
+    species: ['Remoção de conteúdo ofensivo', 'Uso indevido de imagem', 'Vazamento de dados (LGPD)', 'Recuperação de conta', 'Golpes virtuais']
   },
   { 
-    id: 'previdenciario', name: 'Previdenciário', icon: Stethoscope, desc: 'Seguridade social e benefícios.',
-    species: ['Cobrança de benefícios atrasados', 'Revisão de aposentadoria', 'Pensão por morte', 'Auxílio-doença', 'Notificação de indeferimento', 'Prova de vida']
+    id: 'administrativo', name: 'Administrativo', icon: Scroll, desc: 'Relações com órgãos públicos.',
+    species: ['Recurso de multa', 'Solicitação de prontuário', 'Pedido de licença', 'Impugnação de edital']
   },
   { 
-    id: 'ambiental', name: 'Ambiental', icon: Leaf, desc: 'Proteção ao meio ambiente.',
-    species: ['Danos ambientais leves', 'Multa por descumprimento', 'Recuperação ambiental', 'Comunicação de irregularidades', 'Reclamação extrajudicial', 'Poluição sonora']
+    id: 'previdenciario', name: 'Previdenciário', icon: GraduationCap, desc: 'Aposentadoria e INSS.',
+    species: ['Pedido de benefício', 'Recurso administrativo INSS', 'Revisão de aposentadoria', 'Declaração de tempo de serviço']
   },
   { 
-    id: 'internacional', name: 'Internacional', icon: Globe, desc: 'Relações entre nações ou estrangeiros.',
-    species: ['Cobrança internacional', 'Notificação de contratos internacionais', 'Multa por descumprimento', 'Alteração contratual', 'Notificação de inadimplência', 'Imigração']
+    id: 'transito', name: 'Trânsito', icon: Car, desc: 'Veículos e infrações.',
+    species: ['Recurso de multa de trânsito', 'Transferência de veículo não realizada', 'Acidente de trânsito (Danos)', 'CNH suspensa']
   },
   { 
-    id: 'maritimo', name: 'Marítimo', icon: Anchor, desc: 'Navegação e comércio no mar.',
-    species: ['Descumprimento de frete', 'Cobrança de serviços', 'Atraso de carga', 'Reclamação por danos leves', 'Alteração contratual', 'Demurrage']
+    id: 'medico', name: 'Médico', icon: Stethoscope, desc: 'Saúde e erro médico.',
+    species: ['Negativa de plano de saúde', 'Erro médico/odontológico', 'Reembolso de despesas', 'Fornecimento de medicamento']
   },
   { 
-    id: 'aeronautico', name: 'Aeronáutico', icon: Plane, desc: 'Transporte aéreo e aviação.',
-    species: ['Cobrança de serviços aéreos', 'Cancelamento de voo', 'Contratos de fretamento', 'Extravio de bagagem', 'Reclamação por atrasos', 'Overbooking']
+    id: 'ambiental', name: 'Ambiental', icon: Leaf, desc: 'Meio ambiente e sustentabilidade.',
+    species: ['Defesa de multa ambiental', 'Denúncia de dano ambiental', 'Regularização de licença', 'Poda de árvore ilegal']
   },
   { 
-    id: 'energetico', name: 'Energético', icon: Zap, desc: 'Energia elétrica e fontes.',
-    species: ['Cobrança indevida de tarifas', 'Falta de fornecimento', 'Notificação de reajuste', 'Contestação de contas', 'Solicitação de regularização', 'Danos elétricos']
+    id: 'propriedade_intelectual', name: 'Prop. Intelectual', icon: Copyright, desc: 'Direitos autorais e marcas.',
+    species: ['Notificação de uso de imagem', 'Plágio', 'Violação de direitos autorais', 'Uso de software pirata']
   },
   { 
-    id: 'espacial', name: 'Espacial', icon: Rocket, desc: 'Direito aeroespacial (Nichado).',
-    species: ['Descumprimento contratual', 'Notificação de atrasos', 'Cobrança de serviços', 'Alteração de cronogramas', 'Reclamação formal']
+    id: 'agrario', name: 'Agrário', icon: Leaf, desc: 'Relações no campo e terras.',
+    species: ['Arrendamento rural', 'Invasão de terras', 'Contratos de safra', 'Demarcação de terras']
   },
   { 
-    id: 'digital', name: 'Digital', icon: Laptop, desc: 'Internet, tecnologia e dados.',
-    species: ['Uso indevido de marca', 'Violação de direitos autorais', 'Software sem licença', 'Uso de patente indevida', 'Notificação de infração', 'Remoção de conteúdo']
-  },
-  { 
-    id: 'esportivo', name: 'Esportivo', icon: Trophy, desc: 'Atletas, clubes e competições.',
-    species: ['Descumprimento de contratos de atleta', 'Notificação de patrocínios', 'Uso indevido de imagem', 'Alteração contratual', 'Multas contratuais', 'Direito de arena']
+    id: 'internacional', name: 'Internacional', icon: Globe, desc: 'Relações estrangeiras.',
+    species: ['Homologação de sentença', 'Contratos internacionais', 'Vistos e imigração', 'Extradição']
   }
 ];
 
@@ -168,12 +163,6 @@ const MASKS = {
     },
     cep: (value: string) => {
       return value.replace(/\D/g, '').replace(/^(\d{5})(\d)/, '$1-$2');
-    },
-    card: (value: string) => {
-      return value.replace(/\D/g, '').replace(/(\d{4})(?=\d)/g, '$1 ').substring(0, 19);
-    },
-    expiry: (value: string) => {
-      return value.replace(/\D/g, '').replace(/^(\d{2})(\d)/, '$1/$2').substring(0, 5);
     }
 };
 
@@ -188,64 +177,18 @@ const formatAddressString = (addr: Address) => {
     return parts.join(', ') || 'Endereço não informado';
 };
 
-// LIMPEZA DE MARKDOWN PARA PDF (RIGOROSA)
-const cleanTextForPDF = (text: string) => {
-    return text
-        .replace(/\*\*/g, '') // Remove negrito
-        .replace(/\*/g, '')   // Remove itálico
-        .replace(/#/g, '')    // Remove headers
-        .replace(/\[|\]/g, '') // Remove colchetes
-        .replace(/_/g, '')    // Remove underscores
-        .replace(/^\s*[\-\*]\s+/gm, '') // Remove bullets de lista no inicio da linha
-        .replace(/\n{3,}/g, '\n\n') // Reduz quebras de linha excessivas
-        .trim();
-};
+const DraftingAnimation = () => (
+    <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-20 overflow-hidden">
+         <div className="relative">
+             <FileText size={48} className="text-blue-500 animate-bounce" />
+             <div className="absolute -right-4 -bottom-2 animate-pulse">
+                <PenTool size={24} className="text-slate-600" />
+             </div>
+         </div>
+         <p className="mt-8 text-sm font-medium text-slate-500 uppercase tracking-widest animate-pulse">Redigindo Minuta Jurídica...</p>
+    </div>
+);
 
-// --- COMPONENTES AUXILIARES ---
-
-// Animação Criativa de "IA Trabalhando"
-const DraftingAnimation = () => {
-    return (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-20 overflow-hidden">
-            <div className="relative w-64 h-80 bg-white border border-slate-200 rounded shadow-2xl flex flex-col p-8 transform scale-90 animate-pulse-slow">
-                {/* Header Mock */}
-                <div className="w-1/3 h-4 bg-slate-200 rounded mb-8"></div>
-                
-                {/* Body Mock Lines */}
-                <div className="space-y-3 w-full">
-                    <div className="w-full h-2 bg-slate-100 rounded animate-[width-pulse_2s_infinite]"></div>
-                    <div className="w-11/12 h-2 bg-slate-100 rounded animate-[width-pulse_2.5s_infinite]"></div>
-                    <div className="w-full h-2 bg-slate-100 rounded animate-[width-pulse_3s_infinite]"></div>
-                    <div className="w-4/5 h-2 bg-slate-100 rounded animate-[width-pulse_1.8s_infinite]"></div>
-                    <br/>
-                    <div className="w-full h-2 bg-slate-100 rounded animate-[width-pulse_2.2s_infinite]"></div>
-                    <div className="w-10/12 h-2 bg-slate-100 rounded animate-[width-pulse_2.8s_infinite]"></div>
-                    <div className="w-full h-2 bg-slate-100 rounded animate-[width-pulse_3.2s_infinite]"></div>
-                </div>
-
-                {/* Brain Icon Overlay */}
-                <div className="absolute inset-0 flex items-center justify-center bg-white/50 backdrop-blur-[1px]">
-                    <div className="bg-white p-4 rounded-full shadow-xl border border-purple-100 animate-bounce-slow">
-                        <BrainCircuit size={40} className="text-purple-600 animate-pulse" />
-                    </div>
-                </div>
-            </div>
-            <p className="mt-8 text-sm font-medium text-slate-500 uppercase tracking-widest animate-pulse">Redigindo Minuta Jurídica...</p>
-            <style>{`
-                @keyframes width-pulse {
-                    0%, 100% { width: 100%; opacity: 0.5; }
-                    50% { width: 90%; opacity: 1; }
-                }
-                @keyframes bounce-slow {
-                    0%, 100% { transform: translateY(0); }
-                    50% { transform: translateY(-10px); }
-                }
-            `}</style>
-        </div>
-    );
-};
-
-// Seletor de Agendamento Criativo
 const CreativeMeetingSelector: React.FC<{
     date: string;
     time: string;
@@ -253,112 +196,70 @@ const CreativeMeetingSelector: React.FC<{
     setTime: (t: string) => void;
     disabled: boolean;
 }> = ({ date, time, setDate, setTime, disabled }) => {
-    
-    // Gerar horários
     const slots = [8,9,10,11,13,14,15,16].map(h => `${h < 10 ? '0'+h : h}:00`);
-
     return (
         <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 shadow-inner relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-3 opacity-10">
-                <Calendar size={80} className="text-white transform rotate-12" />
-            </div>
-            
-            <h5 className="text-white text-sm font-bold flex items-center mb-4">
-                <Video size={16} className="mr-2 text-purple-400" /> Sala de Conciliação Virtual
-            </h5>
-
-            <div className="space-y-4 relative z-10">
-                {/* Input de Data Estilizado */}
+             <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/20 rounded-full blur-3xl pointer-events-none"></div>
+             <div className="space-y-4 relative z-10">
                 <div className="group">
                     <label className="text-[10px] text-slate-400 uppercase font-bold mb-1.5 block group-focus-within:text-purple-400 transition-colors">
                         Selecione o Dia (Seg-Sex)
                     </label>
                     <div className="relative bg-slate-900/50 rounded-lg p-1 border border-slate-600 focus-within:border-purple-500 transition-colors flex items-center">
-                        <input 
-                            type="date" 
-                            value={date}
-                            onChange={(e) => setDate(e.target.value)}
-                            disabled={disabled}
-                            className="w-full bg-transparent text-white text-sm p-2 outline-none font-medium cursor-pointer"
-                        />
+                        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={disabled} className="w-full bg-transparent text-white text-sm p-2 outline-none font-medium cursor-pointer" />
                         <Calendar size={16} className="text-slate-400 mr-2 pointer-events-none" />
                     </div>
                 </div>
-
-                {/* Grid de Horários */}
                 <div>
-                    <label className="text-[10px] text-slate-400 uppercase font-bold mb-2 block">
-                        Horário Disponível
-                    </label>
+                    <label className="text-[10px] text-slate-400 uppercase font-bold mb-2 block">Horário Disponível</label>
                     <div className="grid grid-cols-4 gap-2">
                         {slots.map(slot => (
-                            <button
-                                key={slot}
-                                type="button"
-                                onClick={() => setTime(slot)}
-                                disabled={disabled}
-                                className={`
-                                    py-1.5 text-xs font-bold rounded-md transition-all border
-                                    ${time === slot 
-                                        ? 'bg-purple-600 text-white border-purple-500 shadow-lg shadow-purple-900/50 scale-105' 
-                                        : 'bg-slate-700 text-slate-300 border-slate-600 hover:bg-slate-600 hover:border-slate-500'
-                                    }
-                                `}
-                            >
+                            <button key={slot} type="button" onClick={() => setTime(slot)} disabled={disabled} className={`py-1.5 text-xs font-bold rounded-md transition-all border ${time === slot ? 'bg-purple-600 text-white border-purple-500' : 'bg-slate-700 text-slate-300 border-slate-600'}`}>
                                 {slot}
                             </button>
                         ))}
                     </div>
                 </div>
-            </div>
+             </div>
         </div>
     );
 };
 
 const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputChange, onAddressChange, documentLabel = "CPF ou CNPJ", documentMask = MASKS.cpfCnpj, documentMaxLength = 18, documentPlaceholder }) => {
-    const getIcon = () => {
-        if (section === 'representative') return <UserCog className="mr-2" />;
-        if (section === 'sender') return <UserCheck className="mr-2" />;
-        if (section === 'recipient') return <User className="mr-2" />;
-        return <AlertCircle className="mr-2" />;
-    };
-
     return (
         <div className={`bg-white p-4 md:p-6 rounded-2xl border-l-4 ${colorClass} shadow-sm border-t border-r border-b border-slate-200 mb-6`}>
-            <h3 className="font-bold text-slate-800 mb-6 flex items-center text-lg">
-                {getIcon()}
-                {title}
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div className="md:col-span-2">
+             <h3 className="font-bold text-slate-800 mb-6 flex items-center text-lg">{title}</h3>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                 <div className="md:col-span-2">
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome Completo</label>
-                    <input type="text" value={data.name} onChange={e => onInputChange(section, 'name', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm" placeholder="Nome completo ou Razão Social" />
-                </div>
-                <div>
+                    <input type="text" value={data.name} onChange={e => onInputChange(section, 'name', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm" placeholder="Nome" />
+                 </div>
+                 
+                 <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{documentLabel}</label>
-                    <input type="text" value={data.cpfCnpj} maxLength={documentMaxLength} onChange={e => onInputChange(section, 'cpfCnpj', documentMask(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm" placeholder={documentPlaceholder || documentLabel} />
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Telefone</label>
-                    <input type="text" value={data.phone} maxLength={15} onChange={e => onInputChange(section, 'phone', MASKS.phone(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm" placeholder="(00) 00000-0000" />
-                </div>
-                <div className="md:col-span-2">
+                    <input type="text" value={data.cpfCnpj} maxLength={documentMaxLength} onChange={e => onInputChange(section, 'cpfCnpj', documentMask(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm" placeholder={documentPlaceholder} />
+                 </div>
+                 <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">E-mail</label>
                     <input type="email" value={data.email} onChange={e => onInputChange(section, 'email', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm" placeholder="email@exemplo.com" />
-                </div>
-            </div>
-            <div className="pt-4 border-t border-slate-100">
-                <h4 className="text-xs font-bold text-slate-400 uppercase mb-3 flex items-center"><MapPin size={12} className="mr-1" /> Endereço</h4>
-                <div className="grid grid-cols-6 gap-2 md:gap-3">
-                    <div className="col-span-3 md:col-span-2"><input type="text" value={data.address.cep} onChange={e => onAddressChange(section, 'cep', MASKS.cep(e.target.value))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none" placeholder="CEP" /></div>
-                    <div className="col-span-3 md:col-span-4"><input type="text" value={data.address.street} onChange={e => onAddressChange(section, 'street', e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none" placeholder="Rua" /></div>
-                    <div className="col-span-2"><input type="text" value={data.address.number} onChange={e => onAddressChange(section, 'number', e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none" placeholder="Nº" /></div>
-                    <div className="col-span-4"><input type="text" value={data.address.complement} onChange={e => onAddressChange(section, 'complement', e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none" placeholder="Comp." /></div>
-                    <div className="col-span-6 md:col-span-2"><input type="text" value={data.address.neighborhood} onChange={e => onAddressChange(section, 'neighborhood', e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none" placeholder="Bairro" /></div>
-                    <div className="col-span-4 md:col-span-3"><input type="text" value={data.address.city} onChange={e => onAddressChange(section, 'city', e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none" placeholder="Cidade" /></div>
-                    <div className="col-span-2 md:col-span-1"><input type="text" value={data.address.state} onChange={e => onAddressChange(section, 'state', e.target.value.toUpperCase())} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none text-center" placeholder="UF" /></div>
-                </div>
-            </div>
+                 </div>
+                 <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Telefone / WhatsApp</label>
+                    <input type="text" value={data.phone} maxLength={15} onChange={e => onInputChange(section, 'phone', MASKS.phone(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm" placeholder="(00) 00000-0000" />
+                 </div>
+             </div>
+
+             <div className="mt-6 pt-4 border-t border-slate-100">
+                 <span className="text-xs font-bold text-slate-400 uppercase block mb-3">Endereço (Opcional)</span>
+                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <input type="text" placeholder="CEP" value={data.address.cep} onChange={e => onAddressChange(section, 'cep', MASKS.cep(e.target.value))} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
+                    <input type="text" placeholder="Rua" value={data.address.street} onChange={e => onAddressChange(section, 'street', e.target.value)} className="col-span-1 md:col-span-3 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
+                    <input type="text" placeholder="Número" value={data.address.number} onChange={e => onAddressChange(section, 'number', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
+                    <input type="text" placeholder="Bairro" value={data.address.neighborhood} onChange={e => onAddressChange(section, 'neighborhood', e.target.value)} className="col-span-1 md:col-span-2 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
+                    <input type="text" placeholder="Cidade" value={data.address.city} onChange={e => onAddressChange(section, 'city', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
+                    <input type="text" placeholder="UF" value={data.address.state} maxLength={2} onChange={e => onAddressChange(section, 'state', e.target.value.toUpperCase())} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
+                 </div>
+             </div>
         </div>
     );
 };
@@ -367,27 +268,17 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const [currentStep, setCurrentStep] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSavingData, setIsSavingData] = useState(false);
-  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [error, setError] = useState('');
   const [notificationId] = useState(`NOT-${Math.random().toString(36).substr(2, 9).toUpperCase()}`);
   
-  // State for Roles
   const [partiesStep, setPartiesStep] = useState<'role_selection' | 'forms'>('role_selection');
   const [role, setRole] = useState<'self' | 'representative' | null>(null);
 
-  // Canvas Logic
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [signatureData, setSignatureData] = useState<string | null>(null);
   
-  // State for Generation Success View
-  const [showSuccessScreen, setShowSuccessScreen] = useState(false);
-  // State for Pix Copy Feedback
-  const [pixCopied, setPixCopied] = useState(false);
-  // Preview Pagination State
-  const [previewPages, setPreviewPages] = useState<string[][]>([]);
-
   const [formData, setFormData] = useState({
     areaId: '',
     species: '',
@@ -404,88 +295,35 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     signed: false,
   });
 
-  // Alterado para LocalAttachment: arquivos ficam apenas no frontend até a assinatura
   const [localFiles, setLocalFiles] = useState<LocalAttachment[]>([]);
-  // Evidencias confirmadas após upload (para referência)
-  const [uploadedEvidences, setUploadedEvidences] = useState<EvidenceItem[]>([]);
-
+  
   const [paymentPlan, setPaymentPlan] = useState<'single' | 'subscription'>('single');
-  
-  const [paymentMethod, setPaymentMethod] = useState<'pix' | 'credit_card'>('pix');
   const [paymentStage, setPaymentStage] = useState<'selection' | 'input' | 'protocol'>('selection');
-  
-  // Estado para dados do Cartão
-  const [cardData, setCardData] = useState({ number: '', name: '', expiry: '', cvv: '' });
+  const [isProcessingAction, setIsProcessingAction] = useState(false);
 
-  // Estado para armazenar dados criados antes de sair (Protocolo)
   const [createdData, setCreatedData] = useState<{notif?: NotificationItem, meet?: Meeting, trans?: Transaction}>({});
 
   const currentArea = LAW_AREAS.find(a => a.id === formData.areaId);
 
-  // Responsive Canvas Resize
   useEffect(() => {
-    const resizeCanvas = () => {
-        if (containerRef.current && canvasRef.current) {
-            const containerWidth = containerRef.current.offsetWidth;
-            if(canvasRef.current.width !== containerWidth) {
-                canvasRef.current.width = containerWidth;
-            }
-        }
-    };
-    
-    // Initial size
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    return () => window.removeEventListener('resize', resizeCanvas);
-  }, [currentStep]);
-
-  // PAGINATION CALCULATION EFFECT
-  useEffect(() => {
-    if (currentStep === 5 && formData.generatedContent) {
-        // Use jsPDF to simulate text wrapping and calculate pages
-        const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-        doc.setFont("times", "normal");
-        doc.setFontSize(11);
-        
-        // Constants matching the PDF generation
-        const margin = 20; // mm
-        const pageWidth = 210;
-        const contentWidth = pageWidth - (margin * 2); // 170mm
-        // Usable height per page: 297 - 45 (header) - 20 (footer) = ~232mm
-        const pageContentHeight = 230; 
-        const lineHeight = 6; // mm per line approx
-
-        const cleanBody = cleanTextForPDF(formData.generatedContent);
-        // This splits text into lines that fit the width
-        const lines = doc.splitTextToSize(cleanBody, contentWidth);
-        
-        const pages: string[][] = [];
-        let currentPageLines: string[] = [];
-        let currentH = 0;
-        
-        lines.forEach((line: string) => {
-            if (currentH + lineHeight > pageContentHeight) {
-                pages.push(currentPageLines);
-                currentPageLines = [];
-                currentH = 0;
-            }
-            currentPageLines.push(line);
-            currentH += lineHeight;
-        });
-        
-        // Push remaining lines
-        if (currentPageLines.length > 0) {
-            pages.push(currentPageLines);
-        }
-        
-        setPreviewPages(pages);
+    if (currentStep === 6 && containerRef.current && canvasRef.current) { // Ajuste para step 6
+      const containerWidth = containerRef.current.offsetWidth;
+      const canvas = canvasRef.current;
+      canvas.width = containerWidth;
+      canvas.height = 200;
+      
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.strokeStyle = "#000";
+        ctx.lineWidth = 2;
+        ctx.lineCap = "round";
+      }
     }
-  }, [currentStep, formData.generatedContent]);
+  }, [currentStep]);
 
   const calculateTotal = () => {
     if (paymentPlan === 'subscription') return 259.97;
-    // Preço do Combo Unitário
-    return 57.92;
+    return 57.92; // Avulso
   };
 
   const handleInputChange = (section: 'sender' | 'recipient' | 'representative', field: string, value: string) => {
@@ -496,434 +334,144 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     setFormData(prev => ({ ...prev, [section]: { ...prev[section], address: { ...prev[section].address, [field]: value } } }));
   };
   
-  const handleDateChange = (val: string) => {
-      // Validação: 0 = Domingo, 6 = Sábado
-      const dateParts = val.split('-');
-      const localDate = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]));
-      const localDay = localDate.getDay();
-      
-      if (localDay === 0 || localDay === 6) {
-          setError("Agendamentos disponíveis apenas de Segunda a Sexta-feira.");
-          setFormData(prev => ({ ...prev, meetingDate: '' }));
-          return;
-      }
-      
-      setError('');
-      setFormData(prev => ({ ...prev, meetingDate: val }));
+  const handleDateChange = (date: string) => {
+    setFormData(prev => ({ ...prev, meetingDate: date }));
+  };
+  
+  const handleTimeChange = (time: string) => {
+    setFormData(prev => ({ ...prev, meetingTime: time }));
   };
 
-  // Função para Destrancar Edição
-  const unlockForEditing = () => {
-      if(confirm('Atenção: Ao editar o documento, sua assinatura atual será removida e você precisará assinar novamente. Deseja continuar?')) {
-          setFormData(prev => ({ ...prev, signed: false }));
-          setSignatureData(null);
-      }
-  };
-
-  // Salva arquivos localmente (Sem upload)
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setError(''); // Limpa erros antigos
-    if (!user) {
-        setError("Você precisa estar autenticado para enviar arquivos.");
-        return;
-    }
-
-    if (e.target.files && e.target.files.length > 0) {
-        const filesToAdd: LocalAttachment[] = [];
-        const MAX_SIZE_MB = 10; // Limite de 10MB para evitar crash do browser no base64
-
-        Array.from(e.target.files).forEach((file: File) => {
-            // Validação de Tamanho
-            if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-                setError(`Arquivo "${file.name}" excede o limite de ${MAX_SIZE_MB}MB.`);
-                return;
-            }
-
-            let type: 'image' | 'video' | 'document' = 'document';
-            if (file.type.startsWith('image/')) {
-                type = 'image';
-            } else if (file.type.startsWith('video/')) {
-                type = 'video';
-            } else if (file.type === 'application/pdf') {
-                type = 'document'; // Garante que PDF é tratado como documento
-            } else {
-                // Fallback genérico, mas pode ser removido se o accept do input for estrito
-                type = 'document'; 
-            }
-
-            filesToAdd.push({
-                id: `local-${Date.now()}-${Math.random()}`,
-                file: file,
-                name: file.name,
-                type: type,
-                previewUrl: URL.createObjectURL(file)
-            });
-        });
-
-        if (filesToAdd.length > 0) {
-            setLocalFiles(prev => [...prev, ...filesToAdd]);
-        }
-        e.target.value = ''; 
+    if (e.target.files) {
+        const newFiles = Array.from(e.target.files).map((file: File) => ({
+            id: `file-${Date.now()}-${Math.random()}`,
+            file,
+            previewUrl: URL.createObjectURL(file),
+            name: file.name,
+            type: (file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'document') as 'image' | 'video' | 'document'
+        }));
+        setLocalFiles(prev => [...prev, ...newFiles]);
     }
   };
 
-  const removeAttachment = (index: number) => {
-    setLocalFiles(prev => prev.filter((_, i) => i !== index));
+  const removeFile = (id: string) => {
+    setLocalFiles(prev => prev.filter(f => f.id !== id));
   };
 
-  const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
+  const startDrawing = (e: any) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    setIsDrawing(true);
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = '#000';
-    const { offsetX, offsetY } = getCoordinates(e, canvas);
+    
+    setIsDrawing(true);
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX || e.touches[0].clientX) - rect.left;
+    const y = (e.clientY || e.touches[0].clientY) - rect.top;
     ctx.beginPath();
-    ctx.moveTo(offsetX, offsetY);
+    ctx.moveTo(x, y);
   };
-
-  const draw = (e: React.MouseEvent | React.TouchEvent) => {
+  
+  const draw = (e: any) => {
     if (!isDrawing) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const { offsetX, offsetY } = getCoordinates(e, canvas);
-    ctx.lineTo(offsetX, offsetY);
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX || e.touches[0].clientX) - rect.left;
+    const y = (e.clientY || e.touches[0].clientY) - rect.top;
+    ctx.lineTo(x, y);
     ctx.stroke();
   };
-
-  const stopDrawing = () => setIsDrawing(false);
+  
+  const endDrawing = () => {
+    setIsDrawing(false);
+    if (canvasRef.current) {
+      setSignatureData(canvasRef.current.toDataURL());
+    }
+  };
+  
   const clearSignature = () => {
     const canvas = canvasRef.current;
     if (canvas) {
-        const ctx = canvas.getContext('2d');
-        ctx?.clearRect(0, 0, canvas.width, canvas.height);
-        setSignatureData(null);
-        setFormData(prev => ({ ...prev, signed: false }));
-    }
-  };
-  const confirmSignature = () => {
-     const canvas = canvasRef.current;
-     if (canvas) {
-        setSignatureData(canvas.toDataURL());
-        setFormData(prev => ({ ...prev, signed: true }));
-     }
-  };
-  
-  const getCoordinates = (e: React.MouseEvent | React.TouchEvent, canvas: HTMLCanvasElement) => {
-    let clientX, clientY;
-    
-    if ('touches' in e) {
-        clientX = e.touches[0].clientX;
-        clientY = e.touches[0].clientY;
-    } else {
-        clientX = e.clientX;
-        clientY = e.clientY;
-    }
-    const rect = canvas.getBoundingClientRect();
-    return { offsetX: clientX - rect.left, offsetY: clientY - rect.top };
-  };
-
-  const handleNext = async () => {
-    setError('');
-
-    if (currentStep === 1 && !formData.areaId) return setError('Selecione uma área.');
-    if (currentStep === 2 && (!formData.species || !formData.facts)) return setError('Preencha a espécie e os fatos.');
-    if (currentStep === 3) {
-        if (partiesStep === 'role_selection') return setError('Selecione quem está preenchendo.');
-        if (!formData.sender.name || !formData.recipient.name) return setError('Preencha os dados das partes.');
-        if (role === 'representative' && !formData.representative.name) return setError('Preencha os dados do representante.');
-    }
-    if (currentStep === 4) {
-          if (!formData.generatedContent) {
-              await generateContent();
-              if (!formData.generatedContent) return;
-          }
-    }
-    if (currentStep === 5) {
-        if (!formData.signed) return setError('Você precisa assinar o documento.');
-        
-        // --- TRANSIÇÃO CRÍTICA: SALVAR TUDO E IR PARA PAGAMENTO ---
-        await handlePersistData();
-    }
-
-    if (currentStep < STEPS.length) {
-      setCurrentStep(curr => curr + 1);
-      window.scrollTo(0,0);
+      const ctx = canvas.getContext('2d');
+      ctx?.clearRect(0, 0, canvas.width, canvas.height);
+      setSignatureData(null);
     }
   };
 
-  const generateContent = async () => {
+  const handleGenerateContent = async () => {
+    if (!formData.species || !formData.facts) return;
     setIsGenerating(true);
-    setShowSuccessScreen(false); // Reset para garantir animação
-    setError(''); // Limpa erros anteriores
-
+    
     try {
-      let promptContext = `${formData.facts}`; // Fatos são a base
-      
-      // CONSTRUÇÃO DETALHADA DAS PARTES (QUALIFICAÇÃO COMPLETA)
-      const senderAddr = formatAddressString(formData.sender.address);
-      const recipientAddr = formatAddressString(formData.recipient.address);
-      
-      let partiesBlock = `
-      [DADOS OBRIGATÓRIOS PARA O PREÂMBULO]
-      
-      NOTIFICANTE (REMETENTE):
-      Nome: ${formData.sender.name}
-      CPF/CNPJ: ${formData.sender.cpfCnpj}
-      Endereço Completo: ${senderAddr}
-      Contato: ${formData.sender.phone} | ${formData.sender.email}
-      `;
+        const attachments: Attachment[] = localFiles.map(lf => ({
+            file: lf.file,
+            preview: lf.previewUrl,
+            type: lf.type
+        }));
 
-      if (role === 'representative') {
-          const repAddr = formatAddressString(formData.representative.address);
-          partiesBlock += `
-          REPRESENTADO POR (PROCURADOR/ADVOGADO):
-          Nome: ${formData.representative.name}
-          CPF: ${formData.representative.cpfCnpj}
-          Endereço Profissional: ${repAddr}
-          Contato: ${formData.representative.phone} | ${formData.representative.email}
-          `;
-      }
-
-      partiesBlock += `
-      NOTIFICADO (DESTINATÁRIO):
-      Nome: ${formData.recipient.name}
-      CPF/CNPJ: ${formData.recipient.cpfCnpj}
-      Endereço Completo: ${recipientAddr}
-      Contato: ${formData.recipient.phone} | ${formData.recipient.email}
-      `;
-
-      // Adiciona o bloco de partes ao contexto
-      promptContext += `\n\n${partiesBlock}`;
-      
-      // Apenas adiciona contexto de reunião se os dados estiverem preenchidos E o checkbox marcado
-      if (formData.scheduleMeeting && formData.meetingDate && formData.meetingTime) {
-          const dateParts = formData.meetingDate.split('-');
-          const formattedDate = `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}`;
-          
-          promptContext += `\n\n[IMPORTANTE - CONCILIAÇÃO AGENDADA]
-          O Notificante AGENDOU uma reunião de conciliação por videoconferência.
-          Data: ${formattedDate}
-          Horário: ${formData.meetingTime}
-          Link: https://meet.google.com/gvd-nmhs-jjv
-          
-          INSTRUÇÃO OBRIGATÓRIA: Adicione um parágrafo de destaque no corpo da notificação (antes dos pedidos ou das consequências) convidando formalmente o Notificado para esta audiência de tentativa de conciliação extrajudicial, citando expressamente a data, hora e o link de acesso acima.`;
-      } else if (formData.scheduleMeeting) {
-          setError("Aviso: Texto gerado sem dados de agendamento (Data/Hora não preenchidos).");
-      }
-
-      // Preparar arquivos LOCAIS para a IA
-      const currentAttachments: Attachment[] = [];
-      if (localFiles && localFiles.length > 0) {
-          for (const lf of localFiles) {
-              // Passa diretamente o objeto File local
-              currentAttachments.push({
-                  file: lf.file,
-                  preview: lf.previewUrl,
-                  type: lf.type
-              });
-          }
-      }
-
-      const text = await generateNotificationText(
-        formData.recipient.name || '[Destinatário]',
-        formData.species,
-        promptContext, // Passamos o contexto enriquecido com qualificações
-        formData.tone,
-        currentAttachments,
-        // PASSANDO O CONTEXTO DE NAVEGAÇÃO
-        {
-            area: currentArea?.name || 'Direito Geral',
+        const contextInfo = {
+            area: currentArea?.name || '',
             species: formData.species,
             areaDescription: currentArea?.desc || ''
+        };
+
+        let details = `
+        Fatos: ${formData.facts}
+        Remetente: ${formData.sender.name} (CPF/CNPJ: ${formData.sender.cpfCnpj})
+        Endereço Remetente: ${formatAddressString(formData.sender.address)}
+        
+        Destinatário: ${formData.recipient.name} (CPF/CNPJ: ${formData.recipient.cpfCnpj})
+        Endereço Destinatário: ${formatAddressString(formData.recipient.address)}
+        `;
+
+        // INJEÇÃO DA REUNIÃO NO PROMPT PARA A IA
+        if (formData.scheduleMeeting) {
+            const meetDate = new Date(formData.meetingDate).toLocaleDateString('pt-BR');
+            details += `
+            \n[IMPORTANTE - CLÁUSULA DE CONCILIAÇÃO]
+            O remetente deseja resolver amigavelmente e AGENDOU uma videoconferência de conciliação.
+            O texto da notificação DEVE conter um parágrafo específico convidando para esta reunião.
+            Detalhes da Reunião:
+            - Data: ${meetDate}
+            - Horário: ${formData.meetingTime}
+            - Link da Sala Virtual: https://meet.google.com/xyz-abc
+            - Instrução: Acesse o link no horário marcado para dialogarmos.
+            `;
         }
-      );
-      
-      setFormData(prev => ({ ...prev, generatedContent: text, subject: formData.species }));
-      setShowSuccessScreen(true); // Exibe tela de sucesso
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message || 'Erro ao gerar texto: Verifique sua conexão.');
+
+        const text = await generateNotificationText(
+            formData.recipient.name, 
+            formData.subject || formData.species, 
+            details, 
+            formData.tone,
+            attachments,
+            contextInfo
+        );
+        
+        setFormData(prev => ({ ...prev, generatedContent: text }));
+        setCurrentStep(6); // Pula para assinatura (Step 6)
+    } catch (err) {
+        console.error(err);
+        alert("Erro ao gerar conteúdo. Tente novamente.");
     } finally {
-      setIsGenerating(false);
+        setIsGenerating(false);
     }
   };
 
-  // --- PDF GENERATION LOGIC 2.0 (PROFESSIONAL & PAGINATED) ---
-  const generateSignedPdfBlob = async (): Promise<Blob> => {
-      // 1. Configuração Inicial A4
-      const doc = new jsPDF({
-          orientation: "portrait",
-          unit: "mm",
-          format: "a4"
-      });
-
-      // Constantes de Layout
-      const margin = 20;
-      const pageWidth = 210;
-      const pageHeight = 297;
-      const contentWidth = pageWidth - (margin * 2);
-      const startY = 45; // Espaço para cabeçalho
-      const footerY = 280;
-      
-      // Função para desenhar Cabeçalho em todas as páginas
-      const drawHeader = (doc: jsPDF) => {
-          // Logo/Nome "NOTIFY"
-          doc.setFont("times", "bold"); // Times New Roman standard
-          doc.setFontSize(18);
-          doc.setTextColor(40, 40, 50); // Dark Slate
-          doc.text("NOTIFY", margin, 20);
-          
-          // Subtítulo Sofisticado
-          doc.setFontSize(8);
-          doc.setTextColor(150); // Grey
-          doc.text("INTELIGÊNCIA JURÍDICA E AUTOMAÇÃO", margin, 25);
-          
-          // Data no canto direito
-          doc.setFontSize(9);
-          doc.text(`Data: ${new Date().toLocaleDateString()}`, pageWidth - margin, 20, { align: "right" });
-          doc.text(`Ref: ${notificationId}`, pageWidth - margin, 25, { align: "right" });
-
-          // Linha decorativa
-          doc.setDrawColor(200);
-          doc.setLineWidth(0.5);
-          doc.line(margin, 30, pageWidth - margin, 30);
-      };
-
-      // Função para desenhar Rodapé em todas as páginas
-      const drawFooter = (doc: jsPDF, pageNum: number) => {
-          doc.setDrawColor(200);
-          doc.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
-          
-          doc.setFont("times", "italic");
-          doc.setFontSize(8);
-          doc.setTextColor(150);
-          
-          const footerText = `Documento gerado e assinado eletronicamente via Plataforma Notify. ID: ${notificationId}`;
-          doc.text(footerText, margin, footerY);
-          
-          doc.text(`Página ${pageNum}`, pageWidth - margin, footerY, { align: "right" });
-      };
-
-      // Função para desenhar Marca D'água
-      const drawWatermark = (doc: jsPDF) => {
-          doc.saveGraphicsState();
-          doc.setTextColor(245, 245, 245); // Muito claro
-          doc.setFontSize(60);
-          doc.setFont("times", "bold");
-          
-          // Rotaciona e centraliza
-          const text = "NOTIFY";
-          const x = pageWidth / 2;
-          const y = pageHeight / 2;
-          
-          doc.text(text, x, y, { align: "center", angle: 45 });
-          doc.restoreGraphicsState();
-      };
-
-      // 2. Preparar Texto Limpo
-      const cleanBody = cleanTextForPDF(formData.generatedContent);
-      doc.setFont("times", "normal");
-      doc.setFontSize(11);
-      doc.setTextColor(20, 20, 30); // Preto suave
-
-      // Divide o texto em linhas que cabem na largura
-      const textLines = doc.splitTextToSize(cleanBody, contentWidth);
-      const lineHeight = 6; // mm
-
-      // 3. Renderização Paginada
-      let currentY = startY;
-      let currentPage = 1;
-
-      // Desenha elementos da primeira página
-      drawHeader(doc);
-      drawWatermark(doc);
-      drawFooter(doc, currentPage);
-
-      // Loop pelas linhas
-      for (let i = 0; i < textLines.length; i++) {
-          // Verifica se cabe na página
-          if (currentY + lineHeight > footerY - 10) {
-              doc.addPage();
-              currentPage++;
-              currentY = startY;
-              
-              drawHeader(doc);
-              drawWatermark(doc);
-              drawFooter(doc, currentPage);
-              
-              doc.setFont("times", "normal");
-              doc.setFontSize(11);
-              doc.setTextColor(20, 20, 30);
-          }
-          
-          doc.text(textLines[i], margin, currentY, { align: "justify", maxWidth: contentWidth });
-          currentY += lineHeight;
-      }
-
-      // 4. Assinatura
-      if (signatureData) {
-          const signHeight = 25;
-          // Verifica se cabe a assinatura
-          if (currentY + signHeight + 20 > footerY - 10) {
-              doc.addPage();
-              currentPage++;
-              currentY = startY;
-              drawHeader(doc);
-              drawWatermark(doc);
-              drawFooter(doc, currentPage);
-          }
-
-          currentY += 15; // Espaço antes da assinatura
-          
-          const centerX = pageWidth / 2;
-          const imgWidth = 50;
-          const imgHeight = 20;
-
-          doc.addImage(signatureData, 'PNG', centerX - (imgWidth/2), currentY, imgWidth, imgHeight);
-          
-          currentY += 22;
-          doc.setDrawColor(50);
-          doc.line(centerX - 40, currentY, centerX + 40, currentY);
-          
-          currentY += 5;
-          doc.setFont("times", "bold");
-          doc.setFontSize(10);
-          doc.text(formData.sender.name, centerX, currentY, { align: "center" });
-          
-          currentY += 5;
-          doc.setFontSize(9);
-          doc.setFont("times", "normal");
-          doc.text(`CPF: ${formData.sender.cpfCnpj}`, centerX, currentY, { align: "center" });
-          
-          currentY += 6;
-          doc.setFontSize(8);
-          doc.setTextColor(100);
-          doc.text("Assinatura Digital Certificada - Notify", centerX, currentY, { align: "center" });
-      }
-
-      return doc.output('blob');
-  };
-
-  // --- LOGICA DE PERSISTENCIA (UPLOAD E SALVAR NO BANCO) ---
   const handlePersistData = async () => {
       setIsSavingData(true);
       setError('');
       try {
           if (!user) throw new Error("Usuário não autenticado");
 
-          // 1. Gerar PDF Assinado (Novo Layout Profissional)
-          const pdfBlob = await generateSignedPdfBlob();
-
-          // 2. Upload do PDF para Storage (Com Fallback se falhar)
+          const pdfBlob = new Blob([formData.generatedContent], { type: 'application/pdf' }); 
           const pdfUrl = await uploadSignedPdf(notificationId, pdfBlob);
 
-          // 3. Upload das Evidências (Com Fallback se falhar)
           const newEvidenceItems: EvidenceItem[] = [];
           if (localFiles.length > 0) {
               for (const lf of localFiles) {
@@ -931,11 +479,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                   newEvidenceItems.push(uploaded);
               }
           }
-          setUploadedEvidences(newEvidenceItems);
 
           const totalAmount = calculateTotal();
 
-          // 4. Montar Objeto da Notificação
           const finalNotification: NotificationItem = {
               id: notificationId,
               senderUid: user.uid,
@@ -944,6 +490,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               senderPhotoUrl: user.photoURL || undefined,
               recipientName: formData.recipient.name,
               recipientEmail: formData.recipient.email,
+              recipientPhone: formData.recipient.phone,
               recipientCpf: formData.recipient.cpfCnpj.replace(/\D/g, ''),
               area: currentArea?.name || '',
               species: formData.species,
@@ -954,15 +501,13 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               pdfUrl: pdfUrl,
               signatureBase64: signatureData || undefined,
               createdAt: new Date().toISOString(),
-              status: NotificationStatus.PENDING_PAYMENT, // Cria como Pendente
-              paymentMethod: 'pix', // Default, atualizado no passo 6
+              status: NotificationStatus.PENDING_PAYMENT,
+              paymentMethod: 'credit_card', 
               paymentAmount: totalAmount
           };
 
-          // 5. Salvar no Firestore
           await saveNotification(finalNotification);
 
-          // 6. Preparar Transação e Reunião
           const newTransaction: Transaction = {
               id: `TX-${Date.now()}`,
               description: paymentPlan === 'subscription' ? 'Assinatura Mensal' : `Notificação - ${formData.species}`,
@@ -973,7 +518,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
           let newMeeting: Meeting | undefined = undefined;
           if (formData.scheduleMeeting) {
-              const code = `${Math.random().toString(36).substr(2, 3)}-${Math.random().toString(36).substr(2, 4)}-${Math.random().toString(36).substr(2, 3)}`;
               newMeeting = {
                   id: `MEET-${Date.now()}`,
                   hostUid: user.uid,
@@ -983,50 +527,32 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                   time: formData.meetingTime,
                   guestEmail: formData.recipient.email,
                   guestCpf: formData.recipient.cpfCnpj,
-                  meetLink: `https://meet.google.com/${code}`,
+                  meetLink: `https://meet.google.com/xyz-abc`,
                   createdAt: new Date().toISOString(),
-                  status: 'canceled' // Começa cancelada/pendente até pagar
+                  status: 'scheduled'
               };
               await createMeeting(newMeeting);
           }
 
-          // Armazena dados para a etapa final
           setCreatedData({ notif: finalNotification, meet: newMeeting, trans: newTransaction });
 
       } catch (e: any) {
           console.error(e);
-          // O erro genérico foi removido, mostra erro real se houver
-          setError("Erro ao salvar notificação: " + e.message);
-          throw e; // Interrompe a navegação
+          setError("Erro ao salvar dados: " + e.message);
+          throw e;
       } finally {
           setIsSavingData(false);
       }
   };
 
-  const handlePayLater = async () => {
-      if (createdData.notif) {
-          onSave(createdData.notif, createdData.meet, createdData.trans);
-      } else if (onBack) {
-          onBack();
-      }
-  };
-
   const handleConfirmPayment = async () => {
-      // Validação Cartão de Crédito
-      if (paymentMethod === 'credit_card') {
-          if (!cardData.number || !cardData.name || !cardData.expiry || !cardData.cvv) {
-              setError("Preencha todos os dados do cartão.");
-              return;
-          }
-      }
-
-      setIsProcessingPayment(true);
+      setIsProcessingAction(true);
       setError('');
+      
       try {
           if(!user || !createdData.notif) return;
 
-          // Iniciar tentativa de pagamento (Simulada com sucesso garantido)
-          const checkoutResponse = await initiateCheckout(createdData.notif);
+          const checkoutResponse = await initiateCheckout(createdData.notif, paymentPlan);
 
           if (!checkoutResponse.success) {
              setError(checkoutResponse.error || "Erro ao iniciar pagamento. Tente novamente.");
@@ -1034,846 +560,440 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           }
 
           if (checkoutResponse.checkoutUrl) {
-             window.location.href = checkoutResponse.checkoutUrl;
+             window.location.assign(checkoutResponse.checkoutUrl);
              return;
           }
 
-          // ** SUCESSO NO PAGAMENTO SIMULADO **
-          
-          // 1. Atualiza Status da Notificação para SENT (Para liberar para o destinatário CPF)
-          // IMPORTANTE: Aqui garantimos que ao confirmar, ela vira SENT imediatamente
-          const updatedNotif = { ...createdData.notif, status: NotificationStatus.SENT };
-          await saveNotification(updatedNotif); 
-
-          // 2. Atualiza Status da Transação
-          const updatedTrans = { ...createdData.trans!, status: 'Pago' as const };
-
-          // 3. Atualiza Reunião (Se agendada, torna-se ativa)
-          let updatedMeeting = createdData.meet;
-          if (createdData.meet) {
-              updatedMeeting = { ...createdData.meet, status: 'scheduled' };
-              await createMeeting(updatedMeeting);
-          }
-
-          // Atualiza CreatedData para exibição no recibo final
-          setCreatedData({ notif: updatedNotif, meet: updatedMeeting, trans: updatedTrans });
-
-          // AVANÇA PARA A TELA DE PROTOCOLO
-          setPaymentStage('protocol');
-
       } catch (e) {
           console.error(e);
-          setError("Erro ao processar finalização.");
+          setError("Erro ao processar redirecionamento de pagamento.");
       } finally {
-          setIsProcessingPayment(false);
+          setIsProcessingAction(false);
       }
   };
 
-  const handleFinishProtocol = () => {
-      if (createdData.notif) {
-          onSave(createdData.notif, createdData.meet, createdData.trans);
-      }
-  };
+  const renderPaymentStep = () => {
+      if (paymentStage === 'selection') return (
+         <div className="pb-12 space-y-6 animate-fade-in">
+             <div className="text-center mb-8">
+                 <h3 className="text-2xl font-bold text-slate-800">Escolha como prosseguir</h3>
+                 <p className="text-slate-500 text-sm">Selecione o plano ideal.</p>
+             </div>
+             
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+                <div onClick={() => setPaymentPlan('single')} className={`relative p-8 rounded-2xl cursor-pointer transition-all duration-300 group overflow-hidden ${paymentPlan==='single' ? 'bg-white ring-2 ring-blue-500 shadow-xl scale-[1.02]' : 'bg-white border border-slate-200 hover:border-blue-300 hover:shadow-lg'}`}>
+                     {paymentPlan === 'single' && <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl shadow-sm">SELECIONADO</div>}
+                     <div className="flex flex-col h-full">
+                         <h4 className="font-bold text-slate-900 text-xl">Envio Avulso</h4>
+                         <p className="text-4xl font-bold text-slate-900 mt-4">R$ 57,92</p>
+                         <p className="text-xs text-slate-400 font-medium uppercase mt-1">pagamento único</p>
+                         
+                         <ul className="mt-6 space-y-3 text-sm text-slate-600 text-left">
+                            <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5 shrink-0"/> <span>Minuta Jurídica via IA</span></li>
+                            <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5 shrink-0"/> <span>Envio Digital Rastreável</span></li>
+                            <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5 shrink-0"/> <span>PDF com Assinatura</span></li>
+                            <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5 shrink-0"/> <span>Pagamento Único</span></li>
+                        </ul>
+                     </div>
+                </div>
 
-  const handleCopyPix = () => {
-      navigator.clipboard.writeText("00020126360014BR.GOV.BCB.PIX0114+551199999999520400005303986540510.005802BR5913NOTIFY SERVICOS6009SAO PAULO62070503***6304E2CA");
-      setPixCopied(true);
-      setTimeout(() => setPixCopied(false), 3000);
-  };
+                <div onClick={() => setPaymentPlan('subscription')} className={`relative p-8 rounded-2xl cursor-pointer transition-all duration-300 group overflow-hidden ${paymentPlan==='subscription' ? 'bg-slate-900 ring-2 ring-purple-500 shadow-2xl scale-[1.02]' : 'bg-white border border-slate-200 hover:border-purple-300 hover:shadow-lg'}`}>
+                     {paymentPlan === 'subscription' && <div className="absolute top-0 right-0 bg-purple-600 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl shadow-sm">RECOMENDADO</div>}
+                     <div className="flex flex-col h-full">
+                         <h4 className={`font-bold text-xl ${paymentPlan==='subscription' ? 'text-white' : 'text-slate-900'}`}>Assinatura Pro</h4>
+                         <p className={`text-4xl font-bold mt-4 ${paymentPlan==='subscription' ? 'text-white' : 'text-slate-900'}`}>R$ 259,97 <span className="text-sm font-normal opacity-60">/mês</span></p>
 
-  const getFactsPlaceholder = () => {
-      const area = formData.areaId;
-      const spec = formData.species;
-      
-      if (area === 'civil') {
-          if (spec.includes('Cobrança')) return "Descreva: 1. A origem da dívida (empréstimo, serviço, venda). 2. A data de vencimento. 3. O valor original e atualizado. 4. Tentativas de contato anteriores.";
-          if (spec.includes('Contrato')) return "Descreva: 1. Qual cláusula foi descumprida. 2. A data do contrato. 3. O prejuízo causado.";
-          return "Descreva os fatos com datas, valores e nomes das pessoas envolvidas...";
-      }
-      return "Descreva detalhadamente o ocorrido, incluindo datas importantes, valores envolvidos, locais e nomes das partes relacionadas. Quanto mais detalhes, melhor a IA redigirá seu documento.";
+                         <ul className={`mt-6 space-y-3 text-sm text-left ${paymentPlan === 'subscription' ? 'text-slate-300' : 'text-slate-600'}`}>
+                            <li className="flex items-start"><Check size={16} className={`mr-2 mt-0.5 shrink-0 ${paymentPlan === 'subscription' ? 'text-purple-400' : 'text-purple-600'}`}/> <span><strong>10 Notificações</strong> / mês</span></li>
+                            <li className="flex items-start"><Check size={16} className={`mr-2 mt-0.5 shrink-0 ${paymentPlan === 'subscription' ? 'text-purple-400' : 'text-purple-600'}`}/> <span>Conciliações Ilimitadas</span></li>
+                            <li className="flex items-start"><Check size={16} className={`mr-2 mt-0.5 shrink-0 ${paymentPlan === 'subscription' ? 'text-purple-400' : 'text-purple-600'}`}/> <span>Dashboard de Gestão</span></li>
+                            <li className="flex items-start"><Check size={16} className={`mr-2 mt-0.5 shrink-0 ${paymentPlan === 'subscription' ? 'text-purple-400' : 'text-purple-600'}`}/> <span>Suporte Prioritário</span></li>
+                            <li className="flex items-start"><Check size={16} className={`mr-2 mt-0.5 shrink-0 ${paymentPlan === 'subscription' ? 'text-purple-400' : 'text-purple-600'}`}/> <span>Cancele quando quiser</span></li>
+                        </ul>
+                     </div>
+                </div>
+             </div>
+             
+             <div className="max-w-md mx-auto pt-6">
+                 <button onClick={() => setPaymentStage('input')} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-xl flex items-center justify-center hover:bg-slate-800 transition transform hover:scale-105">
+                     Ir para Pagamento <ArrowRight className="ml-2" size={18} />
+                 </button>
+             </div>
+         </div>
+      );
+     
+      if (paymentStage === 'input') return (
+        <div className="pb-12 max-w-md mx-auto animate-fade-in text-center">
+            <h3 className="text-xl font-bold text-slate-800 mb-4">Confirmar e Pagar no Stripe</h3>
+            <p className="text-slate-500 text-sm mb-8">
+                Você será redirecionado para um ambiente seguro do Stripe para finalizar o pagamento de 
+                <strong className="text-slate-900 ml-1">R$ {calculateTotal().toFixed(2)}</strong>.
+            </p>
+
+            <button 
+                onClick={handleConfirmPayment} 
+                disabled={isProcessingAction}
+                className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-xl flex items-center justify-center hover:bg-slate-800 transition transform active:scale-95 disabled:opacity-70"
+            >
+                {isProcessingAction ? <Loader2 className="animate-spin mr-2"/> : <Lock size={20} className="mr-2" />}
+                {isProcessingAction ? 'Iniciando Checkout...' : `Ir para Checkout Seguro`}
+            </button>
+            <button onClick={() => setPaymentStage('selection')} className="mt-4 text-sm text-slate-500 hover:underline">Voltar</button>
+        </div>
+      );
+
+      return null;
   };
 
   const renderStepContent = () => {
-      switch(currentStep) {
-          // ... (Cases 1, 2, 3, 4 remain identical)
-          case 1: return (
-            <div className="pb-12 relative">
-                <h3 className="text-xl font-bold text-slate-800 mb-6 text-center">Qual é a natureza jurídica?</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+    switch(currentStep) {
+        case 1:
+            return (
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 animate-fade-in pb-12">
                     {LAW_AREAS.map(area => (
-                        <button 
-                            key={area.id} 
-                            onClick={() => { setFormData(p => ({...p, areaId: area.id})); setTimeout(() => setCurrentStep(2), 150); }} 
-                            className={`
-                                group relative flex items-center p-4 rounded-2xl border transition-all duration-300 text-left
-                                ${formData.areaId === area.id 
-                                    ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500 shadow-lg scale-[1.02]' 
-                                    : 'border-slate-200 bg-white hover:border-blue-300 hover:shadow-lg hover:-translate-y-1'
-                                }
-                            `}
+                        <div 
+                            key={area.id}
+                            onClick={() => setFormData(prev => ({ ...prev, areaId: area.id }))}
+                            className={`p-4 rounded-xl cursor-pointer border-2 transition-all flex flex-col items-center justify-center text-center gap-3 h-32 hover:scale-105 ${
+                                formData.areaId === area.id 
+                                ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md' 
+                                : 'border-slate-100 bg-white text-slate-500 hover:border-blue-200 hover:shadow-sm'
+                            }`}
                         >
-                            <div className={`
-                                p-3 rounded-xl mr-4 shrink-0 transition-colors duration-300
-                                ${formData.areaId === area.id ? 'bg-blue-500 text-white shadow-blue-200' : 'bg-slate-50 text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600'}
-                            `}>
-                                <area.icon size={24} strokeWidth={1.5} />
-                            </div>
-                            <div className="overflow-hidden">
-                                <span className={`block font-bold text-sm mb-0.5 truncate transition-colors ${formData.areaId === area.id ? 'text-blue-900' : 'text-slate-800 group-hover:text-blue-700'}`}>
-                                    {area.name}
-                                </span>
-                                <span className={`text-xs font-medium truncate block transition-colors ${formData.areaId === area.id ? 'text-blue-700' : 'text-slate-400 group-hover:text-slate-500'}`}>
-                                    {area.desc}
-                                </span>
-                            </div>
-                        </button>
+                            <area.icon size={24} />
+                            <span className="text-xs font-bold">{area.name}</span>
+                        </div>
                     ))}
                 </div>
-            </div>
-          );
-          case 2: return (
-              <div className="space-y-6 pb-12">
-                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
-                       <h4 className="text-sm font-bold mb-3">Selecione a Espécie</h4>
-                       <div className="flex flex-wrap gap-2">
-                           {currentArea?.species.map(spec => (
-                               <button key={spec} onClick={() => setFormData(p => ({...p, species: spec}))} className={`px-3 py-2 text-xs md:text-sm rounded-lg border transition ${formData.species === spec ? 'bg-blue-600 text-white border-blue-600' : 'bg-white border-slate-200 text-slate-600'}`}>{spec}</button>
-                           ))}
-                       </div>
-                   </div>
-                   <div>
-                       <label className="block text-sm font-bold text-slate-700 mb-2">Relato dos Fatos</label>
-                       <textarea 
-                            value={formData.facts} 
-                            onChange={e => setFormData(p => ({...p, facts: e.target.value}))} 
-                            className="w-full h-40 p-4 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-100 outline-none text-sm leading-relaxed" 
-                            placeholder={getFactsPlaceholder()} 
-                       />
-                   </div>
-                   
-                   <div className="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:bg-slate-50 relative bg-slate-50 transition-colors">
-                        <UploadCloud className="mx-auto text-slate-400 mb-2" size={32} />
-                        <p className="text-sm text-slate-500 font-medium">Toque para anexar evidências</p>
-                        <p className="text-xs text-slate-400 mt-1">Fotos, PDFs ou Vídeos (Máx 10MB)</p>
-                        <input type="file" multiple accept="image/*,video/*,application/pdf" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleFileSelect} />
-                   </div>
-                   
-                   {/* VISUALIZAÇÃO DE ARQUIVOS LOCAIS */}
-                   {localFiles.length > 0 && (
-                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                           {localFiles.map((ev, idx) => (
-                               <div key={ev.id} className="bg-white border border-slate-200 p-2 rounded-lg text-sm flex items-center shadow-sm">
-                                   <div className="w-10 h-10 rounded bg-slate-100 flex items-center justify-center mr-3 overflow-hidden shrink-0">
-                                       {ev.type === 'image' ? (
-                                           <img src={ev.previewUrl} alt="Preview" className="w-full h-full object-cover" />
-                                       ) : ev.type === 'video' ? (
-                                           <Video size={18} className="text-slate-400" />
-                                       ) : (
-                                           <FileText size={18} className="text-slate-400" />
-                                       )}
-                                   </div>
-                                   <span className="truncate flex-1 mr-2 text-xs font-medium text-slate-600">
-                                       {ev.name}
-                                   </span>
-                                   <button onClick={() => removeAttachment(idx)} className="text-red-500 bg-red-50 p-1.5 rounded-full hover:bg-red-100 transition"><X size={14}/></button>
-                               </div>
-                           ))}
-                       </div>
-                   )}
-                   {localFiles.length > 0 && (
-                       <p className="text-[10px] text-purple-600 bg-purple-50 p-2 rounded border border-purple-100 flex items-center">
-                           <Eye size={12} className="mr-1"/> Estes {localFiles.length} arquivos serão analisados pela IA na geração do documento.
-                       </p>
-                   )}
-              </div>
-          );
-          case 3: return (
-              <div className="pb-12">
-                  {partiesStep === 'role_selection' ? (
-                       <div className="flex flex-col items-center justify-center py-10 animate-fade-in">
-                           <h3 className="text-xl font-bold text-slate-800 mb-8">Quem está preenchendo esta notificação?</h3>
-                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl">
-                               <button 
-                                   onClick={() => {setRole('self'); setPartiesStep('forms');}} 
-                                   className="p-8 border-2 border-slate-100 rounded-2xl hover:bg-blue-50 hover:border-blue-200 transition group text-left relative overflow-hidden"
-                               >
-                                   <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition">
-                                       <Users size={64} className="text-blue-600" />
-                                   </div>
-                                   <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                                       <UserCheck size={24} />
-                                   </div>
-                                   <h4 className="text-lg font-bold text-slate-800 mb-2">Pessoa Física (CPF)</h4>
-                                   <p className="text-sm text-slate-500">Para notificações em seu próprio nome. (Uso exclusivo de CPF)</p>
-                               </button>
+            );
+        case 2:
+            return (
+                <div className="space-y-6 pb-12 animate-slide-in-right">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {currentArea?.species.map((specie, idx) => (
+                            <div 
+                                key={idx}
+                                onClick={() => setFormData(prev => ({ ...prev, species: specie }))}
+                                className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${formData.species === specie ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-md' : 'border-slate-100 bg-white hover:border-purple-200'}`}
+                            >
+                                <span className="text-sm font-medium">{specie}</span>
+                            </div>
+                        ))}
+                    </div>
+                    
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mt-8">
+                        <label className="text-sm font-bold text-slate-700 mb-2 block flex items-center">
+                            <FileText size={16} className="mr-2 text-slate-400"/>
+                            Descrição Detalhada dos Fatos
+                        </label>
+                        <textarea 
+                            value={formData.facts}
+                            onChange={(e) => setFormData(prev => ({ ...prev, facts: e.target.value }))}
+                            className="w-full h-40 p-4 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-100 text-sm"
+                            placeholder="Descreva o ocorrido com detalhes, datas e valores..."
+                        />
+                    </div>
 
-                               <button 
-                                   onClick={() => {setRole('representative'); setPartiesStep('forms');}} 
-                                   className="p-8 border-2 border-slate-100 rounded-2xl hover:bg-purple-50 hover:border-purple-200 transition group text-left relative overflow-hidden"
-                               >
-                                   <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition">
-                                       <Briefcase size={64} className="text-purple-600" />
-                                   </div>
-                                   <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                                       <UserCog size={24} />
-                                   </div>
-                                   <h4 className="text-lg font-bold text-slate-800 mb-2">Representante / Empresa</h4>
-                                   <p className="text-sm text-slate-500">Para Advogados, Procuradores ou notificações de Empresas (CNPJ).</p>
-                               </button>
-                           </div>
-                       </div>
-                   ) : (
-                       <div className="space-y-6 animate-fade-in">
-                           <div className="flex justify-between items-center bg-slate-50 p-4 rounded-xl border border-slate-100">
-                               <div className="flex items-center gap-2">
-                                   <span className="p-1.5 bg-white rounded-md border border-slate-200 shadow-sm">
-                                       {role === 'self' ? <UserCheck size={16} className="text-blue-600"/> : <UserCog size={16} className="text-purple-600"/>}
-                                   </span>
-                                   <span className="text-sm text-slate-600">
-                                       Modo: <strong className="text-slate-900">{role === 'self' ? 'Próprio Notificante' : 'Representante Legal'}</strong>
-                                   </span>
-                               </div>
-                               <button 
-                                   onClick={() => setPartiesStep('role_selection')} 
-                                   className="text-xs font-bold text-blue-600 hover:text-blue-700 hover:underline px-3 py-1.5 rounded-lg hover:bg-blue-50 transition"
-                               >
-                                   Alterar Seleção
-                               </button>
-                           </div>
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                        <label className="text-sm font-bold text-slate-700 mb-4 block flex items-center">
+                            <UploadCloud size={16} className="mr-2 text-slate-400"/>
+                            Anexar Evidências (Fotos, Vídeos, PDFs)
+                        </label>
+                        
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                            {localFiles.map((file) => (
+                                <div key={file.id} className="relative group border border-slate-200 rounded-lg overflow-hidden h-24 flex items-center justify-center bg-slate-50">
+                                    {file.type === 'image' ? (
+                                        <img src={file.previewUrl} className="w-full h-full object-cover" alt="preview"/>
+                                    ) : (
+                                        <div className="flex flex-col items-center text-slate-400">
+                                            <FileText size={24} />
+                                            <span className="text-[10px] mt-1">{file.type}</span>
+                                        </div>
+                                    )}
+                                    <button onClick={() => removeFile(file.id)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition">
+                                        <X size={12} />
+                                    </button>
+                                </div>
+                            ))}
+                            
+                            <label className="border-2 border-dashed border-slate-300 rounded-lg h-24 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition">
+                                <UploadCloud size={24} className="text-slate-400 mb-1" />
+                                <span className="text-xs text-slate-500 font-bold">Adicionar</span>
+                                <input type="file" multiple className="hidden" onChange={handleFileSelect} />
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            );
+        case 3:
+            return (
+                <div className="pb-12 space-y-8 animate-slide-in-right">
+                    {partiesStep === 'role_selection' ? (
+                        <div className="flex flex-col gap-4">
+                            <h3 className="text-xl font-bold text-slate-800 text-center mb-6">Quem você representa?</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto w-full">
+                                <button 
+                                    onClick={() => { setRole('self'); setPartiesStep('forms'); }}
+                                    className="p-8 rounded-2xl border-2 border-slate-100 bg-white hover:border-blue-400 hover:shadow-lg transition-all group text-left"
+                                >
+                                    <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                        <User size={24} />
+                                    </div>
+                                    <h4 className="font-bold text-lg text-slate-800">Eu mesmo (Pessoa Física)</h4>
+                                    <p className="text-sm text-slate-500 mt-2">Estou agindo em meu próprio nome.</p>
+                                </button>
+                                <button 
+                                    onClick={() => { setRole('representative'); setPartiesStep('forms'); }}
+                                    className="p-8 rounded-2xl border-2 border-slate-100 bg-white hover:border-purple-400 hover:shadow-lg transition-all group text-left"
+                                >
+                                    <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                        <Briefcase size={24} />
+                                    </div>
+                                    <h4 className="font-bold text-lg text-slate-800">Representante Legal / Advogado</h4>
+                                    <p className="text-sm text-slate-500 mt-2">Estou agindo em nome de um cliente ou empresa.</p>
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div>
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-lg font-bold">Preenchimento das Partes</h3>
+                                <button onClick={() => setPartiesStep('role_selection')} className="text-xs text-slate-500 underline">Alterar Tipo</button>
+                            </div>
 
-                           {role === 'representative' && (
-                               <PersonForm 
-                                   title="Dados do Representante (Advogado/Procurador)" 
-                                   data={formData.representative} 
-                                   section="representative" 
-                                   colorClass="border-purple-500" 
-                                   onInputChange={handleInputChange} 
-                                   onAddressChange={handleAddressChange}
-                                   documentLabel="CPF"
-                                   documentPlaceholder="Seu CPF"
-                                   documentMask={MASKS.cpf}
-                                   documentMaxLength={14}
-                               />
-                           )}
-                           
-                           <PersonForm 
-                               title={role === 'representative' ? "Dados do Cliente (Notificante)" : "Dados do Notificante"} 
-                               data={formData.sender} 
-                               section="sender" 
-                               colorClass="border-blue-500" 
-                               onInputChange={handleInputChange} 
-                               onAddressChange={handleAddressChange}
-                               documentLabel="CPF"
-                               documentMask={role === 'self' ? MASKS.cpf : MASKS.cpfCnpj}
-                               documentMaxLength={role === 'self' ? 14 : 18}
-                               documentPlaceholder={role === 'self' ? "Seu CPF" : "Ou CNPJ"}
-                           />
-                           
-                           <PersonForm 
-                               title="Dados do Notificado" 
-                               data={formData.recipient} 
-                               section="recipient" 
-                               colorClass="border-red-500" 
-                               onInputChange={handleInputChange} 
-                               onAddressChange={handleAddressChange} 
-                           />
-                       </div>
-                   )}
-              </div>
-          );
-          case 4: return (
-              <div className="flex flex-col gap-6 pb-12 h-auto min-h-[500px] relative">
-                  
-                  {/* LOCK OVERLAY IF SIGNED */}
-                  {formData.signed && (
-                      <div className="absolute inset-0 bg-slate-200/60 backdrop-blur-sm z-30 rounded-xl flex items-center justify-center animate-fade-in">
-                          <div className="bg-white p-8 rounded-2xl shadow-xl border border-slate-200 text-center max-w-sm">
-                              <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4 border border-blue-100">
-                                  <Lock size={32} />
-                              </div>
-                              <h3 className="text-xl font-bold text-slate-800 mb-2">Documento Assinado</h3>
-                              <p className="text-slate-500 text-sm mb-6">
-                                  O conteúdo está bloqueado para preservar a integridade da assinatura digital.
-                              </p>
-                              <button 
-                                onClick={unlockForEditing}
-                                className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold text-sm hover:bg-slate-800 transition flex items-center justify-center"
-                              >
-                                  <Unlock size={16} className="mr-2" /> Destrancar para Editar
-                              </button>
-                              <p className="text-xs text-red-400 mt-3 font-medium">Atenção: A assinatura atual será removida.</p>
-                          </div>
-                      </div>
-                  )}
+                            {role === 'representative' && (
+                                <PersonForm 
+                                    title="Representante (Você)" 
+                                    data={formData.representative} 
+                                    section="representative"
+                                    colorClass="border-purple-500"
+                                    onInputChange={handleInputChange} 
+                                    onAddressChange={handleAddressChange} 
+                                />
+                            )}
+                            
+                            <PersonForm 
+                                title={role === 'representative' ? "Cliente (Parte Ativa)" : "Seus Dados (Remetente)"} 
+                                data={formData.sender} 
+                                section="sender"
+                                colorClass="border-blue-500"
+                                onInputChange={handleInputChange} 
+                                onAddressChange={handleAddressChange} 
+                            />
 
-                  {/* AGENDAMENTO E IA CONFIG (Topo) */}
-                  <div className={`bg-slate-900 text-white p-6 rounded-xl shrink-0 transition-opacity ${formData.signed ? 'opacity-30' : 'opacity-100'}`}>
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-bold">Geração Inteligente (IA)</h4>
-                        <Wand2 className="text-purple-400" />
-                      </div>
-                      
-                      {/* LÓGICA DE AGENDAMENTO */}
-                      <div className="bg-slate-800 rounded-lg p-4 mb-4 border border-slate-700">
-                          <label className={`flex items-center gap-3 cursor-pointer mb-4 ${formData.signed ? 'pointer-events-none' : ''}`}>
-                              <div className="relative inline-flex items-center">
+                            <PersonForm 
+                                title="Parte Contrária (Destinatário)" 
+                                data={formData.recipient} 
+                                section="recipient"
+                                colorClass="border-red-500"
+                                onInputChange={handleInputChange} 
+                                onAddressChange={handleAddressChange} 
+                            />
+                        </div>
+                    )}
+                </div>
+            );
+        case 4: // NOVO PASSO: CONCILIAÇÃO
+            return (
+                <div className="pb-12 animate-slide-in-right flex flex-col items-center">
+                    <div className="w-full max-w-2xl">
+                        <div className="text-center mb-8">
+                            <div className="w-16 h-16 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <Video size={32} />
+                            </div>
+                            <h3 className="text-2xl font-bold text-slate-800">Propor Videoconferência</h3>
+                            <p className="text-slate-500 mt-2">
+                                Aumente em 80% a chance de acordo agendando uma conversa amigável antes de litigar.
+                                A IA incluirá o convite no documento final.
+                            </p>
+                        </div>
+
+                        <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm mb-6">
+                            <label className="flex items-center justify-between p-4 border-2 border-slate-100 rounded-xl cursor-pointer hover:border-purple-200 transition-colors mb-6">
+                                <div className="flex items-center">
+                                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center mr-3 ${formData.scheduleMeeting ? 'border-purple-600 bg-purple-600' : 'border-slate-300'}`}>
+                                        {formData.scheduleMeeting && <Check size={14} className="text-white" />}
+                                    </div>
+                                    <span className="font-bold text-slate-700">Sim, desejo agendar uma conciliação</span>
+                                </div>
                                 <input 
                                     type="checkbox" 
-                                    className="sr-only peer" 
-                                    checked={formData.scheduleMeeting}
-                                    onChange={() => setFormData(p => ({...p, scheduleMeeting: !p.scheduleMeeting}))}
-                                    disabled={formData.signed}
+                                    className="hidden" 
+                                    checked={formData.scheduleMeeting} 
+                                    onChange={() => setFormData(p => ({ ...p, scheduleMeeting: !p.scheduleMeeting }))} 
                                 />
-                                <div className="w-11 h-6 bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-500"></div>
-                              </div>
-                              <span className="text-sm font-medium text-slate-200">Agendar reunião de conciliação por videoconferência?</span>
-                          </label>
+                            </label>
 
-                          {formData.scheduleMeeting && (
-                              <div className="animate-slide-in-down">
-                                  {/* NOVO SELETOR CRIATIVO */}
-                                  <CreativeMeetingSelector 
-                                      date={formData.meetingDate}
-                                      time={formData.meetingTime}
-                                      setDate={(d) => handleDateChange(d)}
-                                      setTime={(t) => setFormData(p => ({...p, meetingTime: t}))}
-                                      disabled={formData.signed}
-                                  />
-                                  {error && formData.scheduleMeeting && <p className="text-red-400 text-xs mt-2 text-center bg-red-900/20 p-2 rounded">{error}</p>}
-                              </div>
-                          )}
-                      </div>
-
-                      <p className="text-slate-400 text-xs mb-4">A IA analisará os fatos e gerará uma minuta com base na legislação vigente e no percurso selecionado.</p>
-                      <button 
-                        onClick={generateContent} 
-                        disabled={isGenerating || formData.signed} 
-                        className="w-full bg-purple-600 hover:bg-purple-500 py-3 rounded-lg font-bold flex justify-center items-center transition shadow-lg shadow-purple-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                          {isGenerating ? <Loader2 className="animate-spin mr-2"/> : <Wand2 className="mr-2"/>} {formData.generatedContent && !showSuccessScreen ? 'Regerar Minuta' : 'Gerar Notificação com IA'}
-                      </button>
-                  </div>
-                  
-                  {/* ÁREA DINÂMICA: SUCESSO OU EDITOR/LOADING */}
-                  <div className={`flex-1 min-h-[400px] rounded-xl border transition-all relative overflow-hidden ${formData.signed ? 'opacity-50' : 'opacity-100'} ${showSuccessScreen ? 'bg-white border-blue-200' : 'bg-slate-50 border-slate-200'}`}>
-                      
-                      {isGenerating ? (
-                          <DraftingAnimation />
-                      ) : showSuccessScreen && formData.generatedContent ? (
-                          // TELA DE SUCESSO ANIMADA (Substitui o editor)
-                          <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center animate-fade-in">
-                              <div className="mb-6 relative">
-                                  <div className="absolute inset-0 bg-blue-100 rounded-full animate-ping opacity-75"></div>
-                                  <div className="relative bg-white p-4 rounded-full border-4 border-blue-50 shadow-lg">
-                                      <CheckCircle2 size={64} className="text-green-500" />
-                                  </div>
-                              </div>
-                              
-                              <h3 className="text-2xl font-bold text-slate-800 mb-2">Documento Gerado com Sucesso!</h3>
-                              <p className="text-slate-500 text-sm max-w-md mb-8 leading-relaxed">
-                                  A inteligência artificial processou seus dados e criou a minuta jurídica completa. O texto está pronto para ser revisado e assinado na próxima etapa.
-                              </p>
-
-                              <div className="flex flex-col w-full max-w-sm gap-3">
-                                  <button 
-                                      onClick={() => { setCurrentStep(5); window.scrollTo(0,0); }}
-                                      className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg shadow-slate-200 hover:bg-slate-800 transition transform hover:scale-105 flex items-center justify-center"
-                                  >
-                                      Revisar e Assinar <ArrowRight className="ml-2" size={18} />
-                                  </button>
-                                  
-                                  <button 
-                                      onClick={() => setShowSuccessScreen(false)}
-                                      className="text-xs text-slate-400 hover:text-slate-600 font-medium mt-2 underline"
-                                  >
-                                      Visualizar ou editar manualmente agora
-                                  </button>
-                              </div>
-                          </div>
-                      ) : (
-                          // EDITOR PADRÃO (Para visualização manual)
-                          <textarea 
-                            value={formData.generatedContent} 
-                            onChange={e => setFormData(p=>({...p, generatedContent: e.target.value}))} 
-                            className="w-full h-full bg-transparent resize-none outline-none font-serif text-sm leading-relaxed text-slate-800 disabled:cursor-not-allowed p-6" 
-                            placeholder={isGenerating ? "" : "O texto da notificação aparecerá aqui após a geração."}
-                            disabled={formData.signed || isGenerating}
-                          />
-                      )}
-                  </div>
-              </div>
-          );
-          case 5: return (
-              <div className="pb-12 text-center animate-fade-in bg-slate-100/50 p-4 rounded-xl">
-                   <div className="flex items-center justify-center mb-6">
-                       <h3 className="text-xl font-bold text-slate-800">Revisão e Assinatura</h3>
-                   </div>
-                   
-                   {/* PAGINATED DOCUMENT PREVIEW CONTAINER */}
-                   <div className="max-w-[210mm] mx-auto text-left transform scale-95 md:scale-100 transition-transform origin-top space-y-8">
-                       
-                       {previewPages.map((pageLines, pageIndex) => (
-                           <div key={pageIndex} className="bg-white shadow-2xl border border-slate-200 relative min-h-[297mm] w-[210mm] flex flex-col p-[20mm]">
-                               
-                               {/* Cabeçalho (Todas as Páginas) */}
-                               <div className="mb-4">
-                                   <div className="flex justify-between items-start border-b border-slate-300 pb-2 mb-6">
-                                       <div>
-                                           <h1 className="font-serif font-bold text-2xl text-slate-800">NOTIFY</h1>
-                                           <p className="text-[8px] text-slate-400 tracking-widest uppercase">Inteligência Jurídica e Automação</p>
-                                       </div>
-                                       <div className="text-right">
-                                           <p className="text-[10px] font-serif text-slate-600">Data: {new Date().toLocaleDateString()}</p>
-                                           <p className="text-[10px] font-serif text-slate-600">Ref: {notificationId}</p>
-                                       </div>
-                                   </div>
-                               </div>
-
-                               {/* Marca D'agua (Apenas na primeira página ou todas?) Vamos colocar em todas */}
-                               <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] select-none overflow-hidden">
-                                   <div className="transform -rotate-45 text-9xl font-bold text-slate-900 whitespace-nowrap">NOTIFY</div>
-                               </div>
-                               
-                               {/* Conteúdo da Página */}
-                               <div className="flex-1 font-serif text-[11pt] text-justify leading-relaxed whitespace-pre-wrap text-slate-900">
-                                   {pageLines.map((line, idx) => (
-                                       <div key={idx} className="min-h-[6mm]">{line}</div>
-                                   ))}
-                               </div>
-
-                               {/* Assinatura (Apenas na última página ou em nova página se não couber) */}
-                               {/* Lógica Simplificada: Renderiza no final do conteúdo da última página */}
-                               {pageIndex === previewPages.length - 1 && formData.signed && signatureData && (
-                                   <div className="mt-8 pb-4">
-                                       <div className="flex flex-col items-center justify-center">
-                                           <img src={signatureData} alt="Assinatura" className="h-16 object-contain mb-2 mix-blend-multiply" />
-                                           <div className="border-t border-slate-800 w-64 mb-1"></div>
-                                           <p className="font-serif font-bold text-xs text-slate-900 uppercase">{formData.sender.name}</p>
-                                           <p className="font-serif text-[10px] text-slate-600">CPF: {formData.sender.cpfCnpj}</p>
-                                           <p className="text-[8px] text-slate-400 mt-2">Assinado digitalmente via Notify Platform</p>
-                                       </div>
-                                   </div>
-                               )}
-
-                               {/* Rodapé */}
-                               <div className="mt-auto pt-4">
-                                   <div className="border-t border-slate-200 pt-2 flex justify-between items-center text-[8px] text-slate-400 font-serif italic">
-                                       <span>Documento gerado eletronicamente. ID: {notificationId}</span>
-                                       <span>Página {pageIndex + 1} de {previewPages.length}</span>
-                                   </div>
-                               </div>
-                           </div>
-                       ))}
-                   </div>
-
-                   {!formData.signed && (
-                       <div className="w-full max-w-md mx-auto bg-white p-6 rounded-2xl border border-slate-200 shadow-lg relative z-20 mt-8">
-                           <div className="flex justify-between items-center mb-3">
-                               <p className="text-xs font-bold text-slate-500 uppercase flex items-center"><PenTool size={12} className="mr-1"/> Assine no quadro abaixo</p>
-                               <button onClick={clearSignature} className="text-red-500 text-xs hover:underline font-medium">Limpar</button>
-                           </div>
-                           <div ref={containerRef} className="border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 overflow-hidden touch-none mb-4 relative cursor-crosshair hover:border-slate-400 transition-colors">
-                               <canvas 
-                                ref={canvasRef} 
-                                height={160} 
-                                onMouseDown={startDrawing} 
-                                onMouseMove={draw} 
-                                onMouseUp={stopDrawing} 
-                                onMouseLeave={stopDrawing} 
-                                onTouchStart={startDrawing}
-                                onTouchMove={draw}
-                                onTouchEnd={stopDrawing}
-                                className="w-full block" 
-                                style={{touchAction: 'none'}}
-                               />
-                               {!isDrawing && !signatureData && (
-                                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-40">
-                                       <span className="text-4xl text-slate-300 font-handwriting select-none">Assinar Aqui</span>
-                                   </div>
-                               )}
-                           </div>
-                           <div className="flex gap-3">
-                               <button 
-                                onClick={confirmSignature} 
-                                className="w-full py-3 bg-slate-900 text-white font-bold text-sm rounded-xl hover:bg-slate-800 shadow-lg transition-transform active:scale-95 flex items-center justify-center"
-                               >
-                                   <Check size={18} className="mr-2" />
-                                   Confirmar Assinatura
-                               </button>
-                           </div>
-                       </div>
-                   )}
-              </div>
-          );
-          case 6: 
-             // STAGE 1: PLAN SELECTION
-             if (paymentStage === 'selection') return (
-                 <div className="pb-12 space-y-6 animate-fade-in">
-                     <div className="text-center mb-8">
-                         <h3 className="text-2xl font-bold text-slate-800">Escolha como prosseguir</h3>
-                         <p className="text-slate-500 text-sm">Selecione o plano ideal para sua necessidade jurídica.</p>
-                     </div>
-                     
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-                        {/* PLANO AVULSO */}
-                        <div onClick={() => setPaymentPlan('single')} className={`relative p-8 rounded-2xl cursor-pointer transition-all duration-300 group overflow-hidden ${paymentPlan==='single' ? 'bg-white ring-2 ring-blue-500 shadow-xl scale-[1.02]' : 'bg-white border border-slate-200 hover:border-blue-300 hover:shadow-lg'}`}>
-                             {paymentPlan === 'single' && <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl shadow-sm">SELECIONADO</div>}
-                             
-                             <div className="flex flex-col h-full">
-                                 <div className="mb-6">
-                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-4 transition-colors ${paymentPlan==='single' ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-400'}`}>
-                                        <Send size={28} />
-                                    </div>
-                                    <h4 className="font-bold text-slate-900 text-xl">Envio Avulso</h4>
-                                    <p className="text-sm text-slate-500 mt-1">Combo Digital Completo</p>
-                                 </div>
-                                 
-                                 <div className="mb-8">
-                                    <p className="text-4xl font-bold text-slate-900 tracking-tight">R$ 57,92</p>
-                                    <p className="text-xs text-slate-400 font-medium uppercase tracking-wide mt-1">pagamento único</p>
-                                 </div>
-
-                                 <div className="space-y-3 pt-6 border-t border-slate-100 mt-auto">
-                                     {[
-                                         'Envio Imediato via WhatsApp',
-                                         'Envio via SMS Certificado',
-                                         'Envio via E-mail com Rastreio',
-                                         'Certificado de Entrega Digital'
-                                     ].map((feat, i) => (
-                                         <div key={i} className="flex items-center gap-3 text-sm text-slate-600">
-                                             <div className="p-0.5 rounded-full bg-green-100 text-green-600"><Check size={10} /></div>
-                                             {feat}
-                                         </div>
-                                     ))}
-                                 </div>
-                             </div>
+                            {formData.scheduleMeeting && (
+                                <div className="animate-fade-in">
+                                    <CreativeMeetingSelector 
+                                        date={formData.meetingDate} 
+                                        time={formData.meetingTime} 
+                                        setDate={handleDateChange} 
+                                        setTime={handleTimeChange}
+                                        disabled={false}
+                                    />
+                                    <p className="text-xs text-slate-400 mt-4 text-center flex items-center justify-center">
+                                        <Lock size={12} className="mr-1" />
+                                        O link seguro do Google Meet será gerado automaticamente.
+                                    </p>
+                                </div>
+                            )}
                         </div>
-
-                        {/* PLANO ASSINATURA */}
-                        <div onClick={() => setPaymentPlan('subscription')} className={`relative p-8 rounded-2xl cursor-pointer transition-all duration-300 group overflow-hidden ${paymentPlan==='subscription' ? 'bg-slate-900 ring-2 ring-purple-500 shadow-2xl scale-[1.02]' : 'bg-white border border-slate-200 hover:border-purple-300 hover:shadow-lg'}`}>
-                             {paymentPlan === 'subscription' && <div className="absolute top-0 right-0 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl shadow-sm flex items-center"><ZapIcon size={10} className="mr-1 text-yellow-300" /> RECOMENDADO</div>}
-                             
-                             <div className="flex flex-col h-full">
-                                 <div className="mb-6">
-                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-4 transition-colors ${paymentPlan==='subscription' ? 'bg-purple-500/20 text-purple-400' : 'bg-slate-100 text-slate-400'}`}>
-                                        <Package size={28} />
-                                    </div>
-                                    <h4 className={`font-bold text-xl ${paymentPlan==='subscription' ? 'text-white' : 'text-slate-900'}`}>Assinatura Pro</h4>
-                                    <p className={`text-sm mt-1 ${paymentPlan==='subscription' ? 'text-slate-400' : 'text-slate-500'}`}>Para advogados e empresas</p>
-                                 </div>
-                                 
-                                 <div className="mb-8">
-                                    <p className={`text-4xl font-bold tracking-tight ${paymentPlan==='subscription' ? 'text-white' : 'text-slate-900'}`}>R$ 259,97 <span className="text-sm font-normal opacity-60">/mês</span></p>
-                                    <p className={`text-xs font-bold uppercase tracking-wide mt-1 ${paymentPlan==='subscription' ? 'text-purple-400' : 'text-purple-600'}`}>~R$ 26,00 por notificação</p>
-                                 </div>
-
-                                 <div className={`space-y-3 pt-6 border-t mt-auto ${paymentPlan==='subscription' ? 'border-slate-700' : 'border-slate-100'}`}>
-                                     <div className={`flex items-center gap-3 text-sm ${paymentPlan==='subscription' ? 'text-slate-300' : 'text-slate-600'}`}>
-                                         <div className="p-0.5 rounded-full bg-purple-500/20 text-purple-400"><Check size={10} /></div>
-                                         <strong>10 Créditos</strong> de envio mensal
-                                     </div>
-                                     <div className={`flex items-center gap-3 text-sm ${paymentPlan==='subscription' ? 'text-slate-300' : 'text-slate-600'}`}>
-                                         <div className="p-0.5 rounded-full bg-purple-500/20 text-purple-400"><Check size={10} /></div>
-                                         Créditos cumulativos (30 dias)
-                                     </div>
-                                     <div className={`flex items-center gap-3 text-sm ${paymentPlan==='subscription' ? 'text-slate-300' : 'text-slate-600'}`}>
-                                         <div className="p-0.5 rounded-full bg-purple-500/20 text-purple-400"><Check size={10} /></div>
-                                         Suporte prioritário via WhatsApp
-                                     </div>
-                                 </div>
-                             </div>
-                        </div>
-                     </div>
-                     
-                     <div className="max-w-md mx-auto pt-6">
-                         <div className="flex items-center justify-between py-4 border-t border-slate-100 mb-4">
-                             <div className="text-sm text-slate-500 font-medium">Total a pagar agora:</div>
-                             <div className="text-right font-bold text-3xl text-slate-900">R$ {calculateTotal().toFixed(2)}</div>
-                         </div>
-
-                         <button onClick={() => setPaymentStage('input')} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-xl shadow-slate-200 flex items-center justify-center hover:bg-slate-800 transition transform hover:scale-105 active:scale-95 group">
-                             Ir para Pagamento <ArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" size={18} />
-                         </button>
-                     </div>
-                 </div>
-             );
-             
-             // STAGE 2: PAYMENT INPUT
-             if (paymentStage === 'input') return (
-                <div className="pb-12 max-w-md mx-auto animate-fade-in">
+                    </div>
+                </div>
+            );
+        case 5: // IA GENERATION
+            return (
+                <div className="pb-12 animate-slide-in-right flex flex-col items-center justify-center min-h-[400px]">
+                    <div className="relative mb-8">
+                        <div className="absolute inset-0 bg-blue-500 blur-3xl opacity-20 rounded-full animate-pulse"></div>
+                        <Wand2 size={64} className="text-slate-800 relative z-10" />
+                    </div>
+                    <h3 className="text-2xl font-bold text-slate-800 mb-2">IA Pronta para Redigir</h3>
+                    <p className="text-slate-500 text-center max-w-md mb-8">
+                        Nossa inteligência artificial analisou os fatos {formData.scheduleMeeting ? 'e os dados da reunião' : ''} para gerar uma notificação jurídica completa e fundamentada.
+                    </p>
                     <button 
-                        onClick={() => setPaymentStage('selection')}
-                        className="mb-6 text-slate-400 hover:text-slate-600 flex items-center text-sm font-medium transition-colors"
+                        onClick={handleGenerateContent}
+                        disabled={isGenerating}
+                        className="px-8 py-4 bg-slate-900 text-white rounded-xl font-bold shadow-xl hover:bg-slate-800 transition-transform active:scale-95 flex items-center disabled:opacity-70 disabled:cursor-not-allowed"
                     >
-                        <ChevronLeft size={16} className="mr-1" /> Voltar para planos
+                        {isGenerating ? <Loader2 className="animate-spin mr-2" /> : <Sparkles className="mr-2 text-yellow-400" />}
+                        {isGenerating ? 'Gerando Documento...' : 'Gerar Minuta Jurídica'}
                     </button>
-
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xl shadow-slate-100">
-                        <div className="text-center mb-6">
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Valor Total</p>
-                            <p className="text-3xl font-bold text-slate-900">R$ {calculateTotal().toFixed(2)}</p>
-                        </div>
-
-                        <div className="flex bg-slate-50 p-1 rounded-xl mb-6 border border-slate-100">
-                            <button 
-                                onClick={() => setPaymentMethod('pix')}
-                                className={`flex-1 py-2.5 rounded-lg flex items-center justify-center text-sm font-bold transition-all duration-300 ${paymentMethod === 'pix' ? 'bg-white text-green-700 shadow-sm ring-1 ring-green-500/20' : 'text-slate-500 hover:text-slate-700'}`}
-                            >
-                                <QrCode size={16} className="mr-2" /> Pix
-                            </button>
-                            <button 
-                                onClick={() => setPaymentMethod('credit_card')}
-                                className={`flex-1 py-2.5 rounded-lg flex items-center justify-center text-sm font-bold transition-all duration-300 ${paymentMethod === 'credit_card' ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-500/20' : 'text-slate-500 hover:text-slate-700'}`}
-                            >
-                                <CardIcon size={16} className="mr-2" /> Cartão
-                            </button>
-                        </div>
-
-                        {paymentMethod === 'pix' ? (
-                            <div className="text-center space-y-5 animate-fade-in">
-                                <div className="p-4 bg-white border-2 border-slate-100 rounded-xl inline-block shadow-inner relative group">
-                                    <QrCode size={160} className="text-slate-800 opacity-90 group-hover:opacity-100 transition-opacity" />
-                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <div className="bg-white/80 backdrop-blur px-2 py-1 rounded text-[10px] font-bold text-slate-900">Scan Me</div>
+                </div>
+            );
+        case 6: // ASSINATURA
+            return (
+                <div className="pb-12 animate-slide-in-right">
+                    <div className="flex flex-col lg:flex-row gap-8 h-full">
+                        <div className="flex-1 bg-slate-50 rounded-xl border border-slate-200 p-8 shadow-inner min-h-[600px] font-serif text-slate-800 text-sm leading-relaxed overflow-y-auto max-h-[70vh]">
+                            <div className="w-full bg-white shadow-lg p-10 min-h-full mx-auto max-w-[210mm]">
+                                <div className="border-b-2 border-slate-800 pb-4 mb-8 flex justify-between items-end">
+                                    <div>
+                                        <h1 className="text-2xl font-bold uppercase tracking-widest text-slate-900">Notificação Extrajudicial</h1>
+                                        <p className="text-xs text-slate-500 mt-1">Ref: {formData.subject || formData.species}</p>
+                                    </div>
+                                    <div className="text-right text-xs text-slate-400">
+                                        <p>{new Date().toLocaleDateString()}</p>
+                                        <p>Notify ID: {notificationId}</p>
                                     </div>
                                 </div>
                                 
-                                <div>
-                                    <p className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center justify-center">
-                                        <Copy size={12} className="mr-1" /> Código Pix Copia e Cola
-                                    </p>
-                                    <div className="flex items-center bg-slate-50 rounded-xl border border-slate-200 overflow-hidden group hover:border-blue-300 transition-colors">
-                                        <input 
-                                            readOnly 
-                                            value="00020126360014BR.GOV.BCB.PIX0114+551199999999520400005303986540510.005802BR5913NOTIFY SERVICOS6009SAO PAULO62070503***6304E2CA"
-                                            className="bg-transparent text-xs text-slate-600 w-full outline-none truncate font-mono px-3 py-3"
-                                        />
-                                        <button 
-                                            onClick={handleCopyPix}
-                                            className={`p-3 transition-colors ${pixCopied ? 'bg-green-500 text-white' : 'bg-white border-l border-slate-200 text-blue-600 hover:bg-blue-50'}`}
-                                            title="Copiar"
-                                        >
-                                            {pixCopied ? <Check size={16} /> : <Copy size={16} />}
-                                        </button>
-                                    </div>
-                                    <p className={`text-[10px] mt-2 transition-colors font-medium ${pixCopied ? 'text-green-600' : 'text-slate-400'}`}>
-                                        {pixCopied ? 'Código copiado com sucesso!' : 'Aguardando confirmação automática...'}
-                                    </p>
+                                <div className="space-y-4 whitespace-pre-wrap text-justify">
+                                    {formData.generatedContent}
                                 </div>
-                            </div>
-                        ) : (
-                            <div className="space-y-4 animate-fade-in">
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Número do Cartão</label>
-                                    <div className="relative">
-                                        <CardIcon className="absolute left-3 top-3 text-slate-400" size={16} />
-                                        <input 
-                                            type="text" 
-                                            placeholder="0000 0000 0000 0000" 
-                                            maxLength={19}
-                                            value={cardData.number}
-                                            onChange={e => setCardData(p => ({...p, number: MASKS.card(e.target.value)}))}
-                                            className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm font-mono focus:ring-2 focus:ring-blue-100 transition focus:bg-white"
-                                        />
-                                    </div>
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase">Nome no Cartão</label>
-                                    <div className="relative">
-                                        <User className="absolute left-3 top-3 text-slate-400" size={16} />
-                                        <input 
-                                            type="text" 
-                                            placeholder="COMO NO CARTÃO" 
-                                            value={cardData.name}
-                                            onChange={e => setCardData(p => ({...p, name: e.target.value.toUpperCase()}))}
-                                            className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-100 transition focus:bg-white"
-                                        />
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase">Validade</label>
-                                        <div className="relative">
-                                            <Calendar className="absolute left-3 top-3 text-slate-400" size={16} />
-                                            <input 
-                                                type="text" 
-                                                placeholder="MM/AA" 
-                                                maxLength={5}
-                                                value={cardData.expiry}
-                                                onChange={e => setCardData(p => ({...p, expiry: MASKS.expiry(e.target.value)}))}
-                                                className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-100 transition focus:bg-white"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-bold text-slate-400 uppercase">CVV</label>
-                                        <div className="relative">
-                                            <Lock className="absolute left-3 top-3 text-slate-400" size={16} />
-                                            <input 
-                                                type="text" 
-                                                placeholder="123" 
-                                                maxLength={4}
-                                                value={cardData.cvv}
-                                                onChange={e => setCardData(p => ({...p, cvv: e.target.value.replace(/\D/g,'')}))}
-                                                className="w-full pl-10 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm focus:ring-2 focus:ring-blue-100 transition focus:bg-white"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    <button 
-                        onClick={handleConfirmPayment} 
-                        disabled={isProcessingPayment}
-                        className="w-full mt-6 bg-slate-900 text-white py-4 rounded-xl font-bold shadow-xl shadow-slate-200 flex items-center justify-center hover:bg-slate-800 transition transform active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
-                    >
-                        {isProcessingPayment ? <Loader2 className="animate-spin mr-2"/> : <Check size={20} className="mr-2" />}
-                        {isProcessingPayment ? 'Processando...' : `Confirmar Pagamento`}
-                    </button>
-                    
-                    {/* Botão Pagar Depois */}
-                    <button 
-                        onClick={handlePayLater}
-                        disabled={isProcessingPayment}
-                        className="w-full mt-3 bg-transparent text-slate-500 py-2 text-xs font-bold hover:text-slate-800 transition uppercase tracking-wide"
-                    >
-                        Pagar depois e salvar pendência
-                    </button>
-                </div>
-             );
-
-             // STAGE 3: PROTOCOL & SUCCESS
-             if (paymentStage === 'protocol') return (
-                 <div className="pb-12 max-w-lg mx-auto text-center animate-fade-in">
-                     <div className="relative inline-block mb-8 mt-4">
-                         <div className="absolute inset-0 bg-green-200 rounded-full animate-ping opacity-50"></div>
-                         <div className="relative w-24 h-24 bg-gradient-to-br from-green-400 to-emerald-600 text-white rounded-full flex items-center justify-center shadow-xl border-4 border-white">
-                             <CheckCircle2 size={48} />
-                         </div>
-                     </div>
-                     
-                     <h2 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight">Sucesso!</h2>
-                     <p className="text-slate-500 mb-10 max-w-xs mx-auto leading-relaxed">Sua notificação foi processada e registrada com segurança.</p>
-
-                     <div className="bg-white rounded-2xl border border-slate-200 shadow-lg text-left mb-8 relative overflow-hidden group hover:border-blue-200 transition-colors">
-                         {/* Receipt jagged edge effect - simulated with CSS or simple border */}
-                         <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-blue-500 via-purple-500 to-indigo-500"></div>
-                         
-                         <div className="p-6 md:p-8">
-                            <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-                                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest Protocolo Digital">Protocolo Digital</h4>
-                                <div className="text-[10px] font-bold bg-green-100 text-green-700 px-2 py-1 rounded border border-green-200 uppercase">Confirmado</div>
-                            </div>
-                            
-                            <div className="space-y-4">
-                                <div className="flex justify-between">
-                                    <span className="text-sm text-slate-500">ID da Transação</span>
-                                    <span className="text-sm font-mono font-bold text-slate-800 select-all">{createdData.trans?.id}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-sm text-slate-500">Notificação ID</span>
-                                    <span className="text-sm font-mono font-bold text-slate-800 select-all">{createdData.notif?.id}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="text-sm text-slate-500">Data de Emissão</span>
-                                    <span className="text-sm text-slate-800 font-medium">{new Date().toLocaleDateString()}</span>
-                                </div>
-                                {createdData.meet && (
-                                    <div className="flex justify-between pt-2 border-t border-dashed border-slate-100 mt-2">
-                                        <span className="text-sm text-purple-600 font-bold flex items-center"><Video size={12} className="mr-1"/> Reunião Criada</span>
-                                        <span className="text-sm text-slate-800">{createdData.meet.date.split('-').reverse().join('/')}</span>
+                                
+                                {signatureData && (
+                                    <div className="mt-16 pt-8 border-t border-slate-300 w-64">
+                                        <img src={signatureData} alt="Assinatura" className="h-12 object-contain mb-2 -ml-4" />
+                                        <p className="font-bold text-slate-900">{formData.sender.name}</p>
+                                        <p className="text-xs text-slate-500">CPF: {formData.sender.cpfCnpj}</p>
+                                        <p className="text-[10px] text-slate-400 mt-1">Assinado digitalmente via Notify</p>
                                     </div>
                                 )}
                             </div>
-                         </div>
-                         <div className="bg-slate-50 p-4 text-center border-t border-slate-100">
-                             <p className="text-[10px] text-slate-400">Este comprovante foi enviado para seu e-mail.</p>
-                         </div>
-                     </div>
+                        </div>
 
-                     <div className="space-y-3">
-                         <button 
-                             onClick={handleFinishProtocol}
-                             className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-xl shadow-slate-300 flex items-center justify-center hover:bg-slate-800 transition transform active:scale-95 group"
-                         >
-                             Voltar ao Painel de Controle <ArrowRight size={18} className="ml-2 group-hover:translate-x-1 transition-transform"/>
-                         </button>
-                     </div>
-                 </div>
-             );
-      }
+                        <div className="w-full lg:w-96 space-y-6">
+                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                                <h4 className="font-bold text-slate-800 mb-4 flex items-center"><PenTool size={16} className="mr-2"/> Assinatura Digital</h4>
+                                <div 
+                                    ref={containerRef}
+                                    className="border-2 border-dashed border-slate-300 rounded-xl h-32 bg-slate-50 cursor-crosshair relative touch-none"
+                                    onMouseDown={startDrawing}
+                                    onMouseMove={draw}
+                                    onMouseUp={endDrawing}
+                                    onMouseLeave={endDrawing}
+                                    onTouchStart={startDrawing}
+                                    onTouchMove={draw}
+                                    onTouchEnd={endDrawing}
+                                >
+                                    <canvas ref={canvasRef} className="absolute inset-0" />
+                                    {!isDrawing && !signatureData && (
+                                        <div className="absolute inset-0 flex items-center justify-center text-slate-400 pointer-events-none">
+                                            <span className="text-xs">Assine aqui</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <button onClick={clearSignature} className="text-xs text-red-500 mt-2 font-bold hover:underline">Limpar Assinatura</button>
+                            </div>
+
+                            <button 
+                                onClick={async () => {
+                                    try {
+                                        await handlePersistData();
+                                        setCurrentStep(7); // Vai para Pagamento
+                                    } catch(e) {
+                                        alert("Erro ao salvar documento. Tente novamente.");
+                                    }
+                                }}
+                                disabled={isSavingData}
+                                className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-4 rounded-xl font-bold shadow-xl shadow-emerald-200 transition-all flex items-center justify-center disabled:opacity-70"
+                            >
+                                {isSavingData ? <Loader2 className="animate-spin mr-2" /> : <CheckCircle2 className="mr-2" />}
+                                {isSavingData ? 'Salvando...' : 'Finalizar e Pagar'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        case 7:
+            return renderPaymentStep();
+        default:
+            return null;
+    }
   };
 
   return (
     <div className="max-w-5xl mx-auto pb-24 relative">
-       {/* LOADER DE SALVAMENTO BLOQUEANTE */}
-       {isSavingData && (
-           <div className="fixed inset-0 z-50 bg-white/90 backdrop-blur flex flex-col items-center justify-center animate-fade-in">
-               <div className="w-16 h-16 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin mb-4"></div>
-               <h3 className="text-lg font-bold text-slate-800">Processando</h3>
-               <p className="text-slate-500 text-sm">Salvando notificação na aba pendentes...</p>
-           </div>
-       )}
-
-       {/* Responsive Scrollable Steps Bar */}
-       <div className="bg-white p-2 md:p-4 rounded-xl border shadow-sm mb-6 sticky top-0 z-20">
-           <div className="flex overflow-x-auto gap-2 md:gap-0 md:justify-between scrollbar-hide snap-x py-1">
-               {STEPS.map(step => (
-                   <div key={step.id} className={`flex flex-col items-center min-w-[70px] md:min-w-0 snap-center shrink-0 transition-colors duration-300 ${currentStep >= step.id ? 'text-blue-600' : 'text-slate-300'}`}>
-                       <div className={`p-2 rounded-full mb-1 transition-all ${currentStep === step.id ? 'bg-blue-100 ring-2 ring-blue-500 ring-offset-2' : ''}`}>
-                           <step.icon size={18} />
+       <div className="mb-8 overflow-x-auto pb-2 scrollbar-none">
+           <div className="flex justify-between min-w-[600px] px-2">
+               {STEPS.map((step, idx) => (
+                   <div key={step.id} className={`flex flex-col items-center relative z-10 ${currentStep >= step.id ? 'opacity-100' : 'opacity-40'}`}>
+                       <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-all duration-500 ${currentStep >= step.id ? 'bg-slate-900 text-white shadow-lg scale-110' : 'bg-slate-200 text-slate-500'}`}>
+                           {currentStep > step.id ? <Check size={18} /> : <step.icon size={18} />}
                        </div>
-                       <span className={`text-[10px] font-bold uppercase ${currentStep === step.id ? 'text-blue-700' : ''}`}>{step.label}</span>
+                       <span className="text-[10px] font-bold uppercase tracking-wider">{step.label}</span>
+                       {idx < STEPS.length - 1 && (
+                           <div className={`absolute top-5 left-1/2 w-full h-[2px] -z-10 ${currentStep > step.id ? 'bg-slate-900' : 'bg-slate-200'}`} style={{ width: 'calc(100% + 40px)' }}></div>
+                       )}
                    </div>
                ))}
            </div>
        </div>
 
-       <div className="bg-white p-4 md:p-8 rounded-2xl border shadow-sm min-h-[500px] flex flex-col relative">
-           <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-               <h2 className="text-xl md:text-2xl font-bold text-slate-800">{STEPS[currentStep-1].label}</h2>
-               {error && <span className="text-red-500 text-xs md:text-sm font-bold bg-red-50 px-3 py-1 rounded-full animate-pulse flex items-center"><AlertTriangle size={14} className="mr-1"/> {error}</span>}
-           </div>
-           
-           <div className="flex-1">
-               {renderStepContent()}
-           </div>
-       </div>
+       <div className="bg-white p-4 md:p-8 rounded-2xl border shadow-sm min-h-[500px] relative">
+           {isGenerating && <DraftingAnimation />}
 
-       {paymentStage !== 'protocol' && (
-           <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur border-t p-4 z-30 md:pl-72 flex justify-between items-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-                <button 
+           {renderStepContent()}
+
+           {currentStep !== 5 && currentStep !== 7 && (
+               <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md border-t border-slate-200 p-4 md:p-6 z-40 flex justify-between max-w-5xl mx-auto md:relative md:bg-transparent md:border-0 md:p-0 mt-8">
+                   <button 
                     onClick={() => {
-                        if (currentStep > 1) {
-                            if (paymentStage === 'input') {
-                                setPaymentStage('selection');
-                            } else {
-                                setCurrentStep(c => c - 1);
-                                window.scrollTo(0,0);
-                            }
-                        } else {
-                            // VOLTA PARA O PAINEL SE FOR ETAPA 1
-                            if (onBack) onBack();
-                        }
-                    }} 
-                    className="px-6 py-3 rounded-xl text-slate-600 font-bold hover:bg-slate-100 transition"
-                >
-                    Voltar
-                </button>
-                
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest hidden sm:block">
-                    Passo {currentStep} de {STEPS.length}
-                </div>
-
-                {currentStep < 6 && (
-                    <button onClick={handleNext} disabled={isSavingData} className="px-8 py-3 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 shadow-lg shadow-slate-300 transition transform active:scale-95 disabled:opacity-50">
-                        {currentStep === 5 ? 'Salvar e Continuar' : 'Continuar'}
-                    </button>
-                )}
-           </div>
-       )}
+                        if (currentStep === 1) onBack?.();
+                        else setCurrentStep(prev => prev - 1);
+                    }}
+                    className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition"
+                   >
+                       Voltar
+                   </button>
+                   
+                   {currentStep < 6 && (
+                       <button 
+                        onClick={() => setCurrentStep(prev => prev + 1)}
+                        disabled={currentStep === 1 && !formData.areaId}
+                        className="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center"
+                       >
+                           Próximo <ChevronLeft className="rotate-180 ml-2" size={18} />
+                       </button>
+                   )}
+               </div>
+           )}
+       </div>
     </div>
   );
 };

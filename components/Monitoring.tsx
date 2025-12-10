@@ -2,14 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { NotificationItem, NotificationStatus } from '../types';
 import { getNotificationsBySender, getNotificationsByRecipientCpf, deleteNotification, confirmPayment } from '../services/notificationService';
 import { restoreLatestCanceledMeeting } from '../services/meetingService';
+import { dispatchCommunications } from '../services/communicationService'; // IMPORTADO
 import { getUserProfile } from '../services/userService';
-import { Send, RefreshCw, ChevronDown, ChevronUp, Package, Mail, FileText, CreditCard, Trash2, User, CheckCircle2, Circle, Clock, FileEdit, Archive, Inbox } from 'lucide-react';
+import { Send, RefreshCw, ChevronDown, ChevronUp, Package, Mail, FileText, CreditCard, Trash2, User, CheckCircle2, Circle, Clock, FileEdit, Archive, Inbox, Loader2 } from 'lucide-react';
 
 interface MonitoringProps {
   notifications: NotificationItem[];
   filterStatus?: NotificationStatus[]; 
   searchQuery?: string;
-  defaultTab?: 'sent' | 'received'; // Nova prop
+  defaultTab?: 'sent' | 'received'; 
   customFolderConfig?: {
       title: string;
       desc?: string;
@@ -23,17 +24,16 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
   const savedUser = localStorage.getItem('mock_session_user');
   const user = savedUser ? JSON.parse(savedUser) : null;
   
-  // Inicia com a aba definida pela prop ou 'sent' por padrão
   const [activeTab, setActiveTab] = useState<'sent' | 'received'>(defaultTab);
   
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [filteredItems, setFilteredItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [processingId, setProcessingId] = useState<string | null>(null); // Estado para loading do botão pagar
   const [expandedId, setExpandedId] = useState<string | null>(null);
   
   const [senderProfile, setSenderProfile] = useState<any>(null);
 
-  // Atualiza a aba se a prop mudar (navegação externa)
   useEffect(() => {
       if (defaultTab) {
           setActiveTab(defaultTab);
@@ -45,16 +45,13 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, activeTab, propNotifications]); 
 
-  // Aplica filtros locais (Status + Busca)
   useEffect(() => {
     let result = items;
 
-    // Filtro por Status
     if (filterStatus && filterStatus.length > 0 && activeTab === 'sent') {
         result = result.filter(i => filterStatus.includes(i.status));
     }
 
-    // Filtro por Busca (Nome do destinatário/remetente ou assunto)
     if (searchQuery.trim() !== '') {
         const query = searchQuery.toLowerCase();
         result = result.filter(item => 
@@ -75,11 +72,8 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
     try {
         if (activeTab === 'sent') {
             const data = await getNotificationsBySender(user.uid);
-            // Merge com props (para atualizações em tempo real do App.tsx)
             const combinedMap = new Map();
-            // Adiciona primeiro os do banco
             data.forEach(item => combinedMap.set(item.id, item));
-            // Sobrescreve/Adiciona com as props recentes (estado fresco)
             propNotifications.forEach(item => {
                 if(item.senderUid === user.uid) combinedMap.set(item.id, item);
             });
@@ -87,14 +81,13 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
             const uniqueItems = Array.from(combinedMap.values()).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
             setItems(uniqueItems);
         } else {
-            // LÓGICA DE RECEBIMENTO
             const profile = await getUserProfile(user.uid);
             if (profile && profile.cpf) {
-                const cleanCpf = profile.cpf.replace(/\D/g, ''); // Garante CPF numérico
+                const cleanCpf = profile.cpf.replace(/\D/g, '');
                 const data = await getNotificationsByRecipientCpf(cleanCpf);
                 setItems(data);
             } else {
-                setItems([]); // Sem CPF cadastrado, não recebe nada
+                setItems([]); 
             }
         }
     } catch (error) {
@@ -116,13 +109,32 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
   };
 
   const handlePay = async (item: NotificationItem) => {
-      if (window.confirm(`Confirmar pagamento de R$ ${item.paymentAmount?.toFixed(2)}?`)) {
-          await confirmPayment(item.id);
-          if (user) {
-              await restoreLatestCanceledMeeting(user.uid);
+      if (window.confirm(`Confirmar pagamento de R$ ${item.paymentAmount?.toFixed(2)} e disparar notificação?`)) {
+          setProcessingId(item.id);
+          try {
+              // 1. Atualiza status no banco
+              await confirmPayment(item.id);
+              
+              // 2. Dispara e-mail real (Correção aplicada aqui)
+              const emailSuccess = await dispatchCommunications(item);
+              
+              if (user) {
+                  await restoreLatestCanceledMeeting(user.uid);
+              }
+              
+              await fetchData();
+              
+              if (emailSuccess) {
+                  alert("Pagamento confirmado e E-mail enviado com sucesso!");
+              } else {
+                  alert("Pagamento confirmado, mas houve um erro no disparo do e-mail.");
+              }
+          } catch (error) {
+              console.error(error);
+              alert("Erro ao processar pagamento.");
+          } finally {
+              setProcessingId(null);
           }
-          fetchData();
-          alert("Pagamento confirmado! Sua notificação foi enviada.");
       }
   };
 
@@ -149,7 +161,6 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
     }
   };
 
-  // Helper para configuração visual da Subpasta
   const getFolderConfig = () => {
       if (customFolderConfig) return customFolderConfig;
 
@@ -187,7 +198,6 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
 
   const folderConfig = getFolderConfig();
 
-  // Componente Visual do Fluxo de Entrega
   const DeliveryFlow = ({ status }: { status: NotificationStatus }) => {
       const steps = [
           { label: 'Gerada', completed: true },
@@ -222,10 +232,8 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
   return (
     <div className="space-y-6 animate-fade-in max-w-5xl mx-auto">
       
-      {/* CABEÇALHO: CONDICIONAL (PASTA OU GERAL) */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
         {folderConfig ? (
-            // Visualização de Subpasta
             <div className="flex items-center gap-4">
                 <div className={`p-3 rounded-xl ${folderConfig.colorClass} border ${folderConfig.borderClass} shadow-sm`}>
                     <folderConfig.icon size={24} />
@@ -236,7 +244,6 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                 </div>
             </div>
         ) : (
-            // Visualização Geral
             <div>
                 <h2 className="text-2xl font-bold text-slate-800">
                     {activeTab === 'sent' ? 'Monitoramento de Envios' : 'Caixa de Entrada'}
@@ -252,7 +259,6 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
         </button>
       </div>
 
-      {/* ABAS DE CONTEXTO */}
       <div className="bg-white p-1 rounded-xl border border-slate-200 inline-flex shadow-sm mb-4">
           <button 
             onClick={() => setActiveTab('sent')}
@@ -278,7 +284,6 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
           </button>
       </div>
 
-      {/* CONTEÚDO DA LISTA */}
       <div className="space-y-4">
         {loading ? (
             <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div></div>
@@ -343,7 +348,6 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                                 <div>
                                     <h5 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Status da Entrega</h5>
                                     
-                                    {/* VISUALIZAÇÃO DO FLUXO DE ENTREGA */}
                                     <div className="mb-6 p-4 bg-white rounded-xl border border-slate-100 shadow-sm">
                                         <DeliveryFlow status={notif.status} />
                                     </div>
@@ -359,7 +363,6 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                                         </div>
                                     </div>
                                     
-                                    {/* CARD PERFIL DO REMETENTE (Se aba Recebidos) */}
                                     {activeTab === 'received' && senderProfile && (
                                         <div className="bg-white p-4 rounded-xl border border-blue-100 mt-6 shadow-sm">
                                             <h6 className="text-xs font-bold text-blue-400 uppercase mb-3 flex items-center"><User size={12} className="mr-1"/> Remetente Identificado</h6>
@@ -408,11 +411,15 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                                             </a>
                                         )}
 
-                                        {/* AÇÕES PARA ITENS PENDENTES (Apenas aba Enviados) */}
                                         {activeTab === 'sent' && notif.status === NotificationStatus.PENDING_PAYMENT && (
                                             <div className="grid grid-cols-2 gap-3">
-                                                <button onClick={() => handlePay(notif)} className="bg-green-600 text-white py-3 rounded-xl text-sm font-bold flex items-center justify-center hover:bg-green-700 shadow-lg shadow-green-200 transition-all">
-                                                    <CreditCard size={16} className="mr-2" /> Pagar R$ {notif.paymentAmount}
+                                                <button 
+                                                    onClick={() => handlePay(notif)} 
+                                                    disabled={processingId === notif.id}
+                                                    className="bg-green-600 text-white py-3 rounded-xl text-sm font-bold flex items-center justify-center hover:bg-green-700 shadow-lg shadow-green-200 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                                                >
+                                                    {processingId === notif.id ? <Loader2 className="animate-spin mr-2"/> : <CreditCard size={16} className="mr-2" />} 
+                                                    {processingId === notif.id ? 'Processando...' : `Pagar R$ ${notif.paymentAmount}`}
                                                 </button>
                                                 <button onClick={() => handleDelete(notif)} className="bg-white text-red-500 border border-red-200 py-3 rounded-xl text-sm font-bold flex items-center justify-center hover:bg-red-50 transition-all">
                                                     <Trash2 size={16} className="mr-2" /> Excluir

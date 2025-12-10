@@ -27,6 +27,7 @@ export enum NotificationStatus {
 
     recipientName: string;
     recipientEmail: string;
+    recipientPhone?: string; // NOVO: Telefone para SMS/Zap
     recipientCpf: string; // Chave para vínculo com usuário secundário
     
     area: string;

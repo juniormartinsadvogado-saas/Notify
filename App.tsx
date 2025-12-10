@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -9,15 +10,17 @@ import Billing from './components/Billing';
 import Settings from './components/Settings';
 import FileManager from './components/FileManager';
 import Login from './components/Login';
+import SubscriptionManager from './components/SubscriptionManager'; 
 import SplashScreen from './components/SplashScreen'; 
 import { ViewState, NotificationItem, NotificationStatus, Meeting, Transaction } from './types';
 import { Bell, Search, Menu, X, CheckCircle, FileText, ArrowLeft, LogOut, Loader2, Settings as SettingsIcon } from 'lucide-react';
 import { ensureUserProfile, getUserProfile } from './services/userService';
 import { getNotificationsByRecipientCpf } from './services/notificationService';
+import { saveTransaction, getUserTransactions, updateSubscriptionStatus } from './services/paymentService'; // Importação atualizada
 import { auth } from './services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 
-// Constantes de Filtros para evitar re-renderizações desnecessárias
+// Constantes de Filtros
 const FILTER_CREATED = [NotificationStatus.DRAFT];
 const FILTER_DELIVERED = [NotificationStatus.SENT, NotificationStatus.DELIVERED, NotificationStatus.READ];
 const FILTER_PENDING = [NotificationStatus.PENDING_PAYMENT];
@@ -49,6 +52,16 @@ const App: React.FC = () => {
   const [systemNotifications, setSystemNotifications] = useState<NotificationItem[]>([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
 
+  // Subscription State
+  const [subscriptionData, setSubscriptionData] = useState({
+      active: false,
+      planName: 'Plano Gratuito',
+      creditsTotal: 0,
+      creditsUsed: 0,
+      nextBillingDate: '',
+      invoices: [] as Transaction[]
+  });
+
   const [badgeCounts, setBadgeCounts] = useState<Record<string, number>>({
     [ViewState.RECEIVED_NOTIFICATIONS]: 0,
     [ViewState.MONITORING]: 0,
@@ -57,11 +70,7 @@ const App: React.FC = () => {
   
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]); 
-  const [transactions, setTransactions] = useState<Transaction[]>([
-    { id: 'TX-998', description: 'Geração de Notificação', amount: 49.90, date: '2023-10-05', status: 'Pago' },
-    { id: 'TX-999', description: 'Plano Mensal', amount: 199.00, date: '2023-10-01', status: 'Pago' },
-    { id: 'TX-1000', description: 'Agendamento Premium', amount: 29.90, date: '2023-09-28', status: 'Pendente' },
-  ]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -77,14 +86,30 @@ const App: React.FC = () => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
         if (currentUser) {
             if (currentUser.emailVerified) {
-                // Usuário logado e verificado
                 setUser(currentUser);
-                localStorage.setItem('mock_session_user', JSON.stringify(currentUser)); // Mantido para compatibilidade com partes não migradas
-                await ensureUserProfile(currentUser);
+                const profile = await ensureUserProfile(currentUser);
+                
+                // --- SINCRONIZAÇÃO DE DADOS INICIAIS ---
                 checkSystemNotifications(currentUser.uid);
+                
+                // 1. Busca Transações Reais
+                const realTransactions = await getUserTransactions(currentUser.uid);
+                setTransactions(realTransactions);
+
+                // 2. Sincroniza Assinatura do Firestore
+                if (profile) {
+                    setSubscriptionData(prev => ({
+                        ...prev,
+                        active: profile.subscriptionActive || false,
+                        planName: profile.subscriptionPlan || 'Plano Gratuito',
+                        creditsTotal: profile.creditsTotal || 0,
+                        creditsUsed: profile.creditsUsed || 0,
+                        nextBillingDate: profile.nextBillingDate || '',
+                        invoices: realTransactions.filter(t => t.description.includes('Assinatura'))
+                    }));
+                }
+
             } else {
-                // Email não verificado, força logout se tentar persistir (segurança extra)
-                // A UI de Login lida com isso, aqui é apenas state sync
                 setUser(null);
             }
         } else {
@@ -94,7 +119,6 @@ const App: React.FC = () => {
         setLoadingAuth(false);
     });
 
-    // Carregar preferências salvas
     const savedTheme = localStorage.getItem('app_theme_pref');
     if (savedTheme) {
         const { dark, color } = JSON.parse(savedTheme);
@@ -124,7 +148,6 @@ const App: React.FC = () => {
       }
   };
 
-  // --- AUTOMATION: MEETING STATUS POR TEMPO ---
   useEffect(() => {
     const checkMeetingStatus = () => {
         const now = new Date();
@@ -149,43 +172,20 @@ const App: React.FC = () => {
   }, []);
 
   const handleRefund = (transactionId: string) => {
+      // Nota: Em produção, isso chamaria uma Cloud Function para processar o reembolso no Stripe
       setTransactions(prev => prev.map(t => 
           t.id === transactionId ? { ...t, status: 'Reembolsado' } : t
       ));
-
-      setNotifications(prev => {
-          const newNotifs = [...prev];
-          const targetIndex = newNotifs.findIndex(n => n.status === NotificationStatus.SENT);
-          if (targetIndex >= 0) {
-              newNotifs[targetIndex] = { ...newNotifs[targetIndex], status: NotificationStatus.PENDING_PAYMENT };
-          }
-          return newNotifs;
-      });
-
-      setMeetings(prev => {
-          const newMeetings = [...prev];
-          const targetIndex = newMeetings.findIndex(m => m.status === 'scheduled');
-          if (targetIndex >= 0) {
-              newMeetings[targetIndex] = { ...newMeetings[targetIndex], status: 'canceled' };
-          }
-          return newMeetings;
-      });
-
-      alert("Reembolso processado com sucesso.\n- Pagamento estornado\n- Notificação movida para Pendentes\n- Conciliação Cancelada");
+      alert("Reembolso processado com sucesso (Simulação Local).");
   };
 
-  // Função chamada pelo Login component apenas para atualizar estado local se necessário
   const handleLogin = (firebaseUser: any) => {
       setUser(firebaseUser);
-      // Logic handled by onAuthStateChanged mostly
   };
 
   const handleLogout = async () => {
-    // 1. Inicia animação de saída
     setIsSidebarOpen(false); 
     setIsLoggingOut(true);
-
-    // 2. Aguarda 3.5 segundos e faz logout do Firebase
     setTimeout(async () => {
         await signOut(auth);
         localStorage.removeItem('mock_session_user');
@@ -195,13 +195,70 @@ const App: React.FC = () => {
     }, 3500); 
   };
 
-  const handleSaveNotification = (notification: NotificationItem, meeting?: Meeting, transaction?: Transaction) => {
+  const handleSaveNotification = async (notification: NotificationItem, meeting?: Meeting, transaction?: Transaction) => {
+    // Atualiza estado local para UI instantânea
     setNotifications(prev => [notification, ...prev]);
     if (meeting) setMeetings(prev => [meeting, ...prev]);
-    if (transaction) setTransactions(prev => [transaction, ...prev]);
+    
+    // PERSISTÊNCIA: Salva a transação no Firestore se houver
+    if (transaction && user) {
+        await saveTransaction(user.uid, transaction);
+        setTransactions(prev => [transaction, ...prev]);
+
+        // Se o pagamento for de Assinatura, ativa o plano no Firestore
+        if (transaction.description.includes('Assinatura')) {
+            handleToggleSubscription(); 
+        }
+    }
 
     setCurrentView(ViewState.DASHBOARD);
     setBadgeCounts(prev => ({ ...prev, [ViewState.DASHBOARD]: (prev[ViewState.DASHBOARD] || 0) + 1 }));
+  };
+
+  const handleToggleSubscription = async () => {
+      if (!user) return;
+
+      const willActivate = !subscriptionData.active;
+      const nextMonth = new Date();
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
+      
+      const newState = {
+          active: willActivate,
+          planName: willActivate ? 'Plano Pro' : 'Plano Gratuito',
+          creditsTotal: willActivate ? 10 : 0,
+          nextBillingDate: willActivate ? nextMonth.toLocaleDateString() : ''
+      };
+
+      // 1. Atualiza no Firestore
+      await updateSubscriptionStatus(user.uid, newState);
+
+      // 2. Se for ativação, cria transação de fatura
+      if (willActivate) {
+          const newInvoice: Transaction = {
+              id: `SUB-${Date.now()}`,
+              description: 'Assinatura Mensal Pro',
+              amount: 259.97,
+              date: new Date().toISOString(),
+              status: 'Pago'
+          };
+          await saveTransaction(user.uid, newInvoice);
+          setTransactions(prev => [newInvoice, ...prev]);
+      } else {
+          if (!window.confirm("Deseja realmente cancelar a assinatura? Seus benefícios serão encerrados ao fim do ciclo.")) {
+              return; 
+          }
+      }
+
+      // 3. Atualiza estado local
+      setSubscriptionData(prev => ({
+          ...prev,
+          ...newState,
+          creditsUsed: 0,
+          invoices: willActivate ? [
+              { id: `SUB-${Date.now()}`, description: 'Assinatura Mensal Pro', amount: 259.97, date: new Date().toISOString(), status: 'Pago' },
+              ...prev.invoices
+          ] : prev.invoices
+      }));
   };
 
   const handleThemeChange = (isDark: boolean, color: string) => {
@@ -251,6 +308,11 @@ const App: React.FC = () => {
       case ViewState.PAYMENTS_REFUNDED:
           return <Billing transactions={transactions} filterStatus={FILTER_PAYMENT_REFUNDED} onRefund={handleRefund} />;
 
+      case ViewState.SUBSCRIPTION_PLAN:
+          return <SubscriptionManager subView="plan" subscriptionData={subscriptionData} onToggleSubscription={handleToggleSubscription} />;
+      case ViewState.SUBSCRIPTION_HISTORY:
+          return <SubscriptionManager subView="history" subscriptionData={subscriptionData} onToggleSubscription={handleToggleSubscription} />;
+
       case ViewState.MEETINGS:
         return <MeetingScheduler meetingsProp={meetings} />;
       case ViewState.BILLING:
@@ -270,7 +332,6 @@ const App: React.FC = () => {
     return <SplashScreen onFinish={() => setShowSplash(false)} />;
   }
 
-  // Enquanto verifica o Auth status
   if (loadingAuth) {
       return (
           <div className="flex h-screen items-center justify-center bg-zinc-100">
@@ -279,7 +340,6 @@ const App: React.FC = () => {
       );
   }
 
-  // LOGOUT ANIMATION SCREEN
   if (isLoggingOut) {
       return (
           <div className="fixed inset-0 z-50 bg-slate-900 flex flex-col items-center justify-center text-white animate-fade-in">
@@ -287,19 +347,13 @@ const App: React.FC = () => {
                   <div className="absolute inset-0 bg-red-500/20 rounded-full animate-ping opacity-50"></div>
                   <LogOut size={48} className="text-slate-200 relative z-10" />
               </div>
-              
               <h2 className="text-3xl font-bold mb-2 tracking-tight animate-fade-in-up">Saindo da Conta</h2>
               <p className="text-slate-400 text-sm mb-8 font-light">Sincronizando dados e encerrando sessão segura...</p>
-              
               <div className="w-64 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                   <div className="h-full bg-gradient-to-r from-blue-500 to-purple-500 animate-[loading_3.5s_ease-in-out_forwards] w-full origin-left transform scale-x-0"></div>
               </div>
-
               <style>{`
-                @keyframes loading {
-                    0% { transform: scaleX(0); }
-                    100% { transform: scaleX(1); }
-                }
+                @keyframes loading { 0% { transform: scaleX(0); } 100% { transform: scaleX(1); } }
               `}</style>
           </div>
       );
@@ -309,7 +363,6 @@ const App: React.FC = () => {
     return <Login onLogin={handleLogin} />;
   }
 
-  // Dynamic Styles for Theme
   const getThemeStyles = () => {
       const colors: any = {
           blue: { bg: 'bg-blue-600', text: 'text-blue-600', border: 'border-blue-200', ring: 'focus-within:ring-blue-100' },
@@ -331,7 +384,6 @@ const App: React.FC = () => {
         onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
         badgeCounts={badgeCounts}
       />
-      
       <main className={`flex-1 transition-all duration-300 p-4 md:p-8 ${isSidebarOpen ? 'md:ml-72' : 'md:ml-20'} w-full`}>
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-10 pt-2 gap-4 relative">
           <div className="flex items-center w-full md:w-auto">
@@ -341,12 +393,10 @@ const App: React.FC = () => {
             >
                 <Menu size={24} />
             </button>
-
-            {/* Header Title Hidden on Dashboard to avoid duplication with Dashboard's welcome widget */}
             {currentView !== ViewState.DASHBOARD && (
                 <div>
                   <h1 className={`text-2xl md:text-3xl font-bold capitalize tracking-tight truncate max-w-[200px] md:max-w-none ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                    {currentView === ViewState.CREATE_NOTIFICATION ? 'Nova Notificação' : currentView.includes('settings') ? 'Configurações' : currentView === ViewState.RECEIVED_NOTIFICATIONS ? 'Caixa de Entrada' : currentView === ViewState.FILES ? 'Meus Arquivos' : currentView.replace(/_/g, ' ').replace('notifications', 'Notificações').replace('conciliations', 'Conciliações').replace('payments', 'Pagamentos')}
+                    {currentView === ViewState.CREATE_NOTIFICATION ? 'Nova Notificação' : currentView.includes('settings') ? 'Configurações' : currentView === ViewState.RECEIVED_NOTIFICATIONS ? 'Caixa de Entrada' : currentView === ViewState.FILES ? 'Meus Arquivos' : currentView.includes('subscription') ? 'Assinatura' : currentView.replace(/_/g, ' ').replace('notifications', 'Notificações').replace('conciliations', 'Conciliações').replace('payments', 'Pagamentos')}
                   </h1>
                   <p className={`text-xs md:text-sm mt-1 font-light truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                     Painel do usuário, <span className={`font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{user.displayName || 'Usuário'}</span>.
@@ -419,7 +469,6 @@ const App: React.FC = () => {
         {renderContent()}
       </main>
 
-      {/* FLOATING BACK BUTTON FOR NAVIGATION */}
       {currentView !== ViewState.DASHBOARD && currentView !== ViewState.CREATE_NOTIFICATION && (
           <button
             onClick={() => setCurrentView(ViewState.DASHBOARD)}
