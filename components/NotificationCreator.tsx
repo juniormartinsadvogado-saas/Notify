@@ -766,10 +766,10 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           // 1. Gerar PDF Assinado (Novo Layout Profissional)
           const pdfBlob = await generateSignedPdfBlob();
 
-          // 2. Upload do PDF para Storage
+          // 2. Upload do PDF para Storage (Com Fallback se falhar)
           const pdfUrl = await uploadSignedPdf(notificationId, pdfBlob);
 
-          // 3. Upload das Evidências (Arquivos Locais -> Firebase)
+          // 3. Upload das Evidências (Com Fallback se falhar)
           const newEvidenceItems: EvidenceItem[] = [];
           if (localFiles.length > 0) {
               for (const lf of localFiles) {
@@ -777,7 +777,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                   newEvidenceItems.push(uploaded);
               }
           }
-          setUploadedEvidences(newEvidenceItems); // Atualiza estado com URLs remotas
+          setUploadedEvidences(newEvidenceItems);
 
           const totalAmount = calculateTotal();
 
@@ -796,8 +796,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               facts: formData.facts,
               subject: formData.subject || formData.species,
               content: formData.generatedContent,
-              evidences: newEvidenceItems, // Usa as evidências com URL remota
-              pdfUrl: pdfUrl, // URL real do Storage
+              evidences: newEvidenceItems,
+              pdfUrl: pdfUrl,
               signatureBase64: signatureData || undefined,
               createdAt: new Date().toISOString(),
               status: NotificationStatus.PENDING_PAYMENT, // Cria como Pendente
@@ -808,7 +808,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           // 5. Salvar no Firestore
           await saveNotification(finalNotification);
 
-          // 6. Preparar Transação e Reunião (Ainda sem salvar no banco, apenas preparo para checkout)
+          // 6. Preparar Transação e Reunião
           const newTransaction: Transaction = {
               id: `TX-${Date.now()}`,
               description: paymentPlan === 'subscription' ? 'Assinatura Mensal' : `Notificação - ${formData.species}`,
@@ -833,7 +833,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                   createdAt: new Date().toISOString(),
                   status: 'canceled' // Começa cancelada/pendente até pagar
               };
-              await createMeeting(newMeeting); // Cria reunião já
+              await createMeeting(newMeeting);
           }
 
           // Armazena dados para a etapa final
@@ -841,7 +841,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
       } catch (e: any) {
           console.error(e);
-          // O erro genérico foi removido conforme solicitado, mostra erro real se houver
+          // O erro genérico foi removido, mostra erro real se houver
           setError("Erro ao salvar notificação: " + e.message);
           throw e; // Interrompe a navegação
       } finally {
@@ -850,8 +850,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   };
 
   const handlePayLater = async () => {
-      // Como os dados já foram persistidos na transição para o passo 6, 
-      // "Pagar depois" deve avisar o App.tsx para atualizar a lista local
       if (createdData.notif) {
           onSave(createdData.notif, createdData.meet, createdData.trans);
       } else if (onBack) {
@@ -889,8 +887,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           // ** SUCESSO NO PAGAMENTO SIMULADO **
           
           // 1. Atualiza Status da Notificação para SENT (Para liberar para o destinatário CPF)
+          // IMPORTANTE: Aqui garantimos que ao confirmar, ela vira SENT imediatamente
           const updatedNotif = { ...createdData.notif, status: NotificationStatus.SENT };
-          await saveNotification(updatedNotif); // Salva novamente com status atualizado
+          await saveNotification(updatedNotif); 
 
           // 2. Atualiza Status da Transação
           const updatedTrans = { ...createdData.trans!, status: 'Pago' as const };
