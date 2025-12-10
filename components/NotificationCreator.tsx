@@ -9,7 +9,7 @@ import {
   Wand2, Scale, Users, 
   FileText, PenTool, CreditCard, Check, Loader2, 
   AlertCircle, Briefcase, ShoppingBag, Home, Heart, Gavel, Globe,
-  Building2, Calculator, Landmark, Stethoscope, Leaf, Anchor, Plane, Zap, Rocket, Laptop, Trophy, FileSignature, Scroll, UploadCloud, X, MapPin, UserCheck, UserCog, Video, User, ShieldCheck, Clock3, MessageCircle, Smartphone, Mail, Package, ZapIcon, Send, Lock, Unlock, AlertTriangle, QrCode, Copy, CheckCircle2, ArrowRight, Calendar, Clock, CreditCard as CardIcon, ChevronLeft, Eye
+  Building2, Calculator, Landmark, Stethoscope, Leaf, Anchor, Plane, Zap, Rocket, Laptop, Trophy, FileSignature, Scroll, UploadCloud, X, MapPin, UserCheck, UserCog, Video, User, ShieldCheck, Clock3, MessageCircle, Smartphone, Mail, Package, ZapIcon, Send, Lock, Unlock, AlertTriangle, QrCode, Copy, CheckCircle2, ArrowRight, Calendar, Clock, CreditCard as CardIcon, ChevronLeft, Eye, BrainCircuit, Sparkles
 } from 'lucide-react';
 
 interface NotificationCreatorProps {
@@ -188,14 +188,131 @@ const formatAddressString = (addr: Address) => {
     return parts.join(', ') || 'Endereço não informado';
 };
 
-// LIMPEZA DE MARKDOWN PARA PDF
+// LIMPEZA DE MARKDOWN PARA PDF (RIGOROSA)
 const cleanTextForPDF = (text: string) => {
     return text
         .replace(/\*\*/g, '') // Remove negrito
-        .replace(/\*/g, '')   // Remove itálico/listas simples
+        .replace(/\*/g, '')   // Remove itálico
         .replace(/#/g, '')    // Remove headers
-        .replace(/\[|\]/g, '') // Remove colchetes se houver
+        .replace(/\[|\]/g, '') // Remove colchetes
+        .replace(/_/g, '')    // Remove underscores
+        .replace(/^\s*[\-\*]\s+/gm, '') // Remove bullets de lista no inicio da linha
+        .replace(/\n{3,}/g, '\n\n') // Reduz quebras de linha excessivas
         .trim();
+};
+
+// --- COMPONENTES AUXILIARES ---
+
+// Animação Criativa de "IA Trabalhando"
+const DraftingAnimation = () => {
+    return (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-20 overflow-hidden">
+            <div className="relative w-64 h-80 bg-white border border-slate-200 rounded shadow-2xl flex flex-col p-8 transform scale-90 animate-pulse-slow">
+                {/* Header Mock */}
+                <div className="w-1/3 h-4 bg-slate-200 rounded mb-8"></div>
+                
+                {/* Body Mock Lines */}
+                <div className="space-y-3 w-full">
+                    <div className="w-full h-2 bg-slate-100 rounded animate-[width-pulse_2s_infinite]"></div>
+                    <div className="w-11/12 h-2 bg-slate-100 rounded animate-[width-pulse_2.5s_infinite]"></div>
+                    <div className="w-full h-2 bg-slate-100 rounded animate-[width-pulse_3s_infinite]"></div>
+                    <div className="w-4/5 h-2 bg-slate-100 rounded animate-[width-pulse_1.8s_infinite]"></div>
+                    <br/>
+                    <div className="w-full h-2 bg-slate-100 rounded animate-[width-pulse_2.2s_infinite]"></div>
+                    <div className="w-10/12 h-2 bg-slate-100 rounded animate-[width-pulse_2.8s_infinite]"></div>
+                    <div className="w-full h-2 bg-slate-100 rounded animate-[width-pulse_3.2s_infinite]"></div>
+                </div>
+
+                {/* Brain Icon Overlay */}
+                <div className="absolute inset-0 flex items-center justify-center bg-white/50 backdrop-blur-[1px]">
+                    <div className="bg-white p-4 rounded-full shadow-xl border border-purple-100 animate-bounce-slow">
+                        <BrainCircuit size={40} className="text-purple-600 animate-pulse" />
+                    </div>
+                </div>
+            </div>
+            <p className="mt-8 text-sm font-medium text-slate-500 uppercase tracking-widest animate-pulse">Redigindo Minuta Jurídica...</p>
+            <style>{`
+                @keyframes width-pulse {
+                    0%, 100% { width: 100%; opacity: 0.5; }
+                    50% { width: 90%; opacity: 1; }
+                }
+                @keyframes bounce-slow {
+                    0%, 100% { transform: translateY(0); }
+                    50% { transform: translateY(-10px); }
+                }
+            `}</style>
+        </div>
+    );
+};
+
+// Seletor de Agendamento Criativo
+const CreativeMeetingSelector: React.FC<{
+    date: string;
+    time: string;
+    setDate: (d: string) => void;
+    setTime: (t: string) => void;
+    disabled: boolean;
+}> = ({ date, time, setDate, setTime, disabled }) => {
+    
+    // Gerar horários
+    const slots = [8,9,10,11,13,14,15,16].map(h => `${h < 10 ? '0'+h : h}:00`);
+
+    return (
+        <div className="bg-slate-800 rounded-xl p-5 border border-slate-700 shadow-inner relative overflow-hidden">
+            <div className="absolute top-0 right-0 p-3 opacity-10">
+                <Calendar size={80} className="text-white transform rotate-12" />
+            </div>
+            
+            <h5 className="text-white text-sm font-bold flex items-center mb-4">
+                <Video size={16} className="mr-2 text-purple-400" /> Sala de Conciliação Virtual
+            </h5>
+
+            <div className="space-y-4 relative z-10">
+                {/* Input de Data Estilizado */}
+                <div className="group">
+                    <label className="text-[10px] text-slate-400 uppercase font-bold mb-1.5 block group-focus-within:text-purple-400 transition-colors">
+                        Selecione o Dia (Seg-Sex)
+                    </label>
+                    <div className="relative bg-slate-900/50 rounded-lg p-1 border border-slate-600 focus-within:border-purple-500 transition-colors flex items-center">
+                        <input 
+                            type="date" 
+                            value={date}
+                            onChange={(e) => setDate(e.target.value)}
+                            disabled={disabled}
+                            className="w-full bg-transparent text-white text-sm p-2 outline-none font-medium cursor-pointer"
+                        />
+                        <Calendar size={16} className="text-slate-400 mr-2 pointer-events-none" />
+                    </div>
+                </div>
+
+                {/* Grid de Horários */}
+                <div>
+                    <label className="text-[10px] text-slate-400 uppercase font-bold mb-2 block">
+                        Horário Disponível
+                    </label>
+                    <div className="grid grid-cols-4 gap-2">
+                        {slots.map(slot => (
+                            <button
+                                key={slot}
+                                type="button"
+                                onClick={() => setTime(slot)}
+                                disabled={disabled}
+                                className={`
+                                    py-1.5 text-xs font-bold rounded-md transition-all border
+                                    ${time === slot 
+                                        ? 'bg-purple-600 text-white border-purple-500 shadow-lg shadow-purple-900/50 scale-105' 
+                                        : 'bg-slate-700 text-slate-300 border-slate-600 hover:bg-slate-600 hover:border-slate-500'
+                                    }
+                                `}
+                            >
+                                {slot}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputChange, onAddressChange, documentLabel = "CPF ou CNPJ", documentMask = MASKS.cpfCnpj, documentMaxLength = 18, documentPlaceholder }) => {
@@ -334,25 +451,20 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     setFormData(prev => ({ ...prev, [section]: { ...prev[section], address: { ...prev[section].address, [field]: value } } }));
   };
   
-  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const date = new Date(e.target.value);
-      const day = date.getDay();
-      
+  const handleDateChange = (val: string) => {
       // Validação: 0 = Domingo, 6 = Sábado
-      if (day === 5 || day === 6) { 
-         const dateParts = e.target.value.split('-');
-         const localDate = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]));
-         const localDay = localDate.getDay();
-         
-         if (localDay === 0 || localDay === 6) {
-             setError("Agendamentos disponíveis apenas de Segunda a Sexta-feira.");
-             setFormData(prev => ({ ...prev, meetingDate: '' }));
-             return;
-         }
+      const dateParts = val.split('-');
+      const localDate = new Date(Number(dateParts[0]), Number(dateParts[1]) - 1, Number(dateParts[2]));
+      const localDay = localDate.getDay();
+      
+      if (localDay === 0 || localDay === 6) {
+          setError("Agendamentos disponíveis apenas de Segunda a Sexta-feira.");
+          setFormData(prev => ({ ...prev, meetingDate: '' }));
+          return;
       }
       
       setError('');
-      setFormData(prev => ({ ...prev, meetingDate: e.target.value }));
+      setFormData(prev => ({ ...prev, meetingDate: val }));
   };
 
   // Função para Destrancar Edição
@@ -617,7 +729,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       // Função para desenhar Cabeçalho em todas as páginas
       const drawHeader = (doc: jsPDF) => {
           // Logo/Nome "NOTIFY"
-          doc.setFont("helvetica", "bold");
+          doc.setFont("times", "bold"); // Times New Roman standard
           doc.setFontSize(18);
           doc.setTextColor(40, 40, 50); // Dark Slate
           doc.text("NOTIFY", margin, 20);
@@ -658,21 +770,18 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           doc.saveGraphicsState();
           doc.setTextColor(245, 245, 245); // Muito claro
           doc.setFontSize(60);
-          doc.setFont("helvetica", "bold");
+          doc.setFont("times", "bold");
           
           // Rotaciona e centraliza
           const text = "NOTIFY";
           const x = pageWidth / 2;
           const y = pageHeight / 2;
           
-          // Solução simplificada para rotação sem context complexo (jsPDF basic)
-          // Se precisar de rotação avançada, usar context2d, mas aqui centralizamos simples
-          // para compatibilidade.
           doc.text(text, x, y, { align: "center", angle: 45 });
           doc.restoreGraphicsState();
       };
 
-      // 2. Preparar Texto
+      // 2. Preparar Texto Limpo
       const cleanBody = cleanTextForPDF(formData.generatedContent);
       doc.setFont("times", "normal");
       doc.setFontSize(11);
@@ -708,7 +817,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               doc.setTextColor(20, 20, 30);
           }
           
-          doc.text(textLines[i], margin, currentY);
+          doc.text(textLines[i], margin, currentY, { align: "justify", maxWidth: contentWidth });
           currentY += lineHeight;
       }
 
@@ -941,7 +1050,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
   const renderStepContent = () => {
       switch(currentStep) {
-          // ... (Cases 1, 2, 3, 4 remain identical)
+          // ... (Cases 1, 2, 3 remain identical)
           case 1: return (
             <div className="pb-12 relative">
                 <h3 className="text-xl font-bold text-slate-800 mb-6 text-center">Qual é a natureza jurídica?</h3>
@@ -1176,44 +1285,16 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                           </label>
 
                           {formData.scheduleMeeting && (
-                              <div className="animate-slide-in-down space-y-3">
-                                  <div className="grid grid-cols-2 gap-3">
-                                      <div>
-                                          <label className="text-[10px] text-slate-400 uppercase font-bold mb-1 block">Data (Seg-Sex)</label>
-                                          <div className="relative">
-                                              <Calendar className="absolute left-2.5 top-2.5 text-slate-400" size={14} />
-                                              <input 
-                                                  type="date" 
-                                                  value={formData.meetingDate}
-                                                  onChange={handleDateChange}
-                                                  className="w-full bg-slate-700 border border-slate-600 rounded-lg py-2 pl-8 pr-2 text-sm text-white focus:ring-1 focus:ring-purple-400 outline-none"
-                                                  disabled={formData.signed}
-                                              />
-                                          </div>
-                                      </div>
-                                      <div>
-                                          <label className="text-[10px] text-slate-400 uppercase font-bold mb-1 block">Horário (08h-16h)</label>
-                                          <div className="relative">
-                                              <Clock className="absolute left-2.5 top-2.5 text-slate-400" size={14} />
-                                              <select 
-                                                  value={formData.meetingTime}
-                                                  onChange={e => setFormData(p => ({...p, meetingTime: e.target.value}))}
-                                                  className="w-full bg-slate-700 border border-slate-600 rounded-lg py-2 pl-8 pr-2 text-sm text-white focus:ring-1 focus:ring-purple-400 outline-none appearance-none"
-                                                  disabled={formData.signed}
-                                              >
-                                                  <option value="">Selecione</option>
-                                                  {[8,9,10,11,13,14,15,16].map(h => (
-                                                      <option key={h} value={`${h < 10 ? '0'+h : h}:00`}>{`${h < 10 ? '0'+h : h}:00`}</option>
-                                                  ))}
-                                              </select>
-                                          </div>
-                                      </div>
-                                  </div>
-                                  {error && formData.scheduleMeeting && <p className="text-red-400 text-xs mt-1">{error}</p>}
-                                  <div className="flex items-center text-xs text-purple-300 bg-purple-500/10 p-2 rounded border border-purple-500/30">
-                                      <Video size={12} className="mr-2" />
-                                      <span>Link Google Meet será gerado automaticamente.</span>
-                                  </div>
+                              <div className="animate-slide-in-down">
+                                  {/* NOVO SELETOR CRIATIVO */}
+                                  <CreativeMeetingSelector 
+                                      date={formData.meetingDate}
+                                      time={formData.meetingTime}
+                                      setDate={(d) => handleDateChange(d)}
+                                      setTime={(t) => setFormData(p => ({...p, meetingTime: t}))}
+                                      disabled={formData.signed}
+                                  />
+                                  {error && formData.scheduleMeeting && <p className="text-red-400 text-xs mt-2 text-center bg-red-900/20 p-2 rounded">{error}</p>}
                               </div>
                           )}
                       </div>
@@ -1228,10 +1309,12 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                       </button>
                   </div>
                   
-                  {/* ÁREA DINÂMICA: SUCESSO OU EDITOR */}
+                  {/* ÁREA DINÂMICA: SUCESSO OU EDITOR/LOADING */}
                   <div className={`flex-1 min-h-[400px] rounded-xl border transition-all relative overflow-hidden ${formData.signed ? 'opacity-50' : 'opacity-100'} ${showSuccessScreen ? 'bg-white border-blue-200' : 'bg-slate-50 border-slate-200'}`}>
                       
-                      {showSuccessScreen && formData.generatedContent ? (
+                      {isGenerating ? (
+                          <DraftingAnimation />
+                      ) : showSuccessScreen && formData.generatedContent ? (
                           // TELA DE SUCESSO ANIMADA (Substitui o editor)
                           <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center animate-fade-in">
                               <div className="mb-6 relative">
@@ -1263,12 +1346,12 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                               </div>
                           </div>
                       ) : (
-                          // EDITOR PADRÃO (Para visualização manual se o usuário optar por editar ou antes da geração)
+                          // EDITOR PADRÃO (Para visualização manual)
                           <textarea 
                             value={formData.generatedContent} 
                             onChange={e => setFormData(p=>({...p, generatedContent: e.target.value}))} 
                             className="w-full h-full bg-transparent resize-none outline-none font-serif text-sm leading-relaxed text-slate-800 disabled:cursor-not-allowed p-6" 
-                            placeholder={isGenerating ? "Aguarde, a IA está escrevendo seu documento..." : "O texto da notificação aparecerá aqui após a geração."}
+                            placeholder={isGenerating ? "" : "O texto da notificação aparecerá aqui após a geração."}
                             disabled={formData.signed || isGenerating}
                           />
                       )}
@@ -1276,41 +1359,62 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               </div>
           );
           case 5: return (
-              <div className="pb-12 text-center animate-fade-in">
+              <div className="pb-12 text-center animate-fade-in bg-slate-100/50 p-4 rounded-xl">
                    <div className="flex items-center justify-center mb-6">
                        <h3 className="text-xl font-bold text-slate-800">Revisão e Assinatura</h3>
                    </div>
                    
-                   {/* DOCUMENT PREVIEW CONTAINER */}
-                   <div className="max-w-3xl mx-auto bg-white p-8 md:p-12 border border-slate-200 shadow-xl rounded-sm text-left h-[500px] overflow-y-auto mb-8 relative">
-                       {/* Watermark-like background */}
-                       <div className="absolute inset-0 flex items-center justify-center opacity-[0.03] pointer-events-none">
-                           <Scale size={200} />
+                   {/* DOCUMENT PREVIEW CONTAINER (VISUAL A4) */}
+                   <div className="max-w-[210mm] mx-auto bg-white shadow-2xl border border-slate-200 text-left min-h-[297mm] relative mb-8 flex flex-col aspect-[1/1.41] transform scale-95 md:scale-100 transition-transform origin-top">
+                       
+                       {/* Header Simulado (Visual apenas) */}
+                       <div className="p-[20mm] pb-0 mb-4">
+                           <div className="flex justify-between items-start border-b border-slate-300 pb-2 mb-6">
+                               <div>
+                                   <h1 className="font-serif font-bold text-2xl text-slate-800">NOTIFY</h1>
+                                   <p className="text-[8px] text-slate-400 tracking-widest uppercase">Inteligência Jurídica e Automação</p>
+                               </div>
+                               <div className="text-right">
+                                   <p className="text-[10px] font-serif text-slate-600">Data: {new Date().toLocaleDateString()}</p>
+                                   <p className="text-[10px] font-serif text-slate-600">Ref: {notificationId}</p>
+                               </div>
+                           </div>
+                       </div>
+
+                       {/* Marca D'agua Simulada */}
+                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] select-none overflow-hidden">
+                           <div className="transform -rotate-45 text-9xl font-bold text-slate-900 whitespace-nowrap">NOTIFY</div>
                        </div>
                        
-                       <div className="font-serif text-slate-800 text-sm leading-7 whitespace-pre-wrap relative z-10">
-                           {formData.generatedContent}
+                       {/* Conteúdo do Texto (Cleaned) */}
+                       <div className="px-[20mm] flex-1 font-serif text-[11pt] text-justify leading-relaxed whitespace-pre-wrap text-slate-900">
+                           {cleanTextForPDF(formData.generatedContent)}
                        </div>
                        
+                       {/* Assinatura no Documento */}
                        {formData.signed && signatureData && (
-                           <div className="mt-12 pt-8 border-t border-slate-200 flex flex-col items-center relative z-10">
-                               <img src={signatureData} alt="Assinatura" className="h-16 object-contain mb-2" />
-                               <div className="border-t border-slate-800 w-64 mb-2"></div>
-                               <p className="font-bold text-slate-900 uppercase text-xs tracking-wider">{formData.sender.name}</p>
-                               
-                               <div className="mt-6 flex flex-col items-center bg-slate-50 px-4 py-2 rounded border border-slate-100">
-                                   <div className="text-[10px] text-slate-400 font-mono text-center">
-                                       <p className="mb-1"><strong>ID DO DOCUMENTO:</strong> {notificationId}</p>
-                                       <p><strong>HASH DE INTEGRIDADE:</strong> {btoa(notificationId + formData.sender.cpfCnpj).substring(0, 32)}...</p>
-                                   </div>
-                                   <p className="text-green-600 flex items-center justify-center mt-2 gap-1 text-[10px] font-bold uppercase"><ShieldCheck size={12} /> Documento assinado eletronicamente</p>
+                           <div className="px-[20mm] pb-[20mm] mt-auto">
+                               <div className="flex flex-col items-center justify-center">
+                                   <img src={signatureData} alt="Assinatura" className="h-16 object-contain mb-2 mix-blend-multiply" />
+                                   <div className="border-t border-slate-800 w-64 mb-1"></div>
+                                   <p className="font-serif font-bold text-xs text-slate-900 uppercase">{formData.sender.name}</p>
+                                   <p className="font-serif text-[10px] text-slate-600">CPF: {formData.sender.cpfCnpj}</p>
+                                   <p className="text-[8px] text-slate-400 mt-2">Assinado digitalmente via Notify Platform</p>
                                </div>
                            </div>
                        )}
+
+                       {/* Footer Simulado */}
+                       <div className="absolute bottom-0 left-0 right-0 p-[20mm] pt-2">
+                           <div className="border-t border-slate-200 pt-2 flex justify-between items-center text-[8px] text-slate-400 font-serif italic">
+                               <span>Documento gerado eletronicamente. ID: {notificationId}</span>
+                               <span>Página 1 de 1</span>
+                           </div>
+                       </div>
                    </div>
 
                    {!formData.signed && (
-                       <div className="w-full max-w-md mx-auto bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                       <div className="w-full max-w-md mx-auto bg-white p-6 rounded-2xl border border-slate-200 shadow-lg relative z-20">
                            <div className="flex justify-between items-center mb-3">
                                <p className="text-xs font-bold text-slate-500 uppercase flex items-center"><PenTool size={12} className="mr-1"/> Assine no quadro abaixo</p>
                                <button onClick={clearSignature} className="text-red-500 text-xs hover:underline font-medium">Limpar</button>
@@ -1720,26 +1824,5 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     </div>
   );
 };
-
-// Ícone Auxiliar que faltava no import original
-function ArrowRightIcon(props: any) {
-  return (
-    <svg 
-      {...props} 
-      xmlns="http://www.w3.org/2000/svg" 
-      width="24" 
-      height="24" 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round"
-    >
-      <line x1="5" y1="12" x2="19" y2="12"></line>
-      <polyline points="12 5 19 12 12 19"></polyline>
-    </svg>
-  );
-}
 
 export default NotificationCreator;

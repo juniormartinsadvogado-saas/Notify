@@ -119,13 +119,15 @@ export const generateNotificationText = async (
       
       ${attachments.length > 0 ? `NOTA ADICIONAL: O usuário anexou ${attachments.length} arquivos probatórios. Analise o conteúdo visual/textual destes anexos se possível para enriquecer a descrição dos fatos.` : ''}
 
-      ESTRUTURA DO DOCUMENTO (Markdown):
+      ESTRUTURA DO DOCUMENTO (TEXTO PLANO OBRIGATÓRIO - SEM MARKDOWN):
+      Não use negrito (**), itálico (*) ou headers (#). Use CAIXA ALTA para títulos se necessário.
+      
       1. CABEÇALHO (Local e Data atual)
-      2. PREÂMBULO (Identificação COMPLETA das partes usando os dados fornecidos em [DADOS OBRIGATÓRIOS PARA O PREÂMBULO]. Inclua endereço, CPF/CNPJ e contatos EXATAMENTE como fornecidos. Não invente dados se eles já existem.)
-      3. DOS FATOS (Narrativa detalhada baseada nos dados e no contexto de ${contextInfo?.species || 'Notificação'})
-      4. DO DIREITO (Fundamentação jurídica robusta citando Artigos de Leis, Códigos ou Súmulas aplicáveis à área de ${contextInfo?.area || 'Direito'})
+      2. PREÂMBULO (Identificação COMPLETA das partes usando os dados fornecidos. Inclua endereço, CPF/CNPJ e contatos EXATAMENTE como fornecidos.)
+      3. DOS FATOS (Narrativa detalhada e técnica)
+      4. DO DIREITO (Fundamentação jurídica citando Artigos de Leis, Códigos ou Súmulas aplicáveis)
       5. DOS PEDIDOS (Exigências claras com prazo explícito para cumprimento)
-      6. DAS CONSEQUÊNCIAS (Medidas judiciais cabíveis em caso de inércia, específicas para ${contextInfo?.area || 'este caso'})
+      6. DAS CONSEQUÊNCIAS (Medidas judiciais cabíveis)
       7. FECHAMENTO (Assinatura e contatos)
     `;
     
@@ -146,7 +148,7 @@ export const generateNotificationText = async (
       model: 'gemini-2.5-flash',
       contents: { parts },
       config: {
-        systemInstruction: "Você é a 'Notify AI', assistente jurídica de elite. Você deve respeitar estritamente a ÁREA e a ESPÉCIE selecionadas pelo usuário ao criar o documento. O Preâmbulo deve conter a qualificação completa das partes conforme fornecido nos dados de input.",
+        systemInstruction: "Você é a 'Notify AI', assistente jurídica de elite. Gere o texto em formato TXT puro, profissional, ideal para documentos jurídicos formais. EVITE COMPLETAMENTE O USO DE MARKDOWN (como **, ##, *). Use apenas espaçamento e caixa alta para destacar seções.",
         temperature: 0.4, 
       }
     });

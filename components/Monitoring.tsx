@@ -9,6 +9,7 @@ interface MonitoringProps {
   notifications: NotificationItem[];
   filterStatus?: NotificationStatus[]; 
   searchQuery?: string;
+  defaultTab?: 'sent' | 'received'; // Nova prop
   customFolderConfig?: {
       title: string;
       desc?: string;
@@ -18,10 +19,13 @@ interface MonitoringProps {
   };
 }
 
-const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotifications, filterStatus, searchQuery = '', customFolderConfig }) => {
+const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotifications, filterStatus, searchQuery = '', defaultTab = 'sent', customFolderConfig }) => {
   const savedUser = localStorage.getItem('mock_session_user');
   const user = savedUser ? JSON.parse(savedUser) : null;
-  const [activeTab, setActiveTab] = useState<'sent' | 'received'>('sent');
+  
+  // Inicia com a aba definida pela prop ou 'sent' por padrão
+  const [activeTab, setActiveTab] = useState<'sent' | 'received'>(defaultTab);
+  
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [filteredItems, setFilteredItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,10 +33,17 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
   
   const [senderProfile, setSenderProfile] = useState<any>(null);
 
+  // Atualiza a aba se a prop mudar (navegação externa)
+  useEffect(() => {
+      if (defaultTab) {
+          setActiveTab(defaultTab);
+      }
+  }, [defaultTab]);
+
   useEffect(() => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.uid, activeTab, propNotifications]); // Dependência corrigida para user.uid (primitivo) para evitar loops
+  }, [user?.uid, activeTab, propNotifications]); 
 
   // Aplica filtros locais (Status + Busca)
   useEffect(() => {
@@ -55,8 +66,6 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
         );
     }
 
-    // Verificação simples para evitar updates desnecessários se o resultado for idêntico
-    // Isso ajuda a estabilizar a UI caso o array de entrada mude referência mas não conteúdo
     setFilteredItems(result);
   }, [items, filterStatus, activeTab, searchQuery]);
 
@@ -78,9 +87,10 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
             const uniqueItems = Array.from(combinedMap.values()).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
             setItems(uniqueItems);
         } else {
+            // LÓGICA DE RECEBIMENTO
             const profile = await getUserProfile(user.uid);
             if (profile && profile.cpf) {
-                const cleanCpf = profile.cpf.replace(/\D/g, '');
+                const cleanCpf = profile.cpf.replace(/\D/g, ''); // Garante CPF numérico
                 const data = await getNotificationsByRecipientCpf(cleanCpf);
                 setItems(data);
             } else {
@@ -228,8 +238,12 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
         ) : (
             // Visualização Geral
             <div>
-                <h2 className="text-2xl font-bold text-slate-800">Monitoramento Geral</h2>
-                <p className="text-slate-500">Visão completa de todas as suas notificações.</p>
+                <h2 className="text-2xl font-bold text-slate-800">
+                    {activeTab === 'sent' ? 'Monitoramento de Envios' : 'Caixa de Entrada'}
+                </h2>
+                <p className="text-slate-500">
+                    {activeTab === 'sent' ? 'Acompanhe as notificações que você criou.' : 'Notificações extrajudiciais recebidas pelo seu CPF.'}
+                </p>
             </div>
         )}
 
@@ -281,7 +295,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                       ? `Não encontramos notificações com o termo "${searchQuery}".`
                       : activeTab === 'sent' 
                         ? (folderConfig ? 'Não há notificações com este status no momento.' : 'Você ainda não criou nenhuma notificação.')
-                        : 'Nenhuma notificação foi encontrada vinculada ao seu CPF.'
+                        : 'Nenhuma notificação foi encontrada vinculada ao seu CPF. Verifique se o seu CPF está preenchido corretamente nas Configurações.'
                     }
                 </p>
             </div>
