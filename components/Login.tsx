@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Mail, Lock, ArrowRight, Loader2, User, CheckCircle, AlertCircle, Phone, FileText, Camera, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, Loader2, User, CheckCircle, AlertCircle, Phone, FileText, Camera, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { auth } from '../services/firebase';
 import { 
   signInWithEmailAndPassword, 
@@ -16,10 +16,10 @@ interface LoginProps {
 }
 
 const LogoY = () => (
-  <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-slate-900">
-    <path d="M20 40C31.0457 40 40 31.0457 40 20C40 8.9543 31.0457 0 20 0C8.9543 0 0 8.9543 0 20C0 31.0457 8.9543 40 20 40Z" fill="#F1F5F9"/>
-    <path d="M12 12L20 22L28 12" stroke="#0F172A" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M20 22V30" stroke="#0F172A" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+  <svg width="60" height="60" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="shadow-xl rounded-full">
+    <path d="M20 40C31.0457 40 40 31.0457 40 20C40 8.9543 31.0457 0 20 0C8.9543 0 0 8.9543 0 20C0 31.0457 8.9543 40 20 40Z" fill="black"/>
+    <path d="M12 12L20 22L28 12" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M20 22V30" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 );
 
@@ -193,10 +193,9 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         
         <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-70"></div>
         
-        <div className="flex flex-col items-center justify-center mb-8">
-           <div className="mb-3 transform hover:scale-105 transition-transform"><LogoY /></div>
-           <span className="text-2xl font-bold text-slate-900 tracking-tight">Notify</span>
-           <p className="text-xs text-slate-400 mt-1 uppercase tracking-widest">Inteligência Jurídica</p>
+        <div className="flex flex-col items-center justify-center mb-10">
+           <div className="mb-4 transform hover:scale-105 transition-transform"><LogoY /></div>
+           <span className="text-3xl font-bold text-slate-900 tracking-tight">Notify</span>
         </div>
 
         {/* TELA DE VERIFICAÇÃO DE EMAIL */}

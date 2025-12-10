@@ -2,13 +2,13 @@ import { NotificationItem } from '../types';
 
 export const dispatchCommunications = async (notification: NotificationItem) => {
     console.log(`[DISPARO] Iniciando sequência para Notificação ${notification.id}`);
+    let successCount = 0;
 
     try {
-        // 1. E-MAIL: ENVIO REAL VIA VERCEL SERVERLESS FUNCTION
-        // O frontend não envia email direto. Ele pede para a /api/email fazer isso.
+        // 1. E-MAIL: ENVIO REAL VIA SENDGRID (Backend)
         if (notification.recipientEmail) {
             try {
-                console.log("📨 Solicitando envio de e-mail ao servidor...");
+                console.log("📨 Solicitando envio de e-mail (SendGrid)...");
                 const response = await fetch('/api/email', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -21,43 +21,52 @@ export const dispatchCommunications = async (notification: NotificationItem) => 
                 });
 
                 if (response.ok) {
-                    console.log("✅ E-mail enviado com sucesso!");
+                    console.log("✅ E-mail enviado!");
+                    successCount++;
                 } else {
                     const errData = await response.json();
-                    console.error("❌ Erro na API de E-mail:", errData);
+                    console.error("❌ Erro SendGrid:", errData);
                 }
             } catch (emailErr) {
-                console.error("❌ Erro de conexão com /api/email:", emailErr);
+                console.error("❌ Falha na conexão de e-mail:", emailErr);
             }
         }
 
-        // 2. SMS (MOCK / MODO DE TESTE) - Mantido local para evitar custos
+        // 2. WHATSAPP: ENVIO REAL VIA Z-API (Backend)
+        // Usamos o recipientPhone para enviar a mensagem
         if (notification.recipientPhone) {
-            await mockTwilioSMS(notification);
-        }
+            try {
+                console.log("📱 Solicitando envio de WhatsApp (Z-API)...");
+                
+                const message = `Olá, ${notification.recipientName}.\n\nVocê recebeu uma Notificação Extrajudicial importante referente a: ${notification.subject}.\n\nPor favor, acesse o documento oficial no link abaixo para tomar ciência e evitar medidas judiciais.\n\nAtenciosamente,\n${notification.senderName}`;
 
-        // 3. WHATSAPP (MOCK / MODO DE TESTE) - Mantido local para evitar custos
-        if (notification.recipientPhone) {
-            await mockTwilioWhatsApp(notification);
+                const response = await fetch('/api/whatsapp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phone: notification.recipientPhone,
+                        message: message,
+                        pdfUrl: notification.pdfUrl,
+                        fileName: `Notificacao_${notification.id}.pdf`
+                    }),
+                });
+
+                if (response.ok) {
+                    console.log("✅ WhatsApp enviado!");
+                    successCount++;
+                } else {
+                    const errData = await response.json();
+                    console.error("❌ Erro Z-API:", errData);
+                }
+            } catch (zapErr) {
+                console.error("❌ Falha na conexão Z-API:", zapErr);
+            }
         }
         
-        return true;
+        // Retorna true se pelo menos um canal funcionou
+        return successCount > 0;
     } catch (error) {
         console.error("ERRO GERAL NO DISPARO:", error);
         return false;
     }
-};
-
-// --- SIMULADORES (MOCKS) ---
-// Estas funções apenas imprimem no console o que "seria" enviado
-const mockTwilioSMS = async (n: NotificationItem) => {
-    console.log(`%c📱 [MOCK SMS] Para: ${n.recipientPhone}`, 'color: cyan; font-weight: bold;');
-    console.log(`   Msg: "Notify: Voce recebeu um documento extrajudicial. Acesse: ${n.pdfUrl}"`);
-    await new Promise(r => setTimeout(r, 600)); // Delay artificial
-};
-
-const mockTwilioWhatsApp = async (n: NotificationItem) => {
-    console.log(`%c💬 [MOCK ZAP] Para: ${n.recipientPhone}`, 'color: green; font-weight: bold;');
-    console.log(`   Template: notify_alert_v1 | Vars: {name: ${n.recipientName}, link: ${n.pdfUrl}}`);
-    await new Promise(r => setTimeout(r, 600)); // Delay artificial
 };

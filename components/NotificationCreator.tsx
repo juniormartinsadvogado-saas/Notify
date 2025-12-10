@@ -9,7 +9,7 @@ import {
   Wand2, Scale, Users, 
   FileText, PenTool, CreditCard, Check, Loader2, 
   Briefcase, ShoppingBag, Home, Heart, FileSignature, Scroll, UploadCloud, X, User, Video, CheckCircle2, ArrowRight, Calendar, Lock, ChevronLeft, Sparkles,
-  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe
+  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode
 } from 'lucide-react';
 
 interface NotificationCreatorProps {
@@ -113,6 +113,7 @@ const LAW_AREAS = [
   }
 ];
 
+// ... (Restante das interfaces e helpers mantidos iguais) ...
 interface Address {
   cep: string;
   street: string;
@@ -265,6 +266,7 @@ const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputCh
 };
 
 const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user, onBack }) => {
+  // ... (Estados iniciais mantidos) ...
   const [currentStep, setCurrentStep] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSavingData, setIsSavingData] = useState(false);
@@ -306,7 +308,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const currentArea = LAW_AREAS.find(a => a.id === formData.areaId);
 
   useEffect(() => {
-    if (currentStep === 6 && containerRef.current && canvasRef.current) { // Ajuste para step 6
+    if (currentStep === 6 && containerRef.current && canvasRef.current) { 
       const containerWidth = containerRef.current.offsetWidth;
       const canvas = canvasRef.current;
       canvas.width = containerWidth;
@@ -326,6 +328,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     return 57.92; // Avulso
   };
 
+  // ... (Funções de input, endereço, data, arquivo e assinatura mantidas iguais) ...
   const handleInputChange = (section: 'sender' | 'recipient' | 'representative', field: string, value: string) => {
     setFormData(prev => ({ ...prev, [section]: { ...prev[section], [field]: value } }));
   };
@@ -403,6 +406,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     }
   };
 
+  // ... (handleGenerateContent e handlePersistData mantidos iguais) ...
   const handleGenerateContent = async () => {
     if (!formData.species || !formData.facts) return;
     setIsGenerating(true);
@@ -429,7 +433,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
         Endereço Destinatário: ${formatAddressString(formData.recipient.address)}
         `;
 
-        // INJEÇÃO DA REUNIÃO NO PROMPT PARA A IA
         if (formData.scheduleMeeting) {
             const meetDate = new Date(formData.meetingDate).toLocaleDateString('pt-BR');
             details += `
@@ -454,7 +457,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
         );
         
         setFormData(prev => ({ ...prev, generatedContent: text }));
-        setCurrentStep(6); // Pula para assinatura (Step 6)
+        setCurrentStep(6); 
     } catch (err) {
         console.error(err);
         alert("Erro ao gerar conteúdo. Tente novamente.");
@@ -545,14 +548,14 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   };
 
-  const handleConfirmPayment = async () => {
+  const handleConfirmPayment = async (method: 'CREDIT_CARD' | 'PIX') => {
       setIsProcessingAction(true);
       setError('');
       
       try {
           if(!user || !createdData.notif) return;
 
-          const checkoutResponse = await initiateCheckout(createdData.notif, paymentPlan);
+          const checkoutResponse = await initiateCheckout(createdData.notif, paymentPlan, method);
 
           if (!checkoutResponse.success) {
              setError(checkoutResponse.error || "Erro ao iniciar pagamento. Tente novamente.");
@@ -624,27 +627,46 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
      
       if (paymentStage === 'input') return (
         <div className="pb-12 max-w-md mx-auto animate-fade-in text-center">
-            <h3 className="text-xl font-bold text-slate-800 mb-4">Confirmar e Pagar no Stripe</h3>
+            <h3 className="text-xl font-bold text-slate-800 mb-4">Confirmar Pagamento</h3>
             <p className="text-slate-500 text-sm mb-8">
-                Você será redirecionado para um ambiente seguro do Stripe para finalizar o pagamento de 
-                <strong className="text-slate-900 ml-1">R$ {calculateTotal().toFixed(2)}</strong>.
+                Valor Total: <strong className="text-slate-900 ml-1">R$ {calculateTotal().toFixed(2)}</strong>.
+                <br/>Selecione abaixo como deseja pagar.
             </p>
 
-            <button 
-                onClick={handleConfirmPayment} 
-                disabled={isProcessingAction}
-                className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-xl flex items-center justify-center hover:bg-slate-800 transition transform active:scale-95 disabled:opacity-70"
-            >
-                {isProcessingAction ? <Loader2 className="animate-spin mr-2"/> : <Lock size={20} className="mr-2" />}
-                {isProcessingAction ? 'Iniciando Checkout...' : `Ir para Checkout Seguro`}
-            </button>
-            <button onClick={() => setPaymentStage('selection')} className="mt-4 text-sm text-slate-500 hover:underline">Voltar</button>
+            <div className="grid grid-cols-2 gap-4 mb-6">
+                <button 
+                    onClick={() => handleConfirmPayment('CREDIT_CARD')}
+                    disabled={isProcessingAction}
+                    className="flex flex-col items-center justify-center p-6 border-2 border-slate-200 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all group disabled:opacity-50"
+                >
+                    <CreditCard size={32} className="text-slate-400 group-hover:text-purple-600 mb-3"/>
+                    <span className="font-bold text-slate-700 group-hover:text-purple-700">Cartão de Crédito</span>
+                </button>
+
+                <button 
+                    onClick={() => handleConfirmPayment('PIX')}
+                    disabled={isProcessingAction}
+                    className="flex flex-col items-center justify-center p-6 border-2 border-slate-200 rounded-xl hover:border-emerald-500 hover:bg-emerald-50 transition-all group disabled:opacity-50"
+                >
+                    <QrCode size={32} className="text-slate-400 group-hover:text-emerald-600 mb-3"/>
+                    <span className="font-bold text-slate-700 group-hover:text-emerald-700">Pix</span>
+                </button>
+            </div>
+
+            {isProcessingAction && (
+                <div className="flex items-center justify-center text-sm text-slate-500">
+                    <Loader2 className="animate-spin mr-2" size={16}/> Gerando cobrança segura...
+                </div>
+            )}
+
+            <button onClick={() => setPaymentStage('selection')} className="mt-6 text-sm text-slate-500 hover:underline">Voltar</button>
         </div>
       );
 
       return null;
   };
 
+  // ... (renderStepContent e return mantidos iguais) ...
   const renderStepContent = () => {
     switch(currentStep) {
         case 1:
@@ -794,7 +816,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                     )}
                 </div>
             );
-        case 4: // NOVO PASSO: CONCILIAÇÃO
+        case 4: 
             return (
                 <div className="pb-12 animate-slide-in-right flex flex-col items-center">
                     <div className="w-full max-w-2xl">

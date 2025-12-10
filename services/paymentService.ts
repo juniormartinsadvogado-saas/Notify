@@ -1,8 +1,7 @@
-
 import { NotificationItem, Transaction } from '../types';
 import { db, auth } from './firebase';
-import { collection, addDoc, onSnapshot, doc, query, where, getDocs, setDoc, updateDoc } from 'firebase/firestore';
-import { updateUserProfile } from './userService';
+import { collection, doc, query, where, getDocs, setDoc } from 'firebase/firestore';
+import { updateUserProfile, getUserProfile } from './userService';
 
 export interface CheckoutResponse {
     success: boolean;
@@ -12,17 +11,10 @@ export interface CheckoutResponse {
 
 const TRANSACTIONS_COLLECTION = 'transactions';
 
-// --- CONFIGURAÇÃO DOS PREÇOS DO STRIPE ---
-const STRIPE_PRICES = {
-    SINGLE: "price_SEU_ID_AVULSO",       
-    SUBSCRIPTION: "price_SEU_ID_ASSINATURA" 
-};
-
 // --- GESTÃO DE TRANSAÇÕES (HISTÓRICO) ---
 
 export const saveTransaction = async (userId: string, transaction: Transaction) => {
     try {
-        // Salva na coleção top-level 'transactions' com userId para consulta
         const docRef = doc(db, TRANSACTIONS_COLLECTION, transaction.id);
         await setDoc(docRef, {
             ...transaction,
@@ -70,100 +62,90 @@ export const updateSubscriptionStatus = async (userId: string, status: { active:
     }
 };
 
-// --- STRIPE CHECKOUT ---
+// --- ASAAS CHECKOUT (VIA API SERVERLESS) ---
 
-export const initiateCheckout = async (notification: NotificationItem, paymentPlan: 'single' | 'subscription'): Promise<CheckoutResponse> => {
+export const initiateCheckout = async (notification: NotificationItem, paymentPlan: 'single' | 'subscription', method: 'CREDIT_CARD' | 'PIX'): Promise<CheckoutResponse> => {
     const user = auth.currentUser;
     if (!user) {
         return { success: false, error: "Usuário não autenticado." };
     }
 
-    console.log(`[STRIPE] Iniciando Checkout (Plano: ${paymentPlan})...`);
+    console.log(`[ASAAS] Iniciando Checkout via API (Plano: ${paymentPlan}, Método: ${method})...`);
 
-    const selectedPriceId = paymentPlan === 'subscription' ? STRIPE_PRICES.SUBSCRIPTION : STRIPE_PRICES.SINGLE;
+    const userProfile = await getUserProfile(user.uid);
     const mode = paymentPlan === 'subscription' ? 'subscription' : 'payment';
 
     try {
-        const sessionsRef = collection(db, 'customers', user.uid, 'checkout_sessions');
-        
-        const docRef = await addDoc(sessionsRef, {
-            price: selectedPriceId,
-            mode: mode,
-            success_url: `${window.location.origin}`, 
-            cancel_url: `${window.location.origin}`,
-            metadata: {
-                type: 'notification_checkout',
-                notificationId: notification.id,
-                userId: user.uid,
-                plan: paymentPlan
-            }
-        });
-
-        return new Promise<CheckoutResponse>((resolve, reject) => {
-            const unsubscribe = onSnapshot(doc(db, 'customers', user.uid, 'checkout_sessions', docRef.id), (snap) => {
-                const data = snap.data();
-                if (data) {
-                    if (data.error) {
-                        unsubscribe();
-                        console.error("[STRIPE] Erro:", data.error.message);
-                        resolve({ success: false, error: data.error.message });
-                    }
-                    if (data.url) {
-                        unsubscribe();
-                        resolve({ success: true, checkoutUrl: data.url });
-                    }
+        const response = await fetch('/api/checkout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                mode: mode,
+                userEmail: user.email,
+                billingType: method, // Envia o método escolhido
+                payerInfo: {
+                    name: userProfile?.name || user.displayName,
+                    cpfCnpj: userProfile?.cpf || notification.senderUid
+                },
+                metadata: {
+                    type: 'notification_checkout',
+                    notificationId: notification.id,
+                    userId: user.uid,
+                    plan: paymentPlan,
+                    name: userProfile?.name || user.displayName,
+                    cpfCnpj: userProfile?.cpf
                 }
-            });
-
-            setTimeout(() => {
-                unsubscribe();
-                resolve({ 
-                    success: false, 
-                    error: "Tempo limite excedido. Verifique a configuração do Stripe no Firebase." 
-                });
-            }, 20000);
+            })
         });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Erro na criação da cobrança Asaas.");
+        }
+
+        return { success: true, checkoutUrl: data.url };
 
     } catch (error: any) {
-        console.error("[STRIPE] Erro crítico:", error);
-        return { success: false, error: "Falha ao conectar com serviço de pagamento." };
+        console.error("[ASAAS] Erro na API:", error);
+        return { success: false, error: error.message || "Falha ao conectar com serviço de pagamento." };
     }
 };
 
-export const initiateSubscriptionUpgrade = async (): Promise<CheckoutResponse> => {
+export const initiateSubscriptionUpgrade = async (method: 'CREDIT_CARD' | 'PIX'): Promise<CheckoutResponse> => {
     const user = auth.currentUser;
     if (!user) return { success: false, error: "Usuário não autenticado." };
 
+    const userProfile = await getUserProfile(user.uid);
+
     try {
-        const sessionsRef = collection(db, 'customers', user.uid, 'checkout_sessions');
-        
-        const docRef = await addDoc(sessionsRef, {
-            price: STRIPE_PRICES.SUBSCRIPTION,
-            mode: 'subscription',
-            success_url: window.location.origin,
-            cancel_url: window.location.origin,
-            metadata: {
-                type: 'direct_upgrade',
-                userId: user.uid
-            }
+        const response = await fetch('/api/checkout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                mode: 'subscription',
+                userEmail: user.email,
+                billingType: method, // Envia o método escolhido
+                payerInfo: {
+                    name: userProfile?.name || user.displayName,
+                    cpfCnpj: userProfile?.cpf
+                },
+                metadata: {
+                    type: 'direct_upgrade',
+                    userId: user.uid,
+                    name: userProfile?.name || user.displayName,
+                    cpfCnpj: userProfile?.cpf
+                }
+            })
         });
 
-        return new Promise<CheckoutResponse>((resolve) => {
-            const unsubscribe = onSnapshot(doc(db, 'customers', user.uid, 'checkout_sessions', docRef.id), (snap) => {
-                const data = snap.data();
-                if (data) {
-                    if (data.error) {
-                        unsubscribe();
-                        resolve({ success: false, error: data.error.message });
-                    }
-                    if (data.url) {
-                        unsubscribe();
-                        resolve({ success: true, checkoutUrl: data.url });
-                    }
-                }
-            });
-            setTimeout(() => { unsubscribe(); resolve({ success: false, error: "Timeout." }); }, 20000);
-        });
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Erro ao criar assinatura no Asaas.");
+        }
+
+        return { success: true, checkoutUrl: data.url };
     } catch (error: any) {
         return { success: false, error: error.message };
     }
