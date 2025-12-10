@@ -106,6 +106,10 @@ export enum NotificationStatus {
     PAYMENTS_PENDING = 'payments_pending',
     PAYMENTS_REFUNDED = 'payments_refunded',
 
+    // ASSINATURA (Novo Módulo)
+    SUBSCRIPTION_PLAN = 'subscription_plan',
+    SUBSCRIPTION_HISTORY = 'subscription_history',
+
     // CONFIGURAÇÕES (Subpastas)
     SETTINGS_ACCOUNT = 'settings_account',
     SETTINGS_PLATFORM = 'settings_platform',

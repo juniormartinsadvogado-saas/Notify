@@ -9,6 +9,7 @@ import Billing from './components/Billing';
 import Settings from './components/Settings';
 import FileManager from './components/FileManager';
 import Login from './components/Login';
+import SubscriptionManager from './components/SubscriptionManager'; // Importado
 import SplashScreen from './components/SplashScreen'; 
 import { ViewState, NotificationItem, NotificationStatus, Meeting, Transaction } from './types';
 import { Bell, Search, Menu, X, CheckCircle, FileText, ArrowLeft, LogOut, Loader2, Settings as SettingsIcon } from 'lucide-react';
@@ -49,6 +50,17 @@ const App: React.FC = () => {
   const [systemNotifications, setSystemNotifications] = useState<NotificationItem[]>([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
 
+  // Subscription State (Mock)
+  // Inicialmente inativo/vazio conforme solicitação
+  const [subscriptionData, setSubscriptionData] = useState({
+      active: false,
+      planName: 'Plano Pro',
+      creditsTotal: 10,
+      creditsUsed: 0,
+      nextBillingDate: '',
+      invoices: [] as Transaction[]
+  });
+
   const [badgeCounts, setBadgeCounts] = useState<Record<string, number>>({
     [ViewState.RECEIVED_NOTIFICATIONS]: 0,
     [ViewState.MONITORING]: 0,
@@ -57,11 +69,8 @@ const App: React.FC = () => {
   
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]); 
-  const [transactions, setTransactions] = useState<Transaction[]>([
-    { id: 'TX-998', description: 'Geração de Notificação', amount: 49.90, date: '2023-10-05', status: 'Pago' },
-    { id: 'TX-999', description: 'Plano Mensal', amount: 199.00, date: '2023-10-01', status: 'Pago' },
-    { id: 'TX-1000', description: 'Agendamento Premium', amount: 29.90, date: '2023-09-28', status: 'Pendente' },
-  ]);
+  // Inicia vazio para garantir "clean slate" até que o usuário gere algo
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -200,8 +209,46 @@ const App: React.FC = () => {
     if (meeting) setMeetings(prev => [meeting, ...prev]);
     if (transaction) setTransactions(prev => [transaction, ...prev]);
 
+    // Se o pagamento for de Assinatura, ativa o plano
+    if (transaction && transaction.description.includes('Assinatura')) {
+        handleToggleSubscription(); // Ativa e adiciona fatura
+    }
+
     setCurrentView(ViewState.DASHBOARD);
     setBadgeCounts(prev => ({ ...prev, [ViewState.DASHBOARD]: (prev[ViewState.DASHBOARD] || 0) + 1 }));
+  };
+
+  // Gerencia Ativação/Desativação de Assinatura (Simulação)
+  const handleToggleSubscription = () => {
+      setSubscriptionData(prev => {
+          if (!prev.active) {
+              // ATIVAR
+              const nextMonth = new Date();
+              nextMonth.setMonth(nextMonth.getMonth() + 1);
+              
+              const newInvoice: Transaction = {
+                  id: `SUB-${Date.now()}`,
+                  description: 'Assinatura Mensal Pro',
+                  amount: 259.97,
+                  date: new Date().toISOString(),
+                  status: 'Pago'
+              };
+
+              return {
+                  ...prev,
+                  active: true,
+                  nextBillingDate: nextMonth.toLocaleDateString(),
+                  creditsUsed: 0,
+                  invoices: [newInvoice, ...prev.invoices]
+              };
+          } else {
+              // DESATIVAR (Mantém histórico, mas desativa)
+              if (window.confirm("Deseja realmente cancelar a assinatura? Seus benefícios serão encerrados ao fim do ciclo.")) {
+                  return { ...prev, active: false, nextBillingDate: '' };
+              }
+              return prev;
+          }
+      });
   };
 
   const handleThemeChange = (isDark: boolean, color: string) => {
@@ -224,7 +271,7 @@ const App: React.FC = () => {
       case ViewState.DASHBOARD:
         return <Dashboard notifications={notifications} meetings={meetings} transactions={transactions} onNavigate={setCurrentView} user={user} />;
       case ViewState.CREATE_NOTIFICATION:
-        return <NotificationCreator onSave={handleSaveNotification} user={user} />;
+        return <NotificationCreator onSave={handleSaveNotification} user={user} onBack={() => setCurrentView(ViewState.DASHBOARD)} />;
       case ViewState.RECEIVED_NOTIFICATIONS:
         return <ReceivedNotifications />;
       case ViewState.MONITORING:
@@ -250,6 +297,12 @@ const App: React.FC = () => {
           return <Billing transactions={transactions} filterStatus={FILTER_PAYMENT_PENDING} onRefund={handleRefund} />;
       case ViewState.PAYMENTS_REFUNDED:
           return <Billing transactions={transactions} filterStatus={FILTER_PAYMENT_REFUNDED} onRefund={handleRefund} />;
+
+      // NOVAS ROTAS DE ASSINATURA
+      case ViewState.SUBSCRIPTION_PLAN:
+          return <SubscriptionManager subView="plan" subscriptionData={subscriptionData} onToggleSubscription={handleToggleSubscription} />;
+      case ViewState.SUBSCRIPTION_HISTORY:
+          return <SubscriptionManager subView="history" subscriptionData={subscriptionData} onToggleSubscription={handleToggleSubscription} />;
 
       case ViewState.MEETINGS:
         return <MeetingScheduler meetingsProp={meetings} />;
@@ -346,7 +399,7 @@ const App: React.FC = () => {
             {currentView !== ViewState.DASHBOARD && (
                 <div>
                   <h1 className={`text-2xl md:text-3xl font-bold capitalize tracking-tight truncate max-w-[200px] md:max-w-none ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                    {currentView === ViewState.CREATE_NOTIFICATION ? 'Nova Notificação' : currentView.includes('settings') ? 'Configurações' : currentView === ViewState.RECEIVED_NOTIFICATIONS ? 'Caixa de Entrada' : currentView === ViewState.FILES ? 'Meus Arquivos' : currentView.replace(/_/g, ' ').replace('notifications', 'Notificações').replace('conciliations', 'Conciliações').replace('payments', 'Pagamentos')}
+                    {currentView === ViewState.CREATE_NOTIFICATION ? 'Nova Notificação' : currentView.includes('settings') ? 'Configurações' : currentView === ViewState.RECEIVED_NOTIFICATIONS ? 'Caixa de Entrada' : currentView === ViewState.FILES ? 'Meus Arquivos' : currentView.includes('subscription') ? 'Assinatura' : currentView.replace(/_/g, ' ').replace('notifications', 'Notificações').replace('conciliations', 'Conciliações').replace('payments', 'Pagamentos')}
                   </h1>
                   <p className={`text-xs md:text-sm mt-1 font-light truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                     Painel do usuário, <span className={`font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{user.displayName || 'Usuário'}</span>.
@@ -418,6 +471,20 @@ const App: React.FC = () => {
 
         {renderContent()}
       </main>
+
+      {/* FLOATING BACK BUTTON FOR NAVIGATION */}
+      {currentView !== ViewState.DASHBOARD && currentView !== ViewState.CREATE_NOTIFICATION && (
+          <button
+            onClick={() => setCurrentView(ViewState.DASHBOARD)}
+            className="fixed bottom-6 right-6 z-50 p-4 bg-slate-900 text-white rounded-full shadow-2xl hover:bg-slate-800 transition-all transform hover:scale-105 flex items-center gap-2 group border border-slate-700"
+            title="Voltar ao Painel"
+          >
+            <ArrowLeft size={20} />
+            <span className="max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 whitespace-nowrap font-bold text-sm">
+              Voltar ao Início
+            </span>
+          </button>
+      )}
 
       {isSidebarOpen && (
           <div 

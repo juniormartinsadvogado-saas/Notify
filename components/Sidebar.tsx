@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ViewState } from '../types';
-import { LayoutDashboard, FilePlus, Monitor, Video, CreditCard, LogOut, Settings, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CheckCircle, Clock, AlertCircle, Calendar, XCircle, FileText, Send, User, Palette } from 'lucide-react';
+import { LayoutDashboard, FilePlus, Monitor, Video, CreditCard, LogOut, Settings, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CheckCircle, Clock, AlertCircle, Calendar, XCircle, FileText, Send, User, Palette, Crown, Zap, History } from 'lucide-react';
 
 interface SidebarProps {
   currentView: ViewState;
@@ -38,6 +38,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
     'notifications': true,
     'conciliations': false,
     'payments': false,
+    'subscription': false,
     'settings': false
   });
 
@@ -80,6 +81,15 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
             { id: ViewState.PAYMENTS_CONFIRMED, label: 'Confirmados', icon: <CheckCircle size={14} /> },
             { id: ViewState.PAYMENTS_PENDING, label: 'Pendentes', icon: <Clock size={14} /> },
             { id: ViewState.PAYMENTS_REFUNDED, label: 'Reembolsados', icon: <AlertCircle size={14} /> }
+        ]
+    },
+    {
+        id: 'subscription',
+        label: 'Minha Assinatura',
+        icon: <Crown size={20} />,
+        children: [
+            { id: ViewState.SUBSCRIPTION_PLAN, label: 'Plano e Créditos', icon: <Zap size={14} /> },
+            { id: ViewState.SUBSCRIPTION_HISTORY, label: 'Histórico Mensal', icon: <History size={14} /> }
         ]
     },
     { 
