@@ -77,12 +77,12 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
         }`}
       ></div>
 
-      {/* Main Container */}
-      <div className={`relative z-10 flex flex-col items-center transition-opacity duration-500 ${showFlash ? 'opacity-0' : 'opacity-100'}`}>
+      {/* Main Container - Usando Grid para sobreposição centralizada perfeita */}
+      <div className={`relative z-10 w-full h-full grid place-items-center transition-opacity duration-500 ${showFlash ? 'opacity-0' : 'opacity-100'}`}>
         
         {/* STAGE 0: BRAND REVEAL */}
         <div 
-            className={`flex flex-col items-center transition-all duration-1000 ease-out absolute ${
+            className={`flex flex-col items-center transition-all duration-1000 ease-out col-start-1 row-start-1 ${
                 stage === 0 
                 ? 'opacity-100 scale-100 translate-y-0 blur-none' 
                 : 'opacity-0 scale-95 -translate-y-8 blur-sm'
@@ -107,7 +107,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
 
         {/* STAGE 1: SUBTITLE & LOADING */}
         <div 
-            className={`flex flex-col items-center transition-all duration-1000 ease-out absolute w-full max-w-md ${
+            className={`flex flex-col items-center transition-all duration-1000 ease-out col-start-1 row-start-1 w-full max-w-md ${
                 stage === 1 
                 ? 'opacity-100 translate-y-0' 
                 : (stage > 1 ? 'opacity-0 -translate-y-8' : 'opacity-0 translate-y-8')
@@ -141,7 +141,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
 
         {/* STAGE 2: READY STATUS */}
         <div 
-            className={`flex flex-col items-center transition-all duration-1000 ease-out absolute ${
+            className={`flex flex-col items-center transition-all duration-1000 ease-out col-start-1 row-start-1 ${
                 stage === 2 
                 ? 'opacity-100 translate-y-0' 
                 : 'opacity-0 translate-y-8'
