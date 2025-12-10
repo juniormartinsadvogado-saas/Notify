@@ -385,6 +385,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const [showSuccessScreen, setShowSuccessScreen] = useState(false);
   // State for Pix Copy Feedback
   const [pixCopied, setPixCopied] = useState(false);
+  // Preview Pagination State
+  const [previewPages, setPreviewPages] = useState<string[][]>([]);
 
   const [formData, setFormData] = useState({
     areaId: '',
@@ -436,6 +438,49 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     window.addEventListener('resize', resizeCanvas);
     return () => window.removeEventListener('resize', resizeCanvas);
   }, [currentStep]);
+
+  // PAGINATION CALCULATION EFFECT
+  useEffect(() => {
+    if (currentStep === 5 && formData.generatedContent) {
+        // Use jsPDF to simulate text wrapping and calculate pages
+        const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+        doc.setFont("times", "normal");
+        doc.setFontSize(11);
+        
+        // Constants matching the PDF generation
+        const margin = 20; // mm
+        const pageWidth = 210;
+        const contentWidth = pageWidth - (margin * 2); // 170mm
+        // Usable height per page: 297 - 45 (header) - 20 (footer) = ~232mm
+        const pageContentHeight = 230; 
+        const lineHeight = 6; // mm per line approx
+
+        const cleanBody = cleanTextForPDF(formData.generatedContent);
+        // This splits text into lines that fit the width
+        const lines = doc.splitTextToSize(cleanBody, contentWidth);
+        
+        const pages: string[][] = [];
+        let currentPageLines: string[] = [];
+        let currentH = 0;
+        
+        lines.forEach((line: string) => {
+            if (currentH + lineHeight > pageContentHeight) {
+                pages.push(currentPageLines);
+                currentPageLines = [];
+                currentH = 0;
+            }
+            currentPageLines.push(line);
+            currentH += lineHeight;
+        });
+        
+        // Push remaining lines
+        if (currentPageLines.length > 0) {
+            pages.push(currentPageLines);
+        }
+        
+        setPreviewPages(pages);
+    }
+  }, [currentStep, formData.generatedContent]);
 
   const calculateTotal = () => {
     if (paymentPlan === 'subscription') return 259.97;
@@ -1050,7 +1095,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
   const renderStepContent = () => {
       switch(currentStep) {
-          // ... (Cases 1, 2, 3 remain identical)
+          // ... (Cases 1, 2, 3, 4 remain identical)
           case 1: return (
             <div className="pb-12 relative">
                 <h3 className="text-xl font-bold text-slate-800 mb-6 text-center">Qual é a natureza jurídica?</h3>
@@ -1364,57 +1409,65 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                        <h3 className="text-xl font-bold text-slate-800">Revisão e Assinatura</h3>
                    </div>
                    
-                   {/* DOCUMENT PREVIEW CONTAINER (VISUAL A4) */}
-                   <div className="max-w-[210mm] mx-auto bg-white shadow-2xl border border-slate-200 text-left min-h-[297mm] relative mb-8 flex flex-col aspect-[1/1.41] transform scale-95 md:scale-100 transition-transform origin-top">
+                   {/* PAGINATED DOCUMENT PREVIEW CONTAINER */}
+                   <div className="max-w-[210mm] mx-auto text-left transform scale-95 md:scale-100 transition-transform origin-top space-y-8">
                        
-                       {/* Header Simulado (Visual apenas) */}
-                       <div className="p-[20mm] pb-0 mb-4">
-                           <div className="flex justify-between items-start border-b border-slate-300 pb-2 mb-6">
-                               <div>
-                                   <h1 className="font-serif font-bold text-2xl text-slate-800">NOTIFY</h1>
-                                   <p className="text-[8px] text-slate-400 tracking-widest uppercase">Inteligência Jurídica e Automação</p>
+                       {previewPages.map((pageLines, pageIndex) => (
+                           <div key={pageIndex} className="bg-white shadow-2xl border border-slate-200 relative min-h-[297mm] w-[210mm] flex flex-col p-[20mm]">
+                               
+                               {/* Cabeçalho (Todas as Páginas) */}
+                               <div className="mb-4">
+                                   <div className="flex justify-between items-start border-b border-slate-300 pb-2 mb-6">
+                                       <div>
+                                           <h1 className="font-serif font-bold text-2xl text-slate-800">NOTIFY</h1>
+                                           <p className="text-[8px] text-slate-400 tracking-widest uppercase">Inteligência Jurídica e Automação</p>
+                                       </div>
+                                       <div className="text-right">
+                                           <p className="text-[10px] font-serif text-slate-600">Data: {new Date().toLocaleDateString()}</p>
+                                           <p className="text-[10px] font-serif text-slate-600">Ref: {notificationId}</p>
+                                       </div>
+                                   </div>
                                </div>
-                               <div className="text-right">
-                                   <p className="text-[10px] font-serif text-slate-600">Data: {new Date().toLocaleDateString()}</p>
-                                   <p className="text-[10px] font-serif text-slate-600">Ref: {notificationId}</p>
-                               </div>
-                           </div>
-                       </div>
 
-                       {/* Marca D'agua Simulada */}
-                       <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] select-none overflow-hidden">
-                           <div className="transform -rotate-45 text-9xl font-bold text-slate-900 whitespace-nowrap">NOTIFY</div>
-                       </div>
-                       
-                       {/* Conteúdo do Texto (Cleaned) */}
-                       <div className="px-[20mm] flex-1 font-serif text-[11pt] text-justify leading-relaxed whitespace-pre-wrap text-slate-900">
-                           {cleanTextForPDF(formData.generatedContent)}
-                       </div>
-                       
-                       {/* Assinatura no Documento */}
-                       {formData.signed && signatureData && (
-                           <div className="px-[20mm] pb-[20mm] mt-auto">
-                               <div className="flex flex-col items-center justify-center">
-                                   <img src={signatureData} alt="Assinatura" className="h-16 object-contain mb-2 mix-blend-multiply" />
-                                   <div className="border-t border-slate-800 w-64 mb-1"></div>
-                                   <p className="font-serif font-bold text-xs text-slate-900 uppercase">{formData.sender.name}</p>
-                                   <p className="font-serif text-[10px] text-slate-600">CPF: {formData.sender.cpfCnpj}</p>
-                                   <p className="text-[8px] text-slate-400 mt-2">Assinado digitalmente via Notify Platform</p>
+                               {/* Marca D'agua (Apenas na primeira página ou todas?) Vamos colocar em todas */}
+                               <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-[0.03] select-none overflow-hidden">
+                                   <div className="transform -rotate-45 text-9xl font-bold text-slate-900 whitespace-nowrap">NOTIFY</div>
+                               </div>
+                               
+                               {/* Conteúdo da Página */}
+                               <div className="flex-1 font-serif text-[11pt] text-justify leading-relaxed whitespace-pre-wrap text-slate-900">
+                                   {pageLines.map((line, idx) => (
+                                       <div key={idx} className="min-h-[6mm]">{line}</div>
+                                   ))}
+                               </div>
+
+                               {/* Assinatura (Apenas na última página ou em nova página se não couber) */}
+                               {/* Lógica Simplificada: Renderiza no final do conteúdo da última página */}
+                               {pageIndex === previewPages.length - 1 && formData.signed && signatureData && (
+                                   <div className="mt-8 pb-4">
+                                       <div className="flex flex-col items-center justify-center">
+                                           <img src={signatureData} alt="Assinatura" className="h-16 object-contain mb-2 mix-blend-multiply" />
+                                           <div className="border-t border-slate-800 w-64 mb-1"></div>
+                                           <p className="font-serif font-bold text-xs text-slate-900 uppercase">{formData.sender.name}</p>
+                                           <p className="font-serif text-[10px] text-slate-600">CPF: {formData.sender.cpfCnpj}</p>
+                                           <p className="text-[8px] text-slate-400 mt-2">Assinado digitalmente via Notify Platform</p>
+                                       </div>
+                                   </div>
+                               )}
+
+                               {/* Rodapé */}
+                               <div className="mt-auto pt-4">
+                                   <div className="border-t border-slate-200 pt-2 flex justify-between items-center text-[8px] text-slate-400 font-serif italic">
+                                       <span>Documento gerado eletronicamente. ID: {notificationId}</span>
+                                       <span>Página {pageIndex + 1} de {previewPages.length}</span>
+                                   </div>
                                </div>
                            </div>
-                       )}
-
-                       {/* Footer Simulado */}
-                       <div className="absolute bottom-0 left-0 right-0 p-[20mm] pt-2">
-                           <div className="border-t border-slate-200 pt-2 flex justify-between items-center text-[8px] text-slate-400 font-serif italic">
-                               <span>Documento gerado eletronicamente. ID: {notificationId}</span>
-                               <span>Página 1 de 1</span>
-                           </div>
-                       </div>
+                       ))}
                    </div>
 
                    {!formData.signed && (
-                       <div className="w-full max-w-md mx-auto bg-white p-6 rounded-2xl border border-slate-200 shadow-lg relative z-20">
+                       <div className="w-full max-w-md mx-auto bg-white p-6 rounded-2xl border border-slate-200 shadow-lg relative z-20 mt-8">
                            <div className="flex justify-between items-center mb-3">
                                <p className="text-xs font-bold text-slate-500 uppercase flex items-center"><PenTool size={12} className="mr-1"/> Assine no quadro abaixo</p>
                                <button onClick={clearSignature} className="text-red-500 text-xs hover:underline font-medium">Limpar</button>
