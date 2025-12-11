@@ -1,3 +1,4 @@
+
 import { NotificationItem, Transaction } from '../types';
 import { db, auth } from './firebase';
 import { collection, doc, query, where, getDocs, setDoc } from 'firebase/firestore';
@@ -6,6 +7,7 @@ import { updateUserProfile, getUserProfile } from './userService';
 export interface CheckoutResponse {
     success: boolean;
     checkoutUrl?: string;
+    pixData?: { encodedImage: string, payload: string };
     error?: string;
 }
 
@@ -64,7 +66,7 @@ export const updateSubscriptionStatus = async (userId: string, status: { active:
 
 // --- ASAAS CHECKOUT (VIA API SERVERLESS) ---
 
-export const initiateCheckout = async (notification: NotificationItem, paymentPlan: 'single' | 'subscription', method: 'CREDIT_CARD' | 'PIX'): Promise<CheckoutResponse> => {
+export const initiateCheckout = async (notification: NotificationItem, paymentPlan: 'single' | 'subscription', method: 'CREDIT_CARD' | 'PIX', cardData?: any): Promise<CheckoutResponse> => {
     const user = auth.currentUser;
     if (!user) {
         return { success: false, error: "Usuário não autenticado." };
@@ -82,10 +84,11 @@ export const initiateCheckout = async (notification: NotificationItem, paymentPl
             body: JSON.stringify({
                 mode: mode,
                 userEmail: user.email,
-                billingType: method, // Envia o método escolhido
+                billingType: method,
+                cardData: cardData, // Envia dados do cartão se houver
                 payerInfo: {
                     name: userProfile?.name || user.displayName,
-                    cpfCnpj: userProfile?.cpf || notification.senderUid
+                    cpfCnpj: userProfile?.cpf || notification.notificante_uid
                 },
                 metadata: {
                     type: 'notification_checkout',
@@ -104,7 +107,11 @@ export const initiateCheckout = async (notification: NotificationItem, paymentPl
             throw new Error(data.error || "Erro na criação da cobrança Asaas.");
         }
 
-        return { success: true, checkoutUrl: data.url };
+        return { 
+            success: true, 
+            checkoutUrl: data.url,
+            pixData: data.pixData // Retorna dados do QR Code se existir
+        };
 
     } catch (error: any) {
         console.error("[ASAAS] Erro na API:", error);
@@ -125,7 +132,7 @@ export const initiateSubscriptionUpgrade = async (method: 'CREDIT_CARD' | 'PIX')
             body: JSON.stringify({
                 mode: 'subscription',
                 userEmail: user.email,
-                billingType: method, // Envia o método escolhido
+                billingType: method,
                 payerInfo: {
                     name: userProfile?.name || user.displayName,
                     cpfCnpj: userProfile?.cpf
@@ -145,7 +152,11 @@ export const initiateSubscriptionUpgrade = async (method: 'CREDIT_CARD' | 'PIX')
             throw new Error(data.error || "Erro ao criar assinatura no Asaas.");
         }
 
-        return { success: true, checkoutUrl: data.url };
+        return { 
+            success: true, 
+            checkoutUrl: data.url,
+            pixData: data.pixData
+        };
     } catch (error: any) {
         return { success: false, error: error.message };
     }

@@ -1,3 +1,4 @@
+
 import React, { useEffect, useState } from 'react';
 
 interface SplashScreenProps {
@@ -22,7 +23,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
   const titleLetters = "Notify".split("");
   
   // Estágio 1: Subtítulo
-  const subtitleLetters = "Automação Jurídica".split("");
+  const subtitleLetters = "Inteligência Jurídica".split("");
 
   useEffect(() => {
     // Simulação da Barra de Progresso (aprox 8s para chegar a 100%)
@@ -180,3 +181,4 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
 };
 
 export default SplashScreen;
+    

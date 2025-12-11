@@ -1,8 +1,50 @@
+
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /{allPaths=**} {
-      allow read, write: if true;
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // --- FOTOS DE PERFIL ---
+    // Caminho: fotos_perfil/$UID
+    match /fotos_perfil/{userId} {
+      allow read: if isAuthenticated(); // Leitura pública para avatares no app
+      allow write: if isAuthenticated() && request.auth.uid == userId; // Apenas dono altera
+    }
+
+    // --- ARQUIVOS DE NOTIFICAÇÃO (PDFs e Evidências) ---
+    // A segurança aqui depende dos metadados salvos no Firestore
+    
+    // Regra Genérica para a pasta da notificação e subpastas
+    match /notificacoes/{notificationId}/{allPaths=**} {
+      allow write: if isAuthenticated(); // Criação permitida (validada via UI/Backend logic)
+      
+      // LEITURA SEGURA:
+      // O Storage vai até o Firestore, pega o documento da notificação e checa:
+      // 1. Sou o dono (notificante_uid)?
+      // 2. Sou um dos notificados (meu CPF está na lista)?
+      allow read: if isAuthenticated() && (
+        firestore.get(/databases/(default)/documents/notificacoes/$(notificationId)).data.notificante_uid == request.auth.uid ||
+        firestore.get(/databases/(default)/documents/usuarios/$(request.auth.uid)).data.cpf in firestore.get(/databases/(default)/documents/notificacoes/$(notificationId)).data.notificados_cpfs
+      );
+    }
+
+    // Caso específico para o PDF raiz (se salvo fora da pasta, ajuste conforme path do service)
+    // No service atual: `notificacoes_pdfs/{notificationId}.pdf`
+    match /notificacoes_pdfs/{notificationId}.pdf {
+      allow write: if isAuthenticated();
+      
+      allow read: if isAuthenticated() && (
+        firestore.get(/databases/(default)/documents/notificacoes/$(notificationId)).data.notificante_uid == request.auth.uid ||
+        firestore.get(/databases/(default)/documents/usuarios/$(request.auth.uid)).data.cpf in firestore.get(/databases/(default)/documents/notificacoes/$(notificationId)).data.notificados_cpfs
+      );
+    }
+
+    // --- MEUS ARQUIVOS PESSOAIS ---
+    match /user_files/{userId}/{allPaths=**} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
     }
   }
 }

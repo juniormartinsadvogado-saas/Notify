@@ -1,8 +1,78 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
+    
+    // --- FUNÇÕES AUXILIARES ---
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Busca o CPF do usuário que está tentando ler o documento
+    function getUserCpf() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.cpf;
+    }
+
+    // --- COLEÇÃO USUARIOS ---
+    // Dados Pessoais: Apenas o dono lê/escreve.
+    match /usuarios/{userId} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // --- COLEÇÃO NOTIFICACOES ---
+    match /notificacoes/{notificationId} {
+      
+      // CRIAÇÃO: O usuário deve ser o notificante declarado
+      allow create: if isAuthenticated() 
+                    && request.resource.data.notificante_uid == request.auth.uid;
+      
+      // ATUALIZAÇÃO: Permitida apenas ao Notificante (ex: confirmar pagamento, cancelar)
+      // Bloqueia alteração de campos críticos como 'notificacoes_cpfs' após criação para integridade
+      allow update: if isAuthenticated() 
+                    && resource.data.notificante_uid == request.auth.uid
+                    && request.resource.data.notificante_uid == resource.data.notificante_uid; // Não pode mudar o dono
+      
+      // DELEÇÃO: Apenas o Notificante (se ainda for rascunho ou pendente, idealmente)
+      allow delete: if isAuthenticated() && resource.data.notificante_uid == request.auth.uid;
+
+      // LEITURA (Lógica Híbrida):
+      // 1. O usuário é o Notificante (Dono).
+      // OU
+      // 2. O CPF do usuário logado está na lista de destinatários.
+      allow read: if isAuthenticated() && (
+        resource.data.notificante_uid == request.auth.uid ||
+        (getUserCpf() in resource.data.notificados_cpfs)
+      );
+    }
+
+    // --- REUNIÕES ---
+    match /reunioes/{meetingId} {
+      // Host tem controle total
+      allow create: if isAuthenticated() && request.resource.data.hostUid == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.hostUid == request.auth.uid;
+      
+      // Leitura: Host ou Convidado (via match de email ou CPF se implementado no doc da reunião)
+      // Simplificado aqui para Host + Autenticados (Lobby público se tiver o ID)
+      allow read: if isAuthenticated(); 
+    }
+
+    // --- TRANSAÇÕES FINANCEIRAS ---
+    match /transactions/{transactionId} {
+      allow read, write: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid
+      );
+    }
+
+    // --- MEUS ARQUIVOS (File Manager) ---
+    match /files/{fileId} {
+      allow read, write: if isAuthenticated() && (
+        resource.data.uid == request.auth.uid || request.resource.data.uid == request.auth.uid
+      );
     }
   }
 }

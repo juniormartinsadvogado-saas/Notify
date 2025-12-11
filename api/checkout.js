@@ -17,16 +17,13 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { mode, userEmail, metadata, payerInfo, billingType } = req.body;
+  const { mode, userEmail, metadata, payerInfo, billingType, cardData } = req.body;
   const apiKey = process.env.ASAAS_PAGAMENTO_API_KEY;
 
   if (!apiKey) {
     console.error("ASAAS_PAGAMENTO_API_KEY não configurada.");
     return res.status(500).json({ error: "Erro de configuração no servidor de pagamentos." });
   }
-
-  // Validação do Tipo de Pagamento (Força PIX ou CREDIT_CARD)
-  const selectedBillingType = billingType === 'PIX' ? 'PIX' : 'CREDIT_CARD';
 
   // Definição de Valores
   const value = mode === 'subscription' ? 259.97 : 57.92;
@@ -74,57 +71,82 @@ export default async function handler(req, res) {
         customerId = newCustomer.id;
     }
 
-    // 2. CRIAÇÃO DA COBRANÇA OU ASSINATURA
-    let paymentResponse;
-    let paymentData;
+    // 2. CRIAÇÃO DA COBRANÇA
+    let paymentPayload = {
+        customer: customerId,
+        billingType: billingType,
+        value: value,
+        dueDate: new Date(Date.now() + 259200000).toISOString().split('T')[0], // +3 dias
+        description: description,
+        externalReference: metadata.notificationId,
+        postalService: false
+    };
 
-    if (mode === 'subscription') {
-        // Criar Assinatura Mensal
-        paymentResponse = await fetch(`${ASAAS_URL}/subscriptions`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'access_token': apiKey 
-            },
-            body: JSON.stringify({
-                customer: customerId,
-                billingType: selectedBillingType, // Restringe ao tipo escolhido (Sem Boleto)
-                value: value,
-                nextDueDate: new Date(Date.now() + 86400000).toISOString().split('T')[0], // Amanhã
-                cycle: 'MONTHLY',
-                description: description,
-                externalReference: metadata.userId
-            })
-        });
-    } else {
-        // Criar Cobrança Única
-        paymentResponse = await fetch(`${ASAAS_URL}/payments`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'access_token': apiKey 
-            },
-            body: JSON.stringify({
-                customer: customerId,
-                billingType: selectedBillingType, // Restringe ao tipo escolhido
-                value: value,
-                dueDate: new Date(Date.now() + 259200000).toISOString().split('T')[0], // +3 dias
-                description: description,
-                externalReference: metadata.notificationId,
-                postalService: false
-            })
-        });
+    // Adiciona dados do cartão se for crédito
+    if (billingType === 'CREDIT_CARD' && cardData) {
+        paymentPayload.creditCard = {
+            holderName: cardData.holderName,
+            number: cardData.number,
+            expiryMonth: cardData.expiryMonth,
+            expiryYear: cardData.expiryYear,
+            ccv: cardData.ccv
+        };
+        paymentPayload.creditCardHolderInfo = {
+            name: cardData.holderName,
+            email: userEmail,
+            cpfCnpj: cpfCnpj ? cpfCnpj.replace(/\D/g, '') : undefined,
+            postalCode: '00000000', // Mock ou vindo do form se necessário
+            addressNumber: '0',
+            phone: '00000000000' // Mock ou vindo do form
+        };
     }
 
-    paymentData = await paymentResponse.json();
+    const endpoint = mode === 'subscription' ? '/subscriptions' : '/payments';
+    if (mode === 'subscription') {
+        paymentPayload.cycle = 'MONTHLY';
+        paymentPayload.nextDueDate = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    }
+
+    const paymentResponse = await fetch(`${ASAAS_URL}${endpoint}`, {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'access_token': apiKey 
+        },
+        body: JSON.stringify(paymentPayload)
+    });
+
+    const paymentData = await paymentResponse.json();
 
     if (paymentData.errors) {
         throw new Error(paymentData.errors[0].description);
     }
 
+    // 3. RETORNO ESPECÍFICO
+    
+    // Se for PIX, precisamos buscar o QR Code
+    if (billingType === 'PIX') {
+        const qrResponse = await fetch(`${ASAAS_URL}/payments/${paymentData.id}/pixQrCode`, {
+            method: 'GET',
+            headers: { 'access_token': apiKey }
+        });
+        const qrData = await qrResponse.json();
+        
+        return res.status(200).json({ 
+            success: true,
+            id: paymentData.id,
+            pixData: {
+                encodedImage: qrData.encodedImage,
+                payload: qrData.payload
+            }
+        });
+    }
+
+    // Se for Cartão, já retorna sucesso direto se não deu erro
     return res.status(200).json({ 
-        url: paymentData.invoiceUrl,
-        id: paymentData.id 
+        success: true,
+        id: paymentData.id,
+        status: paymentData.status // CONFIRMED ou PENDING
     });
 
   } catch (error) {

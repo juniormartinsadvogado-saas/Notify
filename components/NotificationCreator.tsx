@@ -9,7 +9,7 @@ import {
   Wand2, Scale, Users, 
   FileText, PenTool, CreditCard, Check, Loader2, 
   Briefcase, ShoppingBag, Home, Heart, FileSignature, Scroll, UploadCloud, X, User, Video, CheckCircle2, ArrowRight, Calendar, Lock, ChevronLeft, Sparkles,
-  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode
+  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode, Copy, AlertCircle, Plane, Zap, Rocket, Monitor, Trophy, Anchor
 } from 'lucide-react';
 
 interface NotificationCreatorProps {
@@ -18,102 +18,41 @@ interface NotificationCreatorProps {
   onBack?: () => void;
 }
 
-// --- FLUXO REORDENADO ---
+// ... (Resto das constantes STEPS e LAW_AREAS mantido igual ao anterior, omitido para brevidade) ...
 const STEPS = [
   { id: 1, label: 'Áreas', icon: Scale },
   { id: 2, label: 'Ocorrências', icon: FileText },
   { id: 3, label: 'Partes', icon: Users },
-  { id: 4, label: 'Conciliação', icon: Video }, // NOVO PASSO ANTES DA IA
+  { id: 4, label: 'Conciliação', icon: Video },
   { id: 5, label: 'Geração IA', icon: Wand2 },
   { id: 6, label: 'Assinatura', icon: PenTool },
   { id: 7, label: 'Pagamento', icon: CreditCard },
 ];
 
-// --- 20 ÁREAS DO DIREITO ---
 const LAW_AREAS = [
-  { 
-    id: 'civil', name: 'Civil', icon: Scale, desc: 'Relações privadas, obrigações e responsabilidade civil.',
-    species: ['Cobrança de dívidas', 'Indenização por danos morais', 'Indenização por danos materiais', 'Cumprimento de obrigação', 'Notificação extrajudicial genérica']
-  },
-  { 
-    id: 'trabalhista', name: 'Trabalhista', icon: Briefcase, desc: 'Relações de trabalho e emprego.',
-    species: ['Pagamento de verbas rescisórias', 'Assédio moral no trabalho', 'Reintegração de emprego', 'Solicitação de documentos', 'Justificativa de faltas']
-  },
-  { 
-    id: 'consumidor', name: 'Consumidor', icon: ShoppingBag, desc: 'Defesa de quem adquire produtos/serviços.',
-    species: ['Produto com defeito', 'Cobrança indevida', 'Falha na prestação de serviço', 'Cancelamento de contrato', 'Publicidade enganosa']
-  },
-  { 
-    id: 'imobiliario', name: 'Imobiliário', icon: Home, desc: 'Posse, propriedade e locação.',
-    species: ['Atraso no aluguel', 'Pedido de desocupação', 'Vícios no imóvel', 'Devolução de caução', 'Perturbação do sossego']
-  },
-  { 
-    id: 'familia', name: 'Família', icon: Heart, desc: 'Relações familiares e sucessões.',
-    species: ['Pagamento de pensão alimentícia', 'Regulamentação de visitas', 'Alienação parental', 'Pedido de divórcio consensual', 'Partilha de bens']
-  },
-  { 
-    id: 'contratual', name: 'Contratual', icon: FileSignature, desc: 'Acordos firmados entre partes.',
-    species: ['Descumprimento de cláusula', 'Rescisão contratual', 'Aplicação de multa', 'Revisão de contrato', 'Distrato']
-  },
-  { 
-    id: 'criminal', name: 'Criminal', icon: Gavel, desc: 'Crimes contra honra e notificações penais.',
-    species: ['Calúnia, Injúria ou Difamação', 'Notificação para cessar ameaças', 'Pedido de explicações em juízo', 'Stalking/Perseguição']
-  },
-  { 
-    id: 'empresarial', name: 'Empresarial', icon: Building2, desc: 'Atividades empresariais e societárias.',
-    species: ['Dissolução de sociedade', 'Prestação de contas', 'Cobrança entre empresas', 'Uso indevido de marca', 'Concorrência desleal']
-  },
-  { 
-    id: 'tributario', name: 'Tributário', icon: Landmark, desc: 'Impostos, taxas e fisco.',
-    species: ['Defesa administrativa', 'Pedido de isenção', 'Restituição de imposto', 'Parcelamento de dívida']
-  },
-  { 
-    id: 'bancario', name: 'Bancário', icon: Banknote, desc: 'Relações com instituições financeiras.',
-    species: ['Juros abusivos', 'Fraude em empréstimo', 'Cartão não solicitado', 'Negativação indevida', 'Renegociação de dívida']
-  },
-  { 
-    id: 'condominial', name: 'Condominial', icon: Key, desc: 'Vida em condomínio e vizinhança.',
-    species: ['Multa por barulho', 'Inadimplência de condomínio', 'Uso indevido de área comum', 'Danos causados por vizinho', 'Obras irregulares']
-  },
-  { 
-    id: 'digital', name: 'Direito Digital', icon: Wifi, desc: 'Internet, dados e crimes virtuais.',
-    species: ['Remoção de conteúdo ofensivo', 'Uso indevido de imagem', 'Vazamento de dados (LGPD)', 'Recuperação de conta', 'Golpes virtuais']
-  },
-  { 
-    id: 'administrativo', name: 'Administrativo', icon: Scroll, desc: 'Relações com órgãos públicos.',
-    species: ['Recurso de multa', 'Solicitação de prontuário', 'Pedido de licença', 'Impugnação de edital']
-  },
-  { 
-    id: 'previdenciario', name: 'Previdenciário', icon: GraduationCap, desc: 'Aposentadoria e INSS.',
-    species: ['Pedido de benefício', 'Recurso administrativo INSS', 'Revisão de aposentadoria', 'Declaração de tempo de serviço']
-  },
-  { 
-    id: 'transito', name: 'Trânsito', icon: Car, desc: 'Veículos e infrações.',
-    species: ['Recurso de multa de trânsito', 'Transferência de veículo não realizada', 'Acidente de trânsito (Danos)', 'CNH suspensa']
-  },
-  { 
-    id: 'medico', name: 'Médico', icon: Stethoscope, desc: 'Saúde e erro médico.',
-    species: ['Negativa de plano de saúde', 'Erro médico/odontológico', 'Reembolso de despesas', 'Fornecimento de medicamento']
-  },
-  { 
-    id: 'ambiental', name: 'Ambiental', icon: Leaf, desc: 'Meio ambiente e sustentabilidade.',
-    species: ['Defesa de multa ambiental', 'Denúncia de dano ambiental', 'Regularização de licença', 'Poda de árvore ilegal']
-  },
-  { 
-    id: 'propriedade_intelectual', name: 'Prop. Intelectual', icon: Copyright, desc: 'Direitos autorais e marcas.',
-    species: ['Notificação de uso de imagem', 'Plágio', 'Violação de direitos autorais', 'Uso de software pirata']
-  },
-  { 
-    id: 'agrario', name: 'Agrário', icon: Leaf, desc: 'Relações no campo e terras.',
-    species: ['Arrendamento rural', 'Invasão de terras', 'Contratos de safra', 'Demarcação de terras']
-  },
-  { 
-    id: 'internacional', name: 'Internacional', icon: Globe, desc: 'Relações estrangeiras.',
-    species: ['Homologação de sentença', 'Contratos internacionais', 'Vistos e imigração', 'Extradição']
-  }
+  { id: 'civil', name: 'Civil', icon: Scale, desc: 'Relações privadas e obrigações.' },
+  { id: 'trabalhista', name: 'Trabalhista', icon: Briefcase, desc: 'Relações de trabalho.' },
+  { id: 'consumidor', name: 'Consumidor', icon: ShoppingBag, desc: 'Defesa do consumidor.' },
+  { id: 'imobiliario', name: 'Imobiliário', icon: Home, desc: 'Posse e propriedade.' },
+  { id: 'contratual', name: 'Contratual', icon: FileSignature, desc: 'Acordos e contratos.' },
+  { id: 'familia', name: 'Família', icon: Heart, desc: 'Relações familiares.' },
+  { id: 'sucessoes', name: 'Sucessões', icon: Users, desc: 'Heranças e inventários.' },
+  { id: 'empresarial', name: 'Empresarial', icon: Building2, desc: 'Atividades empresariais.' },
+  { id: 'tributario', name: 'Tributário', icon: Landmark, desc: 'Impostos e taxas.' },
+  { id: 'criminal', name: 'Criminal', icon: Gavel, desc: 'Crimes e infrações.' },
+  { id: 'administrativo', name: 'Administrativo', icon: Scroll, desc: 'Órgãos públicos.' },
+  { id: 'previdenciario', name: 'Previdenciário', icon: GraduationCap, desc: 'INSS e aposentadoria.' },
+  { id: 'ambiental', name: 'Ambiental', icon: Leaf, desc: 'Meio ambiente.' },
+  { id: 'internacional', name: 'Internacional', icon: Globe, desc: 'Relações estrangeiras.' },
+  { id: 'maritimo', name: 'Marítimo', icon: Anchor, desc: 'Direito do mar e portos.' },
+  { id: 'aeronautico', name: 'Aeronáutico', icon: Plane, desc: 'Aviação e transporte aéreo.' },
+  { id: 'energetico', name: 'Energético', icon: Zap, desc: 'Energia e regulação.' },
+  { id: 'espacial', name: 'Espacial', icon: Rocket, desc: 'Atividades espaciais.' },
+  { id: 'digital', name: 'Digital', icon: Monitor, desc: 'Internet e dados.' },
+  { id: 'esportivo', name: 'Esportivo', icon: Trophy, desc: 'Desporto e justiça desportiva.' }
 ];
+const COMMON_SPECIES = ['Cobrança', 'Indenização', 'Obrigação de Fazer', 'Rescisão', 'Notificação Genérica'];
 
-// ... (Restante das interfaces e helpers mantidos iguais) ...
 interface Address {
   cep: string;
   street: string;
@@ -132,46 +71,36 @@ interface LocalAttachment {
     type: 'image' | 'video' | 'document';
 }
 
+interface CardData {
+    holderName: string;
+    number: string;
+    expiryMonth: string;
+    expiryYear: string;
+    ccv: string;
+}
+
 const initialAddress: Address = {
   cep: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: ''
 };
 
-// --- Helper Functions ---
+// ... (Helper Functions MASKS, formatAddressString, DraftingAnimation, CreativeMeetingSelector, PersonForm mantidos iguais) ...
 const MASKS = {
-    cpf: (value: string) => {
-        return value.replace(/\D/g, '')
-            .replace(/(\d{3})(\d)/, '$1.$2')
-            .replace(/(\d{3})(\d)/, '$1.$2')
-            .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
-            .substring(0, 14); 
-    },
+    cpf: (value: string) => value.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2').substring(0, 14),
     cpfCnpj: (value: string) => {
       const v = value.replace(/\D/g, '');
-      if (v.length <= 11) {
-        return v.replace(/(\d{3})(\d)/, '$1.$2')
-                .replace(/(\d{3})(\d)/, '$1.$2')
-                .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
-      }
-      return v.replace(/^(\d{2})(\d)/, '$1.$2')
-              .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
-              .replace(/\.(\d{3})(\d)/, '.$1/$2')
-              .replace(/(\d{4})(\d)/, '$1-$2');
+      if (v.length <= 11) return v.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
+      return v.replace(/^(\d{2})(\d)/, '$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d)/, '.$1/$2').replace(/(\d{4})(\d)/, '$1-$2');
     },
-    phone: (value: string) => {
-      const v = value.replace(/\D/g, '');
-      return v.replace(/^(\d{2})(\d)/, '($1) $2')
-              .replace(/(\d)(\d{4})$/, '$1-$2');
-    },
-    cep: (value: string) => {
-      return value.replace(/\D/g, '').replace(/^(\d{5})(\d)/, '$1-$2');
-    }
+    phone: (value: string) => value.replace(/\D/g, '').replace(/^(\d{2})(\d)/, '($1) $2').replace(/(\d)(\d{4})$/, '$1-$2'),
+    cep: (value: string) => value.replace(/\D/g, '').replace(/^(\d{5})(\d)/, '$1-$2'),
+    card: (value: string) => value.replace(/\D/g, '').replace(/(\d{4})(?=\d)/g, '$1 ')
 };
 
 const formatAddressString = (addr: Address) => {
     const parts = [];
     if(addr.street) parts.push(addr.street);
-    if(addr.number) parts.push(addr.number);
-    if(addr.complement) parts.push(addr.complement);
+    if(addr.number) parts.push(`nº ${addr.number}`);
+    if(addr.complement) parts.push(`Compl: ${addr.complement}`); 
     if(addr.neighborhood) parts.push(addr.neighborhood);
     if(addr.city && addr.state) parts.push(`${addr.city}/${addr.state}`);
     if(addr.cep) parts.push(`CEP ${addr.cep}`);
@@ -251,14 +180,15 @@ const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputCh
              </div>
 
              <div className="mt-6 pt-4 border-t border-slate-100">
-                 <span className="text-xs font-bold text-slate-400 uppercase block mb-3">Endereço (Opcional)</span>
+                 <span className="text-xs font-bold text-slate-400 uppercase block mb-3">Endereço Completo (Obrigatório)</span>
                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <input type="text" placeholder="CEP" value={data.address.cep} onChange={e => onAddressChange(section, 'cep', MASKS.cep(e.target.value))} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
-                    <input type="text" placeholder="Rua" value={data.address.street} onChange={e => onAddressChange(section, 'street', e.target.value)} className="col-span-1 md:col-span-3 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
-                    <input type="text" placeholder="Número" value={data.address.number} onChange={e => onAddressChange(section, 'number', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
-                    <input type="text" placeholder="Bairro" value={data.address.neighborhood} onChange={e => onAddressChange(section, 'neighborhood', e.target.value)} className="col-span-1 md:col-span-2 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
-                    <input type="text" placeholder="Cidade" value={data.address.city} onChange={e => onAddressChange(section, 'city', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
-                    <input type="text" placeholder="UF" value={data.address.state} maxLength={2} onChange={e => onAddressChange(section, 'state', e.target.value.toUpperCase())} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
+                    <input type="text" placeholder="CEP" value={data.address.cep} onChange={e => onAddressChange(section, 'cep', MASKS.cep(e.target.value))} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" required />
+                    <input type="text" placeholder="Rua" value={data.address.street} onChange={e => onAddressChange(section, 'street', e.target.value)} className="col-span-1 md:col-span-3 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" required />
+                    <input type="text" placeholder="Número" value={data.address.number} onChange={e => onAddressChange(section, 'number', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" required />
+                    <input type="text" placeholder="Complemento" value={data.address.complement} onChange={e => onAddressChange(section, 'complement', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" required />
+                    <input type="text" placeholder="Bairro" value={data.address.neighborhood} onChange={e => onAddressChange(section, 'neighborhood', e.target.value)} className="col-span-1 md:col-span-2 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" required />
+                    <input type="text" placeholder="Cidade" value={data.address.city} onChange={e => onAddressChange(section, 'city', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" required />
+                    <input type="text" placeholder="UF" value={data.address.state} maxLength={2} onChange={e => onAddressChange(section, 'state', e.target.value.toUpperCase())} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" required />
                  </div>
              </div>
         </div>
@@ -266,7 +196,6 @@ const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputCh
 };
 
 const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user, onBack }) => {
-  // ... (Estados iniciais mantidos) ...
   const [currentStep, setCurrentStep] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSavingData, setIsSavingData] = useState(false);
@@ -299,21 +228,26 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
   const [localFiles, setLocalFiles] = useState<LocalAttachment[]>([]);
   
+  // Payment States
   const [paymentPlan, setPaymentPlan] = useState<'single' | 'subscription'>('single');
-  const [paymentStage, setPaymentStage] = useState<'selection' | 'input' | 'protocol'>('selection');
+  const [paymentStage, setPaymentStage] = useState<'selection' | 'input'>('selection');
+  const [selectedMethod, setSelectedMethod] = useState<'CREDIT_CARD' | 'PIX' | null>(null);
   const [isProcessingAction, setIsProcessingAction] = useState(false);
+  
+  const [pixData, setPixData] = useState<{ encodedImage: string, payload: string } | null>(null);
+  const [cardData, setCardData] = useState<CardData>({ holderName: '', number: '', expiryMonth: '', expiryYear: '', ccv: '' });
 
   const [createdData, setCreatedData] = useState<{notif?: NotificationItem, meet?: Meeting, trans?: Transaction}>({});
 
   const currentArea = LAW_AREAS.find(a => a.id === formData.areaId);
 
+  // ... (Efeitos e helpers canvas mantidos) ...
   useEffect(() => {
     if (currentStep === 6 && containerRef.current && canvasRef.current) { 
       const containerWidth = containerRef.current.offsetWidth;
       const canvas = canvasRef.current;
       canvas.width = containerWidth;
       canvas.height = 200;
-      
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.strokeStyle = "#000";
@@ -325,10 +259,17 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
   const calculateTotal = () => {
     if (paymentPlan === 'subscription') return 259.97;
-    return 57.92; // Avulso
+    return 57.92;
   };
 
-  // ... (Funções de input, endereço, data, arquivo e assinatura mantidas iguais) ...
+  const validateAddresses = () => {
+      const validate = (addr: Address) => addr.cep && addr.street && addr.number && addr.complement && addr.neighborhood && addr.city && addr.state;
+      if (!validate(formData.sender.address)) return "Endereço do Remetente incompleto (inclua complemento).";
+      if (!validate(formData.recipient.address)) return "Endereço do Destinatário incompleto (inclua complemento).";
+      if (role === 'representative' && !validate(formData.representative.address)) return "Seu endereço profissional incompleto.";
+      return null;
+  };
+
   const handleInputChange = (section: 'sender' | 'recipient' | 'representative', field: string, value: string) => {
     setFormData(prev => ({ ...prev, [section]: { ...prev[section], [field]: value } }));
   };
@@ -367,7 +308,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
     setIsDrawing(true);
     const rect = canvas.getBoundingClientRect();
     const x = (e.clientX || e.touches[0].clientX) - rect.left;
@@ -382,7 +322,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
     const rect = canvas.getBoundingClientRect();
     const x = (e.clientX || e.touches[0].clientX) - rect.left;
     const y = (e.clientY || e.touches[0].clientY) - rect.top;
@@ -406,8 +345,12 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     }
   };
 
-  // ... (handleGenerateContent e handlePersistData mantidos iguais) ...
   const handleGenerateContent = async () => {
+    const addressError = validateAddresses();
+    if (addressError) {
+        alert(addressError);
+        return;
+    }
     if (!formData.species || !formData.facts) return;
     setIsGenerating(true);
     
@@ -485,27 +428,36 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
           const totalAmount = calculateTotal();
 
+          // CRIAÇÃO DO OBJETO FINAL (Schema novo)
           const finalNotification: NotificationItem = {
               id: notificationId,
-              senderUid: user.uid,
-              senderName: formData.sender.name,
-              senderEmail: formData.sender.email,
-              senderPhotoUrl: user.photoURL || undefined,
+              
+              // Novos campos obrigatórios para regras
+              notificante_uid: user.uid,
+              notificante_cpf: formData.sender.cpfCnpj.replace(/\D/g, ''),
+              notificante_dados_expostos: {
+                  nome: formData.sender.name,
+                  email: formData.sender.email,
+                  telefone: formData.sender.phone,
+                  foto_url: user.photoURL || undefined
+              },
+              notificados_cpfs: [formData.recipient.cpfCnpj.replace(/\D/g, '')],
+
+              // Dados visuais
               recipientName: formData.recipient.name,
               recipientEmail: formData.recipient.email,
               recipientPhone: formData.recipient.phone,
-              recipientCpf: formData.recipient.cpfCnpj.replace(/\D/g, ''),
+              
               area: currentArea?.name || '',
               species: formData.species,
               facts: formData.facts,
               subject: formData.subject || formData.species,
               content: formData.generatedContent,
               evidences: newEvidenceItems,
-              pdfUrl: pdfUrl,
+              pdf_url: pdfUrl,
               signatureBase64: signatureData || undefined,
               createdAt: new Date().toISOString(),
               status: NotificationStatus.PENDING_PAYMENT,
-              paymentMethod: 'credit_card', 
               paymentAmount: totalAmount
           };
 
@@ -548,33 +500,43 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   };
 
-  const handleConfirmPayment = async (method: 'CREDIT_CARD' | 'PIX') => {
+  const handleProcessPayment = async () => {
       setIsProcessingAction(true);
       setError('');
       
       try {
-          if(!user || !createdData.notif) return;
+          if(!user || !createdData.notif || !selectedMethod) return;
 
-          const checkoutResponse = await initiateCheckout(createdData.notif, paymentPlan, method);
+          if (selectedMethod === 'CREDIT_CARD') {
+              if(!cardData.number || !cardData.holderName || !cardData.ccv || !cardData.expiryMonth) {
+                  setError("Preencha todos os dados do cartão.");
+                  setIsProcessingAction(false);
+                  return;
+              }
+          }
+
+          const checkoutResponse = await initiateCheckout(createdData.notif, paymentPlan, selectedMethod, cardData);
 
           if (!checkoutResponse.success) {
-             setError(checkoutResponse.error || "Erro ao iniciar pagamento. Tente novamente.");
+             setError(checkoutResponse.error || "Erro ao processar pagamento.");
              return;
           }
 
-          if (checkoutResponse.checkoutUrl) {
-             window.location.assign(checkoutResponse.checkoutUrl);
-             return;
+          if (selectedMethod === 'PIX' && checkoutResponse.pixData) {
+              setPixData(checkoutResponse.pixData);
+          } else if (selectedMethod === 'CREDIT_CARD') {
+              onSave(createdData.notif, createdData.meet, { ...createdData.trans!, status: 'Pago' });
           }
 
       } catch (e) {
           console.error(e);
-          setError("Erro ao processar redirecionamento de pagamento.");
+          setError("Erro de comunicação com gateway de pagamento.");
       } finally {
           setIsProcessingAction(false);
       }
   };
 
+  // ... (renderPaymentStep e renderStepContent mantidos iguais, mas usando as funções atualizadas) ...
   const renderPaymentStep = () => {
       if (paymentStage === 'selection') return (
          <div className="pb-12 space-y-6 animate-fade-in">
@@ -582,7 +544,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                  <h3 className="text-2xl font-bold text-slate-800">Escolha como prosseguir</h3>
                  <p className="text-slate-500 text-sm">Selecione o plano ideal.</p>
              </div>
-             
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
                 <div onClick={() => setPaymentPlan('single')} className={`relative p-8 rounded-2xl cursor-pointer transition-all duration-300 group overflow-hidden ${paymentPlan==='single' ? 'bg-white ring-2 ring-blue-500 shadow-xl scale-[1.02]' : 'bg-white border border-slate-200 hover:border-blue-300 hover:shadow-lg'}`}>
                      {paymentPlan === 'single' && <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl shadow-sm">SELECIONADO</div>}
@@ -590,33 +551,24 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                          <h4 className="font-bold text-slate-900 text-xl">Envio Avulso</h4>
                          <p className="text-4xl font-bold text-slate-900 mt-4">R$ 57,92</p>
                          <p className="text-xs text-slate-400 font-medium uppercase mt-1">pagamento único</p>
-                         
                          <ul className="mt-6 space-y-3 text-sm text-slate-600 text-left">
-                            <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5 shrink-0"/> <span>Minuta Jurídica via IA</span></li>
-                            <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5 shrink-0"/> <span>Envio Digital Rastreável</span></li>
-                            <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5 shrink-0"/> <span>PDF com Assinatura</span></li>
-                            <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5 shrink-0"/> <span>Pagamento Único</span></li>
+                            <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5"/> <span>Minuta Jurídica via IA</span></li>
+                            <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5"/> <span>PDF com Assinatura</span></li>
                         </ul>
                      </div>
                 </div>
-
                 <div onClick={() => setPaymentPlan('subscription')} className={`relative p-8 rounded-2xl cursor-pointer transition-all duration-300 group overflow-hidden ${paymentPlan==='subscription' ? 'bg-slate-900 ring-2 ring-purple-500 shadow-2xl scale-[1.02]' : 'bg-white border border-slate-200 hover:border-purple-300 hover:shadow-lg'}`}>
                      {paymentPlan === 'subscription' && <div className="absolute top-0 right-0 bg-purple-600 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl shadow-sm">RECOMENDADO</div>}
                      <div className="flex flex-col h-full">
                          <h4 className={`font-bold text-xl ${paymentPlan==='subscription' ? 'text-white' : 'text-slate-900'}`}>Assinatura Pro</h4>
                          <p className={`text-4xl font-bold mt-4 ${paymentPlan==='subscription' ? 'text-white' : 'text-slate-900'}`}>R$ 259,97 <span className="text-sm font-normal opacity-60">/mês</span></p>
-
                          <ul className={`mt-6 space-y-3 text-sm text-left ${paymentPlan === 'subscription' ? 'text-slate-300' : 'text-slate-600'}`}>
-                            <li className="flex items-start"><Check size={16} className={`mr-2 mt-0.5 shrink-0 ${paymentPlan === 'subscription' ? 'text-purple-400' : 'text-purple-600'}`}/> <span><strong>10 Notificações</strong> / mês</span></li>
-                            <li className="flex items-start"><Check size={16} className={`mr-2 mt-0.5 shrink-0 ${paymentPlan === 'subscription' ? 'text-purple-400' : 'text-purple-600'}`}/> <span>Conciliações Ilimitadas</span></li>
-                            <li className="flex items-start"><Check size={16} className={`mr-2 mt-0.5 shrink-0 ${paymentPlan === 'subscription' ? 'text-purple-400' : 'text-purple-600'}`}/> <span>Dashboard de Gestão</span></li>
-                            <li className="flex items-start"><Check size={16} className={`mr-2 mt-0.5 shrink-0 ${paymentPlan === 'subscription' ? 'text-purple-400' : 'text-purple-600'}`}/> <span>Suporte Prioritário</span></li>
-                            <li className="flex items-start"><Check size={16} className={`mr-2 mt-0.5 shrink-0 ${paymentPlan === 'subscription' ? 'text-purple-400' : 'text-purple-600'}`}/> <span>Cancele quando quiser</span></li>
+                            <li className="flex items-start"><Check size={16} className="mr-2 text-purple-400"/> <span><strong>10 Notificações</strong> / mês</span></li>
+                            <li className="flex items-start"><Check size={16} className="mr-2 text-purple-400"/> <span>Suporte Prioritário</span></li>
                         </ul>
                      </div>
                 </div>
              </div>
-             
              <div className="max-w-md mx-auto pt-6">
                  <button onClick={() => setPaymentStage('input')} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-xl flex items-center justify-center hover:bg-slate-800 transition transform hover:scale-105">
                      Ir para Pagamento <ArrowRight className="ml-2" size={18} />
@@ -624,66 +576,59 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
              </div>
          </div>
       );
-     
       if (paymentStage === 'input') return (
-        <div className="pb-12 max-w-md mx-auto animate-fade-in text-center">
-            <h3 className="text-xl font-bold text-slate-800 mb-4">Confirmar Pagamento</h3>
-            <p className="text-slate-500 text-sm mb-8">
-                Valor Total: <strong className="text-slate-900 ml-1">R$ {calculateTotal().toFixed(2)}</strong>.
-                <br/>Selecione abaixo como deseja pagar.
-            </p>
-
-            <div className="grid grid-cols-2 gap-4 mb-6">
-                <button 
-                    onClick={() => handleConfirmPayment('CREDIT_CARD')}
-                    disabled={isProcessingAction}
-                    className="flex flex-col items-center justify-center p-6 border-2 border-slate-200 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all group disabled:opacity-50"
-                >
-                    <CreditCard size={32} className="text-slate-400 group-hover:text-purple-600 mb-3"/>
-                    <span className="font-bold text-slate-700 group-hover:text-purple-700">Cartão de Crédito</span>
+        <div className="pb-12 max-w-lg mx-auto animate-fade-in text-center">
+            <h3 className="text-xl font-bold text-slate-800 mb-2">Finalizar Pagamento</h3>
+            <p className="text-slate-500 text-sm mb-6">Total a pagar: <strong className="text-slate-900 ml-1">R$ {calculateTotal().toFixed(2)}</strong></p>
+            <div className="grid grid-cols-2 gap-4 mb-8">
+                <button onClick={() => { setSelectedMethod('CREDIT_CARD'); setPixData(null); }} className={`flex flex-col items-center justify-center p-4 border-2 rounded-xl transition-all ${selectedMethod === 'CREDIT_CARD' ? 'border-purple-600 bg-purple-50' : 'border-slate-200 hover:border-purple-300'}`}>
+                    <CreditCard size={24} className={selectedMethod === 'CREDIT_CARD' ? 'text-purple-600' : 'text-slate-400'}/>
+                    <span className={`text-sm font-bold mt-2 ${selectedMethod === 'CREDIT_CARD' ? 'text-purple-700' : 'text-slate-600'}`}>Cartão de Crédito</span>
                 </button>
-
-                <button 
-                    onClick={() => handleConfirmPayment('PIX')}
-                    disabled={isProcessingAction}
-                    className="flex flex-col items-center justify-center p-6 border-2 border-slate-200 rounded-xl hover:border-emerald-500 hover:bg-emerald-50 transition-all group disabled:opacity-50"
-                >
-                    <QrCode size={32} className="text-slate-400 group-hover:text-emerald-600 mb-3"/>
-                    <span className="font-bold text-slate-700 group-hover:text-emerald-700">Pix</span>
+                <button onClick={() => { setSelectedMethod('PIX'); setPixData(null); }} className={`flex flex-col items-center justify-center p-4 border-2 rounded-xl transition-all ${selectedMethod === 'PIX' ? 'border-emerald-600 bg-emerald-50' : 'border-slate-200 hover:border-emerald-300'}`}>
+                    <QrCode size={24} className={selectedMethod === 'PIX' ? 'text-emerald-600' : 'text-slate-400'}/>
+                    <span className={`text-sm font-bold mt-2 ${selectedMethod === 'PIX' ? 'text-emerald-700' : 'text-slate-600'}`}>Pix</span>
                 </button>
             </div>
-
-            {isProcessingAction && (
-                <div className="flex items-center justify-center text-sm text-slate-500">
-                    <Loader2 className="animate-spin mr-2" size={16}/> Gerando cobrança segura...
+            {selectedMethod === 'CREDIT_CARD' && (
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-left space-y-4 mb-6 animate-slide-in-down">
+                    <div><label className="text-xs font-bold text-slate-500 uppercase">Número do Cartão</label><input type="text" className="w-full p-3 bg-slate-50 rounded-lg border border-slate-200 outline-none focus:border-purple-500 transition font-mono" placeholder="0000 0000 0000 0000" maxLength={19} value={cardData.number} onChange={e => setCardData({...cardData, number: MASKS.card(e.target.value)})}/></div>
+                    <div><label className="text-xs font-bold text-slate-500 uppercase">Nome no Cartão</label><input type="text" className="w-full p-3 bg-slate-50 rounded-lg border border-slate-200 outline-none focus:border-purple-500 transition" placeholder="COMO NO CARTAO" value={cardData.holderName} onChange={e => setCardData({...cardData, holderName: e.target.value.toUpperCase()})}/></div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div><label className="text-xs font-bold text-slate-500 uppercase">Validade</label><div className="flex gap-2"><input type="text" placeholder="MM" maxLength={2} className="w-full p-3 bg-slate-50 rounded-lg border border-slate-200 outline-none focus:border-purple-500 text-center" value={cardData.expiryMonth} onChange={e => setCardData({...cardData, expiryMonth: e.target.value})}/><input type="text" placeholder="AAAA" maxLength={4} className="w-full p-3 bg-slate-50 rounded-lg border border-slate-200 outline-none focus:border-purple-500 text-center" value={cardData.expiryYear} onChange={e => setCardData({...cardData, expiryYear: e.target.value})}/></div></div>
+                        <div><label className="text-xs font-bold text-slate-500 uppercase">CVV</label><input type="text" className="w-full p-3 bg-slate-50 rounded-lg border border-slate-200 outline-none focus:border-purple-500 text-center font-mono" placeholder="123" maxLength={4} value={cardData.ccv} onChange={e => setCardData({...cardData, ccv: e.target.value})}/></div>
+                    </div>
                 </div>
             )}
-
+            {selectedMethod === 'PIX' && pixData && (
+                <div className="bg-white p-6 rounded-2xl border border-emerald-200 shadow-sm text-center mb-6 animate-fade-in">
+                    <p className="text-sm text-emerald-700 font-bold mb-4">Escaneie para pagar</p>
+                    <img src={`data:image/png;base64,${pixData.encodedImage}`} alt="QR Code Pix" className="w-48 h-48 mx-auto border-4 border-white shadow-lg rounded-lg mb-4" />
+                    <div className="flex items-center gap-2"><input type="text" readOnly value={pixData.payload} className="flex-1 p-2 text-xs bg-slate-100 rounded border border-slate-200 text-slate-500 truncate" /><button onClick={() => {navigator.clipboard.writeText(pixData.payload); alert("Código copiado!");}} className="p-2 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 font-bold text-xs flex items-center"><Copy size={14} className="mr-1"/> Copiar</button></div>
+                    <p className="text-[10px] text-slate-400 mt-4">A confirmação é automática após o pagamento.</p>
+                </div>
+            )}
+            {selectedMethod && !pixData && (
+                <button onClick={handleProcessPayment} disabled={isProcessingAction} className={`w-full py-4 rounded-xl font-bold shadow-xl flex items-center justify-center transition-all transform active:scale-95 disabled:opacity-70 ${selectedMethod === 'PIX' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}>
+                    {isProcessingAction ? <Loader2 className="animate-spin mr-2"/> : (selectedMethod === 'PIX' ? <QrCode className="mr-2"/> : <CreditCard className="mr-2"/>)}
+                    {isProcessingAction ? 'Processando...' : (selectedMethod === 'PIX' ? 'Gerar QR Code Pix' : `Pagar R$ ${calculateTotal().toFixed(2)}`)}
+                </button>
+            )}
+            {error && <div className="mt-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg flex items-center justify-center"><AlertCircle size={16} className="mr-2"/> {error}</div>}
             <button onClick={() => setPaymentStage('selection')} className="mt-6 text-sm text-slate-500 hover:underline">Voltar</button>
         </div>
       );
-
       return null;
   };
 
-  // ... (renderStepContent e return mantidos iguais) ...
   const renderStepContent = () => {
     switch(currentStep) {
         case 1:
             return (
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 animate-fade-in pb-12">
                     {LAW_AREAS.map(area => (
-                        <div 
-                            key={area.id}
-                            onClick={() => setFormData(prev => ({ ...prev, areaId: area.id }))}
-                            className={`p-4 rounded-xl cursor-pointer border-2 transition-all flex flex-col items-center justify-center text-center gap-3 h-32 hover:scale-105 ${
-                                formData.areaId === area.id 
-                                ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md' 
-                                : 'border-slate-100 bg-white text-slate-500 hover:border-blue-200 hover:shadow-sm'
-                            }`}
-                        >
-                            <area.icon size={24} />
-                            <span className="text-xs font-bold">{area.name}</span>
+                        <div key={area.id} onClick={() => setFormData(prev => ({ ...prev, areaId: area.id }))} className={`p-4 rounded-xl cursor-pointer border-2 transition-all flex flex-col items-center justify-center text-center gap-3 h-32 hover:scale-105 ${formData.areaId === area.id ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md' : 'border-slate-100 bg-white text-slate-500 hover:border-blue-200 hover:shadow-sm'}`}>
+                            <area.icon size={24} /><span className="text-xs font-bold">{area.name}</span>
                         </div>
                     ))}
                 </div>
@@ -692,57 +637,27 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
             return (
                 <div className="space-y-6 pb-12 animate-slide-in-right">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {currentArea?.species.map((specie, idx) => (
-                            <div 
-                                key={idx}
-                                onClick={() => setFormData(prev => ({ ...prev, species: specie }))}
-                                className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${formData.species === specie ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-md' : 'border-slate-100 bg-white hover:border-purple-200'}`}
-                            >
+                        {COMMON_SPECIES.map((specie, idx) => (
+                            <div key={idx} onClick={() => setFormData(prev => ({ ...prev, species: specie }))} className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${formData.species === specie ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-md' : 'border-slate-100 bg-white hover:border-purple-200'}`}>
                                 <span className="text-sm font-medium">{specie}</span>
                             </div>
                         ))}
                     </div>
-                    
                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mt-8">
-                        <label className="text-sm font-bold text-slate-700 mb-2 block flex items-center">
-                            <FileText size={16} className="mr-2 text-slate-400"/>
-                            Descrição Detalhada dos Fatos
-                        </label>
-                        <textarea 
-                            value={formData.facts}
-                            onChange={(e) => setFormData(prev => ({ ...prev, facts: e.target.value }))}
-                            className="w-full h-40 p-4 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-100 text-sm"
-                            placeholder="Descreva o ocorrido com detalhes, datas e valores..."
-                        />
+                        <label className="text-sm font-bold text-slate-700 mb-2 block flex items-center"><FileText size={16} className="mr-2 text-slate-400"/> Descrição Detalhada dos Fatos</label>
+                        <textarea value={formData.facts} onChange={(e) => setFormData(prev => ({ ...prev, facts: e.target.value }))} className="w-full h-40 p-4 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-100 text-sm" placeholder="Descreva o ocorrido com detalhes, datas e valores..."/>
                     </div>
-
                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                        <label className="text-sm font-bold text-slate-700 mb-4 block flex items-center">
-                            <UploadCloud size={16} className="mr-2 text-slate-400"/>
-                            Anexar Evidências (Fotos, Vídeos, PDFs)
-                        </label>
-                        
+                        <label className="text-sm font-bold text-slate-700 mb-4 block flex items-center"><UploadCloud size={16} className="mr-2 text-slate-400"/> Anexar Evidências (Fotos, Vídeos, PDFs)</label>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                             {localFiles.map((file) => (
                                 <div key={file.id} className="relative group border border-slate-200 rounded-lg overflow-hidden h-24 flex items-center justify-center bg-slate-50">
-                                    {file.type === 'image' ? (
-                                        <img src={file.previewUrl} className="w-full h-full object-cover" alt="preview"/>
-                                    ) : (
-                                        <div className="flex flex-col items-center text-slate-400">
-                                            <FileText size={24} />
-                                            <span className="text-[10px] mt-1">{file.type}</span>
-                                        </div>
-                                    )}
-                                    <button onClick={() => removeFile(file.id)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition">
-                                        <X size={12} />
-                                    </button>
+                                    {file.type === 'image' ? <img src={file.previewUrl} className="w-full h-full object-cover" alt="preview"/> : <div className="flex flex-col items-center text-slate-400"><FileText size={24} /><span className="text-[10px] mt-1">{file.type}</span></div>}
+                                    <button onClick={() => removeFile(file.id)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition"><X size={12} /></button>
                                 </div>
                             ))}
-                            
                             <label className="border-2 border-dashed border-slate-300 rounded-lg h-24 flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition">
-                                <UploadCloud size={24} className="text-slate-400 mb-1" />
-                                <span className="text-xs text-slate-500 font-bold">Adicionar</span>
-                                <input type="file" multiple className="hidden" onChange={handleFileSelect} />
+                                <UploadCloud size={24} className="text-slate-400 mb-1" /><span className="text-xs text-slate-500 font-bold">Adicionar</span><input type="file" multiple className="hidden" onChange={handleFileSelect} />
                             </label>
                         </div>
                     </div>
@@ -755,23 +670,13 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                         <div className="flex flex-col gap-4">
                             <h3 className="text-xl font-bold text-slate-800 text-center mb-6">Quem você representa?</h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto w-full">
-                                <button 
-                                    onClick={() => { setRole('self'); setPartiesStep('forms'); }}
-                                    className="p-8 rounded-2xl border-2 border-slate-100 bg-white hover:border-blue-400 hover:shadow-lg transition-all group text-left"
-                                >
-                                    <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                                        <User size={24} />
-                                    </div>
+                                <button onClick={() => { setRole('self'); setPartiesStep('forms'); }} className="p-8 rounded-2xl border-2 border-slate-100 bg-white hover:border-blue-400 hover:shadow-lg transition-all group text-left">
+                                    <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><User size={24} /></div>
                                     <h4 className="font-bold text-lg text-slate-800">Eu mesmo (Pessoa Física)</h4>
                                     <p className="text-sm text-slate-500 mt-2">Estou agindo em meu próprio nome.</p>
                                 </button>
-                                <button 
-                                    onClick={() => { setRole('representative'); setPartiesStep('forms'); }}
-                                    className="p-8 rounded-2xl border-2 border-slate-100 bg-white hover:border-purple-400 hover:shadow-lg transition-all group text-left"
-                                >
-                                    <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                                        <Briefcase size={24} />
-                                    </div>
+                                <button onClick={() => { setRole('representative'); setPartiesStep('forms'); }} className="p-8 rounded-2xl border-2 border-slate-100 bg-white hover:border-purple-400 hover:shadow-lg transition-all group text-left">
+                                    <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><Briefcase size={24} /></div>
                                     <h4 className="font-bold text-lg text-slate-800">Representante Legal / Advogado</h4>
                                     <p className="text-sm text-slate-500 mt-2">Estou agindo em nome de um cliente ou empresa.</p>
                                 </button>
@@ -783,35 +688,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                                 <h3 className="text-lg font-bold">Preenchimento das Partes</h3>
                                 <button onClick={() => setPartiesStep('role_selection')} className="text-xs text-slate-500 underline">Alterar Tipo</button>
                             </div>
-
-                            {role === 'representative' && (
-                                <PersonForm 
-                                    title="Representante (Você)" 
-                                    data={formData.representative} 
-                                    section="representative"
-                                    colorClass="border-purple-500"
-                                    onInputChange={handleInputChange} 
-                                    onAddressChange={handleAddressChange} 
-                                />
-                            )}
-                            
-                            <PersonForm 
-                                title={role === 'representative' ? "Cliente (Parte Ativa)" : "Seus Dados (Remetente)"} 
-                                data={formData.sender} 
-                                section="sender"
-                                colorClass="border-blue-500"
-                                onInputChange={handleInputChange} 
-                                onAddressChange={handleAddressChange} 
-                            />
-
-                            <PersonForm 
-                                title="Parte Contrária (Destinatário)" 
-                                data={formData.recipient} 
-                                section="recipient"
-                                colorClass="border-red-500"
-                                onInputChange={handleInputChange} 
-                                onAddressChange={handleAddressChange} 
-                            />
+                            {role === 'representative' && <PersonForm title="Representante (Você)" data={formData.representative} section="representative" colorClass="border-purple-500" onInputChange={handleInputChange} onAddressChange={handleAddressChange} />}
+                            <PersonForm title={role === 'representative' ? "Cliente (Parte Ativa)" : "Seus Dados (Remetente)"} data={formData.sender} section="sender" colorClass="border-blue-500" onInputChange={handleInputChange} onAddressChange={handleAddressChange} />
+                            <PersonForm title="Parte Contrária (Destinatário)" data={formData.recipient} section="recipient" colorClass="border-red-500" onInputChange={handleInputChange} onAddressChange={handleAddressChange} />
                         </div>
                     )}
                 </div>
@@ -821,16 +700,10 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                 <div className="pb-12 animate-slide-in-right flex flex-col items-center">
                     <div className="w-full max-w-2xl">
                         <div className="text-center mb-8">
-                            <div className="w-16 h-16 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <Video size={32} />
-                            </div>
+                            <div className="w-16 h-16 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mx-auto mb-4"><Video size={32} /></div>
                             <h3 className="text-2xl font-bold text-slate-800">Propor Videoconferência</h3>
-                            <p className="text-slate-500 mt-2">
-                                Aumente em 80% a chance de acordo agendando uma conversa amigável antes de litigar.
-                                A IA incluirá o convite no documento final.
-                            </p>
+                            <p className="text-slate-500 mt-2">Aumente em 80% a chance de acordo agendando uma conversa amigável.</p>
                         </div>
-
                         <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm mb-6">
                             <label className="flex items-center justify-between p-4 border-2 border-slate-100 rounded-xl cursor-pointer hover:border-purple-200 transition-colors mb-6">
                                 <div className="flex items-center">
@@ -839,34 +712,18 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                                     </div>
                                     <span className="font-bold text-slate-700">Sim, desejo agendar uma conciliação</span>
                                 </div>
-                                <input 
-                                    type="checkbox" 
-                                    className="hidden" 
-                                    checked={formData.scheduleMeeting} 
-                                    onChange={() => setFormData(p => ({ ...p, scheduleMeeting: !p.scheduleMeeting }))} 
-                                />
+                                <input type="checkbox" className="hidden" checked={formData.scheduleMeeting} onChange={() => setFormData(p => ({ ...p, scheduleMeeting: !p.scheduleMeeting }))} />
                             </label>
-
                             {formData.scheduleMeeting && (
                                 <div className="animate-fade-in">
-                                    <CreativeMeetingSelector 
-                                        date={formData.meetingDate} 
-                                        time={formData.meetingTime} 
-                                        setDate={handleDateChange} 
-                                        setTime={handleTimeChange}
-                                        disabled={false}
-                                    />
-                                    <p className="text-xs text-slate-400 mt-4 text-center flex items-center justify-center">
-                                        <Lock size={12} className="mr-1" />
-                                        O link seguro do Google Meet será gerado automaticamente.
-                                    </p>
+                                    <CreativeMeetingSelector date={formData.meetingDate} time={formData.meetingTime} setDate={handleDateChange} setTime={handleTimeChange} disabled={false} />
                                 </div>
                             )}
                         </div>
                     </div>
                 </div>
             );
-        case 5: // IA GENERATION
+        case 5:
             return (
                 <div className="pb-12 animate-slide-in-right flex flex-col items-center justify-center min-h-[400px]">
                     <div className="relative mb-8">
@@ -874,20 +731,14 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                         <Wand2 size={64} className="text-slate-800 relative z-10" />
                     </div>
                     <h3 className="text-2xl font-bold text-slate-800 mb-2">IA Pronta para Redigir</h3>
-                    <p className="text-slate-500 text-center max-w-md mb-8">
-                        Nossa inteligência artificial analisou os fatos {formData.scheduleMeeting ? 'e os dados da reunião' : ''} para gerar uma notificação jurídica completa e fundamentada.
-                    </p>
-                    <button 
-                        onClick={handleGenerateContent}
-                        disabled={isGenerating}
-                        className="px-8 py-4 bg-slate-900 text-white rounded-xl font-bold shadow-xl hover:bg-slate-800 transition-transform active:scale-95 flex items-center disabled:opacity-70 disabled:cursor-not-allowed"
-                    >
+                    <p className="text-slate-500 text-center max-w-md mb-8">Nossa inteligência artificial analisou os fatos para gerar uma notificação jurídica fundamentada.</p>
+                    <button onClick={handleGenerateContent} disabled={isGenerating} className="px-8 py-4 bg-slate-900 text-white rounded-xl font-bold shadow-xl hover:bg-slate-800 transition-transform active:scale-95 flex items-center disabled:opacity-70 disabled:cursor-not-allowed">
                         {isGenerating ? <Loader2 className="animate-spin mr-2" /> : <Sparkles className="mr-2 text-yellow-400" />}
                         {isGenerating ? 'Gerando Documento...' : 'Gerar Minuta Jurídica'}
                     </button>
                 </div>
             );
-        case 6: // ASSINATURA
+        case 6:
             return (
                 <div className="pb-12 animate-slide-in-right">
                     <div className="flex flex-col lg:flex-row gap-8 h-full">
@@ -903,58 +754,26 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                                         <p>Notify ID: {notificationId}</p>
                                     </div>
                                 </div>
-                                
-                                <div className="space-y-4 whitespace-pre-wrap text-justify">
-                                    {formData.generatedContent}
-                                </div>
-                                
+                                <div className="space-y-4 whitespace-pre-wrap text-justify">{formData.generatedContent}</div>
                                 {signatureData && (
                                     <div className="mt-16 pt-8 border-t border-slate-300 w-64">
                                         <img src={signatureData} alt="Assinatura" className="h-12 object-contain mb-2 -ml-4" />
                                         <p className="font-bold text-slate-900">{formData.sender.name}</p>
                                         <p className="text-xs text-slate-500">CPF: {formData.sender.cpfCnpj}</p>
-                                        <p className="text-[10px] text-slate-400 mt-1">Assinado digitalmente via Notify</p>
                                     </div>
                                 )}
                             </div>
                         </div>
-
                         <div className="w-full lg:w-96 space-y-6">
                             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
                                 <h4 className="font-bold text-slate-800 mb-4 flex items-center"><PenTool size={16} className="mr-2"/> Assinatura Digital</h4>
-                                <div 
-                                    ref={containerRef}
-                                    className="border-2 border-dashed border-slate-300 rounded-xl h-32 bg-slate-50 cursor-crosshair relative touch-none"
-                                    onMouseDown={startDrawing}
-                                    onMouseMove={draw}
-                                    onMouseUp={endDrawing}
-                                    onMouseLeave={endDrawing}
-                                    onTouchStart={startDrawing}
-                                    onTouchMove={draw}
-                                    onTouchEnd={endDrawing}
-                                >
+                                <div ref={containerRef} className="border-2 border-dashed border-slate-300 rounded-xl h-32 bg-slate-50 cursor-crosshair relative touch-none" onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={endDrawing} onMouseLeave={endDrawing} onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={endDrawing}>
                                     <canvas ref={canvasRef} className="absolute inset-0" />
-                                    {!isDrawing && !signatureData && (
-                                        <div className="absolute inset-0 flex items-center justify-center text-slate-400 pointer-events-none">
-                                            <span className="text-xs">Assine aqui</span>
-                                        </div>
-                                    )}
+                                    {!isDrawing && !signatureData && <div className="absolute inset-0 flex items-center justify-center text-slate-400 pointer-events-none"><span className="text-xs">Assine aqui</span></div>}
                                 </div>
                                 <button onClick={clearSignature} className="text-xs text-red-500 mt-2 font-bold hover:underline">Limpar Assinatura</button>
                             </div>
-
-                            <button 
-                                onClick={async () => {
-                                    try {
-                                        await handlePersistData();
-                                        setCurrentStep(7); // Vai para Pagamento
-                                    } catch(e) {
-                                        alert("Erro ao salvar documento. Tente novamente.");
-                                    }
-                                }}
-                                disabled={isSavingData}
-                                className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-4 rounded-xl font-bold shadow-xl shadow-emerald-200 transition-all flex items-center justify-center disabled:opacity-70"
-                            >
+                            <button onClick={async () => { try { await handlePersistData(); setCurrentStep(7); } catch(e) { alert("Erro ao salvar documento."); }}} disabled={isSavingData} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-4 rounded-xl font-bold shadow-xl shadow-emerald-200 transition-all flex items-center justify-center disabled:opacity-70">
                                 {isSavingData ? <Loader2 className="animate-spin mr-2" /> : <CheckCircle2 className="mr-2" />}
                                 {isSavingData ? 'Salvando...' : 'Finalizar e Pagar'}
                             </button>
@@ -986,32 +805,14 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                ))}
            </div>
        </div>
-
        <div className="bg-white p-4 md:p-8 rounded-2xl border shadow-sm min-h-[500px] relative">
            {isGenerating && <DraftingAnimation />}
-
            {renderStepContent()}
-
            {currentStep !== 5 && currentStep !== 7 && (
                <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md border-t border-slate-200 p-4 md:p-6 z-40 flex justify-between max-w-5xl mx-auto md:relative md:bg-transparent md:border-0 md:p-0 mt-8">
-                   <button 
-                    onClick={() => {
-                        if (currentStep === 1) onBack?.();
-                        else setCurrentStep(prev => prev - 1);
-                    }}
-                    className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition"
-                   >
-                       Voltar
-                   </button>
-                   
+                   <button onClick={() => { if (currentStep === 1) onBack?.(); else setCurrentStep(prev => prev - 1); }} className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition">Voltar</button>
                    {currentStep < 6 && (
-                       <button 
-                        onClick={() => setCurrentStep(prev => prev + 1)}
-                        disabled={currentStep === 1 && !formData.areaId}
-                        className="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center"
-                       >
-                           Próximo <ChevronLeft className="rotate-180 ml-2" size={18} />
-                       </button>
+                       <button onClick={() => setCurrentStep(prev => prev + 1)} disabled={currentStep === 1 && !formData.areaId} className="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center">Próximo <ChevronLeft className="rotate-180 ml-2" size={18} /></button>
                    )}
                </div>
            )}

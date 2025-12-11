@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { NotificationItem, NotificationStatus } from '../types';
 import { getNotificationsBySender, getNotificationsByRecipientCpf, deleteNotification, confirmPayment } from '../services/notificationService';
@@ -56,7 +57,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
         const query = searchQuery.toLowerCase();
         result = result.filter(item => 
             item.recipientName?.toLowerCase().includes(query) ||
-            item.senderName?.toLowerCase().includes(query) ||
+            item.notificante_dados_expostos?.nome?.toLowerCase().includes(query) ||
             item.species?.toLowerCase().includes(query) ||
             item.subject?.toLowerCase().includes(query) ||
             item.id.toLowerCase().includes(query)
@@ -75,7 +76,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
             const combinedMap = new Map();
             data.forEach(item => combinedMap.set(item.id, item));
             propNotifications.forEach(item => {
-                if(item.senderUid === user.uid) combinedMap.set(item.id, item);
+                if(item.notificante_uid === user.uid) combinedMap.set(item.id, item);
             });
             
             const uniqueItems = Array.from(combinedMap.values()).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -143,8 +144,8 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
           setExpandedId(null);
       } else {
           setExpandedId(item.id);
-          if (activeTab === 'received' && item.senderUid) {
-             const profile = await getUserProfile(item.senderUid);
+          if (activeTab === 'received' && item.notificante_uid) {
+             const profile = await getUserProfile(item.notificante_uid);
              setSenderProfile(profile);
           }
       }
@@ -327,7 +328,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                             <div>
                                 <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-3">
                                     <h4 className="font-bold text-slate-800 text-sm md:text-base group-hover:text-blue-600 transition-colors">
-                                        {activeTab === 'sent' ? `Para: ${notif.recipientName}` : `De: ${notif.senderName}`}
+                                        {activeTab === 'sent' ? `Para: ${notif.recipientName}` : `De: ${notif.notificante_dados_expostos?.nome || 'Remetente'}`}
                                     </h4>
                                     <span className={`self-start md:self-auto px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${getStatusColor(notif.status)}`}>
                                         {notif.status === NotificationStatus.SENT ? 'Em Trânsito' : notif.status}
@@ -405,8 +406,8 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                                     </div>
 
                                     <div className="space-y-3">
-                                        {notif.pdfUrl && (
-                                            <a href={notif.pdfUrl} target="_blank" rel="noopener noreferrer" className="w-full bg-slate-900 text-white py-3 rounded-xl text-sm font-bold flex items-center justify-center hover:bg-slate-800 shadow-lg shadow-slate-300 transition-all">
+                                        {notif.pdf_url && (
+                                            <a href={notif.pdf_url} target="_blank" rel="noopener noreferrer" className="w-full bg-slate-900 text-white py-3 rounded-xl text-sm font-bold flex items-center justify-center hover:bg-slate-800 shadow-lg shadow-slate-300 transition-all">
                                                 <FileText size={16} className="mr-2" /> Visualizar Documento Original (PDF)
                                             </a>
                                         )}

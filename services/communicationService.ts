@@ -1,3 +1,4 @@
+
 import { NotificationItem } from '../types';
 
 export const dispatchCommunications = async (notification: NotificationItem) => {
@@ -16,7 +17,7 @@ export const dispatchCommunications = async (notification: NotificationItem) => 
                         recipientEmail: notification.recipientEmail,
                         recipientName: notification.recipientName,
                         subject: notification.subject,
-                        pdfUrl: notification.pdfUrl
+                        pdfUrl: notification.pdf_url
                     }),
                 });
 
@@ -38,7 +39,7 @@ export const dispatchCommunications = async (notification: NotificationItem) => 
             try {
                 console.log("📱 Solicitando envio de WhatsApp (Z-API)...");
                 
-                const message = `Olá, ${notification.recipientName}.\n\nVocê recebeu uma Notificação Extrajudicial importante referente a: ${notification.subject}.\n\nPor favor, acesse o documento oficial no link abaixo para tomar ciência e evitar medidas judiciais.\n\nAtenciosamente,\n${notification.senderName}`;
+                const message = `Olá, ${notification.recipientName}.\n\nVocê recebeu uma Notificação Extrajudicial importante referente a: ${notification.subject}.\n\nPor favor, acesse o documento oficial no link abaixo para tomar ciência e evitar medidas judiciais.\n\nAtenciosamente,\n${notification.notificante_dados_expostos.nome}`;
 
                 const response = await fetch('/api/whatsapp', {
                     method: 'POST',
@@ -46,7 +47,7 @@ export const dispatchCommunications = async (notification: NotificationItem) => 
                     body: JSON.stringify({
                         phone: notification.recipientPhone,
                         message: message,
-                        pdfUrl: notification.pdfUrl,
+                        pdfUrl: notification.pdf_url,
                         fileName: `Notificacao_${notification.id}.pdf`
                     }),
                 });
