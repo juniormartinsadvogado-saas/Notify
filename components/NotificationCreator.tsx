@@ -4,7 +4,7 @@ import { generateNotificationText } from '../services/geminiService';
 import { saveNotification, uploadEvidence, uploadSignedPdf } from '../services/notificationService';
 import { initiateCheckout } from '../services/paymentService';
 import { createMeeting } from '../services/meetingService';
-import { dispatchCommunications } from '../services/communicationService'; // Importação para disparo automático
+import { dispatchCommunications } from '../services/communicationService'; 
 import { NotificationItem, NotificationStatus, EvidenceItem, Meeting, Transaction, Attachment } from '../types';
 import { 
   Wand2, Scale, Users, 
@@ -25,14 +25,13 @@ interface NotificationCreatorProps {
   };
 }
 
-// DECLARAÇÃO DO ÍCONE ANTES DO USO
 const SendIcon = ({size, className}: {size?:number, className?:string}) => (
     <svg xmlns="http://www.w3.org/2000/svg" width={size || 24} height={size || 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
 );
 
 const STEPS = [
-  { id: 1, label: 'Áreas', icon: Scale },
-  { id: 2, label: 'Fatos', icon: FileText },
+  { id: 1, label: 'Área Jurídica', icon: Scale },
+  { id: 2, label: 'Fatos & Tipo', icon: FileText },
   { id: 3, label: 'Partes', icon: Users },
   { id: 4, label: 'Conciliação', icon: Video },
   { id: 5, label: 'Geração IA', icon: Wand2 },
@@ -62,7 +61,18 @@ const LAW_AREAS = [
   { id: 'digital', name: 'Digital', icon: Monitor, desc: 'Internet e dados.' },
   { id: 'esportivo', name: 'Esportivo', icon: Trophy, desc: 'Desporto e justiça desportiva.' }
 ];
-const COMMON_SPECIES = ['Cobrança', 'Indenização', 'Obrigação de Fazer', 'Rescisão', 'Notificação Genérica'];
+
+const AREA_SUBTYPES: Record<string, string[]> = {
+    'civil': ['Cobrança Indevida', 'Danos Morais', 'Danos Materiais', 'Acidente de Trânsito', 'Vizinhança', 'Obrigação de Fazer'],
+    'trabalhista': ['Assédio Moral', 'Verbas Rescisórias', 'Vínculo Empregatício', 'Horas Extras', 'Acidente de Trabalho'],
+    'consumidor': ['Produto com Defeito', 'Serviço não Prestado', 'Cobrança Abusiva', 'Negativação Indevida', 'Atraso na Entrega'],
+    'imobiliario': ['Atraso de Aluguel', 'Despejo', 'Vícios Construtivos', 'Devolução de Caução', 'Perturbação do Sossego'],
+    'contratual': ['Descumprimento Contratual', 'Rescisão Unilateral', 'Revisão de Cláusula', 'Distrato'],
+    'familia': ['Alienação Parental', 'Revisão de Alimentos', 'Divórcio Extrajudicial', 'Guarda'],
+    'empresarial': ['Concorrência Desleal', 'Uso Indevido de Marca', 'Dissolução de Sociedade', 'Protesto de Títulos'],
+    'criminal': ['Calúnia/Difamação', 'Ameaça', 'Stalking', 'Notícia de Crime'],
+    'default': ['Notificação Genérica', 'Solicitação de Documentos', 'Pedido de Esclarecimentos']
+};
 
 const FACTS_SUGGESTIONS = [
     "Atraso no pagamento de aluguel referente ao mês de...",
@@ -231,7 +241,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   
   const [formData, setFormData] = useState({
     areaId: '',
-    species: '',
+    species: '', 
     facts: '',
     representative: { name: '', cpfCnpj: '', email: '', phone: '', address: { ...initialAddress } },
     sender: { name: user?.displayName || '', cpfCnpj: '', email: user?.email || '', phone: '', address: { ...initialAddress } },
@@ -259,6 +269,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const [createdData, setCreatedData] = useState<{notif?: NotificationItem, meet?: Meeting, trans?: Transaction}>({});
 
   const currentArea = LAW_AREAS.find(a => a.id === formData.areaId);
+  const availableSubtypes = currentArea ? (AREA_SUBTYPES[currentArea.id] || AREA_SUBTYPES['default']) : [];
 
   // --- PERSISTENCE LOGIC (15 MINUTES) ---
   useEffect(() => {
@@ -419,8 +430,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
         return;
     }
     
+    // Validação de Fatos e Espécie
     if (!formData.species || !formData.facts) {
-        alert("Por favor, preencha a 'Área Jurídica' e os 'Fatos' antes de gerar a notificação.");
+        alert("Erro: Certifique-se de ter selecionado o 'Tipo da Notificação' e preenchido os 'Fatos' no Passo 2.");
         return;
     }
 
@@ -473,7 +485,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
         
         setFormData(prev => ({ ...prev, generatedContent: text }));
         
-        alert("Notificação gerada com sucesso! Prossiga para revisar e assinar.");
+        alert("Minuta jurídica gerada com sucesso! Prossiga para revisão e assinatura.");
         setCurrentStep(6); 
     } catch (err: any) {
         console.error("Erro Generation:", err);
@@ -620,15 +632,10 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       if(!user || !createdData.notif) return;
       setIsProcessingAction(true);
       try {
-          // Atualiza status para SENT (Enviado) pois consumiu crédito
           const updatedNotif = { ...createdData.notif, status: NotificationStatus.SENT };
-          
-          // Dispara comunicações automaticamente
           await dispatchCommunications(updatedNotif);
-
           alert(`PROTOCOLO DE ENVIO: ${updatedNotif.id}\n\nNotificação enviada com sucesso utilizando 1 crédito do seu plano.`);
-          
-          clearDraft(); // Limpa rascunho
+          clearDraft(); 
           onSave(updatedNotif, createdData.meet, undefined);
       } catch (e) {
           setError("Erro ao processar crédito.");
@@ -660,19 +667,13 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
           if (selectedMethod === 'PIX' && checkoutResponse.pixData) {
               setPixData(checkoutResponse.pixData);
-              // Para PIX, salvamos como PENDENTE e limpamos o rascunho
               clearDraft();
           } else if (selectedMethod === 'CREDIT_CARD') {
-              // Sucesso no cartão -> Notificação Enviada
               const updatedNotif = { ...createdData.notif, status: NotificationStatus.SENT };
               const updatedTrans = { ...createdData.trans!, status: 'Pago' as const };
-              
-              // Dispara E-mail e WhatsApp Automaticamente
               await dispatchCommunications(updatedNotif);
-
               alert(`PROTOCOLO DE PAGAMENTO: ${updatedTrans.id}\n\nPagamento confirmado! A notificação foi enviada.`);
-              
-              clearDraft(); // Limpa rascunho
+              clearDraft(); 
               onSave(updatedNotif, createdData.meet, updatedTrans);
           }
 
@@ -706,7 +707,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                  <p className="text-slate-500 text-sm">Escolha como deseja despachar este documento.</p>
              </div>
 
-             {/* OPÇÃO DE CRÉDITO PARA ASSINANTES */}
              {hasCredits ? (
                  <div className="max-w-md mx-auto">
                      <div className="p-8 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-xl relative overflow-hidden group hover:scale-[1.02] transition-transform cursor-pointer border border-slate-700" onClick={handleUseCredit}>
@@ -725,7 +725,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                      <p className="text-center text-xs text-slate-400 mt-4">Ou se preferir, selecione um envio avulso abaixo para não gastar créditos.</p>
                  </div>
              ) : (
-                 // OPÇÕES DE PAGAMENTO (AVULSO OU ASSINATURA)
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
                     <div onClick={() => setPaymentPlan('single')} className={`relative p-8 rounded-2xl cursor-pointer transition-all duration-300 group overflow-hidden ${paymentPlan==='single' ? 'bg-white ring-2 ring-blue-500 shadow-xl scale-[1.02]' : 'bg-white border border-slate-200 hover:border-blue-300 hover:shadow-lg'}`}>
                          {paymentPlan === 'single' && <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl shadow-sm">SELECIONADO</div>}
@@ -812,32 +811,64 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     switch(currentStep) {
         case 1:
             return (
-                <div className="relative pb-12">
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 animate-fade-in max-h-[450px] overflow-y-auto pr-2 pb-8 scrollbar-thin">
+                <div className="relative pb-12 flex flex-col h-full animate-slide-in-right">
+                    <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center justify-center">
+                        <Scale size={24} className="mr-2 text-blue-600"/>
+                        Escolha a Área do Direito
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 overflow-y-auto max-h-[450px] pb-8 scrollbar-thin px-2">
                         {LAW_AREAS.map(area => (
-                            <div key={area.id} onClick={() => setFormData(prev => ({ ...prev, areaId: area.id }))} className={`p-4 rounded-xl cursor-pointer border-2 transition-all flex flex-col items-center justify-center text-center gap-3 h-32 hover:scale-105 ${formData.areaId === area.id ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md' : 'border-slate-100 bg-white text-slate-500 hover:border-blue-200 hover:shadow-sm'}`}>
-                                <area.icon size={24} /><span className="text-xs font-bold">{area.name}</span>
+                            <div key={area.id} onClick={() => { setFormData(prev => ({ ...prev, areaId: area.id, species: '' })); }} className={`p-4 rounded-xl cursor-pointer border-2 transition-all flex flex-col items-center justify-center text-center gap-3 h-32 hover:scale-[1.03] ${formData.areaId === area.id ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md ring-2 ring-blue-100' : 'border-slate-100 bg-white text-slate-500 hover:border-blue-200 hover:shadow-sm'}`}>
+                                <area.icon size={28} className={formData.areaId === area.id ? 'text-blue-600' : 'text-slate-400'} />
+                                <span className="text-xs font-bold leading-tight uppercase tracking-wide">{area.name}</span>
                             </div>
                         ))}
                     </div>
-                    {/* Botão Flutuante indicando mais opções */}
-                    <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 animate-bounce pointer-events-none text-slate-400 flex flex-col items-center">
-                        <span className="text-[10px] uppercase font-bold bg-white/80 px-2 rounded-full mb-1">Ver Mais</span>
-                        <ChevronDown size={20} />
+                    {/* Botão Flutuante FIXO - Ajustado para não sumir */}
+                    <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 pointer-events-none text-slate-400 flex flex-col items-center z-20">
+                        <span className="text-[10px] uppercase font-bold bg-white/90 px-3 py-1 rounded-full mb-1 shadow-sm border border-slate-100 backdrop-blur-sm">Rolar para ver mais</span>
+                        <ChevronDown size={20} className="animate-bounce" />
                     </div>
                 </div>
             );
         case 2:
             return (
                 <div className="space-y-6 pb-12 animate-slide-in-right">
+                    {/* TOPO: SELEÇÃO DE SUBESPÉCIE (OBRIGATÓRIO) */}
+                    <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none"><Gavel size={100} /></div>
+                        
+                        <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider mb-4 flex items-center relative z-10">
+                            <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-xs mr-2">1</span>
+                            Defina o Tipo da Notificação <span className="text-red-500 ml-1">*</span>
+                        </h3>
+                        
+                        {formData.areaId ? (
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 relative z-10">
+                                {availableSubtypes.map((subtype, idx) => (
+                                    <button 
+                                        key={idx}
+                                        onClick={() => setFormData(prev => ({ ...prev, species: subtype }))}
+                                        className={`text-left px-4 py-3 rounded-xl border transition-all text-xs font-bold flex items-center justify-between group ${formData.species === subtype ? 'bg-white border-purple-500 text-purple-700 shadow-md ring-1 ring-purple-100' : 'bg-white/50 border-slate-200 text-slate-600 hover:bg-white hover:border-purple-300 hover:text-purple-600'}`}
+                                    >
+                                        {subtype}
+                                        {formData.species === subtype && <CheckCircle2 size={14} className="text-purple-500"/>}
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-red-500 text-sm">Erro: Área não selecionada. Volte ao passo anterior.</p>
+                        )}
+                    </div>
+
                     <div className="flex flex-col md:flex-row gap-6">
                         {/* Painel Esquerdo: Input de Fatos */}
                         <div className="flex-1 space-y-4">
-                            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm h-full">
+                            <div className={`bg-white p-6 rounded-2xl border shadow-sm h-full transition-colors ${!formData.facts ? 'border-red-100' : 'border-slate-200'}`}>
                                 <div className="flex items-center justify-between mb-4">
                                     <label className="text-sm font-bold text-slate-800 flex items-center">
-                                        <MessageSquareQuote size={18} className="mr-2 text-blue-500"/> 
-                                        Relate os Acontecimentos
+                                        <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-xs mr-2">2</span>
+                                        Relate os Acontecimentos <span className="text-red-500 ml-1">*</span>
                                     </label>
                                 </div>
                                 <textarea 
@@ -846,7 +877,10 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                                     className="w-full h-64 p-4 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-100 text-sm leading-relaxed resize-none bg-slate-50 focus:bg-white transition-all" 
                                     placeholder="Descreva o ocorrido com detalhes, datas e valores... A IA utilizará estas informações para construir a fundamentação jurídica."
                                 />
-                                <p className="text-xs text-slate-400 mt-2 text-right">Mínimo recomendado: 50 caracteres</p>
+                                <div className="flex justify-between items-center mt-2">
+                                    <span className="text-xs text-red-400">{!formData.facts && "Preenchimento obrigatório"}</span>
+                                    <span className="text-xs text-slate-400">Mínimo recomendado: 50 caracteres</span>
+                                </div>
                             </div>
                         </div>
 
@@ -1091,7 +1125,18 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md border-t border-slate-200 p-4 md:p-6 z-40 flex justify-between max-w-5xl mx-auto md:relative md:bg-transparent md:border-0 md:p-0 mt-8">
                    <button onClick={() => { if (currentStep === 1) onBack?.(); else setCurrentStep(prev => prev - 1); }} className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition">Voltar</button>
                    {currentStep < 6 && (
-                       <button onClick={() => setCurrentStep(prev => prev + 1)} disabled={currentStep === 1 && !formData.areaId} className="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center">Próximo <ChevronLeft className="rotate-180 ml-2" size={18} /></button>
+                       // LÓGICA DE VALIDAÇÃO NOS BOTÕES
+                       <button 
+                            onClick={() => setCurrentStep(prev => prev + 1)} 
+                            disabled={
+                                (currentStep === 1 && !formData.areaId) ||
+                                (currentStep === 2 && (!formData.species || !formData.facts)) ||
+                                (currentStep === 3 && (!formData.sender.name || !formData.recipient.name))
+                            }
+                            className="px-8 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center"
+                       >
+                           Próximo <ChevronLeft className="rotate-180 ml-2" size={18} />
+                       </button>
                    )}
                </div>
            )}
