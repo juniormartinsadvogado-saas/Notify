@@ -9,8 +9,9 @@ import {
   Wand2, Scale, Users, 
   FileText, PenTool, CreditCard, Check, Loader2, 
   Briefcase, ShoppingBag, Home, Heart, FileSignature, Scroll, UploadCloud, X, User, Video, CheckCircle2, ArrowRight, Calendar, Lock, ChevronLeft, Sparkles,
-  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode, Copy, AlertCircle, Plane, Zap, Rocket, Monitor, Trophy, Anchor
+  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode, Copy, AlertCircle, Plane, Zap, Rocket, Monitor, Trophy, Anchor, Hash, ShieldCheck, ChevronDown, Lightbulb, MessageSquareQuote
 } from 'lucide-react';
+import { jsPDF } from "jspdf";
 
 interface NotificationCreatorProps {
   onSave: (notification: NotificationItem, meeting?: Meeting, transaction?: Transaction) => void;
@@ -18,10 +19,9 @@ interface NotificationCreatorProps {
   onBack?: () => void;
 }
 
-// ... (Resto das constantes STEPS e LAW_AREAS mantido igual ao anterior, omitido para brevidade) ...
 const STEPS = [
   { id: 1, label: 'Áreas', icon: Scale },
-  { id: 2, label: 'Ocorrências', icon: FileText },
+  { id: 2, label: 'Fatos', icon: FileText },
   { id: 3, label: 'Partes', icon: Users },
   { id: 4, label: 'Conciliação', icon: Video },
   { id: 5, label: 'Geração IA', icon: Wand2 },
@@ -53,6 +53,14 @@ const LAW_AREAS = [
 ];
 const COMMON_SPECIES = ['Cobrança', 'Indenização', 'Obrigação de Fazer', 'Rescisão', 'Notificação Genérica'];
 
+const FACTS_SUGGESTIONS = [
+    "Atraso no pagamento de aluguel referente ao mês de...",
+    "Produto entregue com defeito e recusa de troca...",
+    "Violação de contrato de prestação de serviços...",
+    "Uso indevido de imagem sem autorização...",
+    "Perturbação do sossego (Lei do Silêncio)..."
+];
+
 interface Address {
   cep: string;
   street: string;
@@ -83,7 +91,6 @@ const initialAddress: Address = {
   cep: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: ''
 };
 
-// ... (Helper Functions MASKS, formatAddressString, DraftingAnimation, CreativeMeetingSelector, PersonForm mantidos iguais) ...
 const MASKS = {
     cpf: (value: string) => value.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2').substring(0, 14),
     cpfCnpj: (value: string) => {
@@ -161,34 +168,34 @@ const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputCh
              <h3 className="font-bold text-slate-800 mb-6 flex items-center text-lg">{title}</h3>
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                  <div className="md:col-span-2">
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome Completo</label>
-                    <input type="text" value={data.name} onChange={e => onInputChange(section, 'name', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm" placeholder="Nome" />
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome Completo / Razão Social</label>
+                    <input type="text" value={data.name} onChange={e => onInputChange(section, 'name', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm focus:border-blue-400 transition" placeholder="Nome" />
                  </div>
                  
                  <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{documentLabel}</label>
-                    <input type="text" value={data.cpfCnpj} maxLength={documentMaxLength} onChange={e => onInputChange(section, 'cpfCnpj', documentMask(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm" placeholder={documentPlaceholder} />
+                    <input type="text" value={data.cpfCnpj} maxLength={documentMaxLength} onChange={e => onInputChange(section, 'cpfCnpj', documentMask(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm focus:border-blue-400 transition" placeholder={documentPlaceholder} />
                  </div>
                  <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">E-mail</label>
-                    <input type="email" value={data.email} onChange={e => onInputChange(section, 'email', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm" placeholder="email@exemplo.com" />
+                    <input type="email" value={data.email} onChange={e => onInputChange(section, 'email', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm focus:border-blue-400 transition" placeholder="email@exemplo.com" />
                  </div>
                  <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Telefone / WhatsApp</label>
-                    <input type="text" value={data.phone} maxLength={15} onChange={e => onInputChange(section, 'phone', MASKS.phone(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm" placeholder="(00) 00000-0000" />
+                    <input type="text" value={data.phone} maxLength={15} onChange={e => onInputChange(section, 'phone', MASKS.phone(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm focus:border-blue-400 transition" placeholder="(00) 00000-0000" />
                  </div>
              </div>
 
              <div className="mt-6 pt-4 border-t border-slate-100">
-                 <span className="text-xs font-bold text-slate-400 uppercase block mb-3">Endereço Completo (Obrigatório)</span>
+                 <span className="text-xs font-bold text-slate-400 uppercase block mb-3">Endereço Completo</span>
                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <input type="text" placeholder="CEP" value={data.address.cep} onChange={e => onAddressChange(section, 'cep', MASKS.cep(e.target.value))} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" required />
-                    <input type="text" placeholder="Rua" value={data.address.street} onChange={e => onAddressChange(section, 'street', e.target.value)} className="col-span-1 md:col-span-3 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" required />
-                    <input type="text" placeholder="Número" value={data.address.number} onChange={e => onAddressChange(section, 'number', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" required />
-                    <input type="text" placeholder="Complemento" value={data.address.complement} onChange={e => onAddressChange(section, 'complement', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" required />
-                    <input type="text" placeholder="Bairro" value={data.address.neighborhood} onChange={e => onAddressChange(section, 'neighborhood', e.target.value)} className="col-span-1 md:col-span-2 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" required />
-                    <input type="text" placeholder="Cidade" value={data.address.city} onChange={e => onAddressChange(section, 'city', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" required />
-                    <input type="text" placeholder="UF" value={data.address.state} maxLength={2} onChange={e => onAddressChange(section, 'state', e.target.value.toUpperCase())} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" required />
+                    <input type="text" placeholder="CEP" value={data.address.cep} onChange={e => onAddressChange(section, 'cep', MASKS.cep(e.target.value))} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-blue-400 outline-none" required />
+                    <input type="text" placeholder="Rua" value={data.address.street} onChange={e => onAddressChange(section, 'street', e.target.value)} className="col-span-1 md:col-span-3 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-blue-400 outline-none" required />
+                    <input type="text" placeholder="Número" value={data.address.number} onChange={e => onAddressChange(section, 'number', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-blue-400 outline-none" required />
+                    <input type="text" placeholder="Complemento" value={data.address.complement} onChange={e => onAddressChange(section, 'complement', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-blue-400 outline-none" required />
+                    <input type="text" placeholder="Bairro" value={data.address.neighborhood} onChange={e => onAddressChange(section, 'neighborhood', e.target.value)} className="col-span-1 md:col-span-2 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-blue-400 outline-none" required />
+                    <input type="text" placeholder="Cidade" value={data.address.city} onChange={e => onAddressChange(section, 'city', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-blue-400 outline-none" required />
+                    <input type="text" placeholder="UF" value={data.address.state} maxLength={2} onChange={e => onAddressChange(section, 'state', e.target.value.toUpperCase())} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-blue-400 outline-none" required />
                  </div>
              </div>
         </div>
@@ -209,6 +216,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [signatureData, setSignatureData] = useState<string | null>(null);
+  const [documentHash, setDocumentHash] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     areaId: '',
@@ -241,7 +249,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
   const currentArea = LAW_AREAS.find(a => a.id === formData.areaId);
 
-  // ... (Efeitos e helpers canvas mantidos) ...
   useEffect(() => {
     if (currentStep === 6 && containerRef.current && canvasRef.current) { 
       const containerWidth = containerRef.current.offsetWidth;
@@ -409,20 +416,88 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     }
   };
 
+  const generateAndUploadPdf = async (docHash: string): Promise<string> => {
+      // 1. Criação do PDF Binário com jsPDF
+      const doc = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a4'
+      });
+
+      // Configuração de Fonte
+      doc.setFont("times", "normal");
+      doc.setFontSize(12);
+
+      // Título
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text("NOTIFICAÇÃO EXTRAJUDICIAL", 105, 20, { align: "center" });
+
+      // Subtítulo / Hash
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(`ID DO DOCUMENTO: ${docHash}`, 105, 28, { align: "center" });
+      doc.text(`Data de Emissão: ${new Date().toLocaleDateString()}`, 105, 33, { align: "center" });
+
+      // Corpo do Texto (com quebra automática)
+      doc.setTextColor(0);
+      doc.setFont("times", "normal");
+      doc.setFontSize(12);
+      
+      const splitText = doc.splitTextToSize(formData.generatedContent, 170); // 170mm de largura útil
+      doc.text(splitText, 20, 50);
+
+      // Assinatura (se houver)
+      if (signatureData) {
+          // Calcula posição Y para assinatura (baseado no texto)
+          let yPos = 50 + (splitText.length * 6) + 20; 
+          
+          // Se passar da página, cria nova
+          if (yPos > 250) {
+              doc.addPage();
+              yPos = 40;
+          }
+
+          doc.addImage(signatureData, 'PNG', 20, yPos, 60, 30);
+          
+          doc.setFontSize(10);
+          doc.text("__________________________________________", 20, yPos + 35);
+          doc.setFont("helvetica", "bold");
+          doc.text(formData.sender.name.toUpperCase(), 20, yPos + 40);
+          doc.setFont("helvetica", "normal");
+          doc.text(`CPF: ${formData.sender.cpfCnpj}`, 20, yPos + 45);
+          doc.text(`Assinado digitalmente via Plataforma Notify`, 20, yPos + 50);
+          doc.text(`Hash de Verificação: ${docHash}`, 20, yPos + 55);
+      }
+
+      const pdfBlob = doc.output('blob');
+      return await uploadSignedPdf(notificationId, pdfBlob);
+  };
+
   const handlePersistData = async () => {
       setIsSavingData(true);
       setError('');
       try {
           if (!user) throw new Error("Usuário não autenticado");
 
-          const pdfBlob = new Blob([formData.generatedContent], { type: 'application/pdf' }); 
-          const pdfUrl = await uploadSignedPdf(notificationId, pdfBlob);
+          // 1. Gera Hash Único
+          const uniqueHash = Array.from({length: 4}, () => Math.random().toString(36).substr(2, 4).toUpperCase()).join('-');
+          setDocumentHash(uniqueHash);
 
+          // 2. Gera PDF Binário Real e Faz Upload
+          const pdfUrl = await generateAndUploadPdf(uniqueHash);
+
+          // 3. Upload de Evidências (somente após sucesso do PDF)
           const newEvidenceItems: EvidenceItem[] = [];
           if (localFiles.length > 0) {
               for (const lf of localFiles) {
-                  const uploaded = await uploadEvidence(notificationId, lf.file);
-                  newEvidenceItems.push(uploaded);
+                  try {
+                      const uploaded = await uploadEvidence(notificationId, lf.file);
+                      newEvidenceItems.push(uploaded);
+                  } catch (evErr) {
+                      console.error("Falha ao subir evidência específica:", lf.name, evErr);
+                      // Continua para o próximo arquivo, não trava o fluxo
+                  }
               }
           }
 
@@ -431,6 +506,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           // CRIAÇÃO DO OBJETO FINAL (Schema novo)
           const finalNotification: NotificationItem = {
               id: notificationId,
+              documentHash: uniqueHash,
               
               // Novos campos obrigatórios para regras
               notificante_uid: user.uid,
@@ -490,11 +566,11 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           }
 
           setCreatedData({ notif: finalNotification, meet: newMeeting, trans: newTransaction });
+          setCurrentStep(7); // Avança para pagamento
 
       } catch (e: any) {
           console.error(e);
           setError("Erro ao salvar dados: " + e.message);
-          throw e;
       } finally {
           setIsSavingData(false);
       }
@@ -536,10 +612,21 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   };
 
-  // ... (renderPaymentStep e renderStepContent mantidos iguais, mas usando as funções atualizadas) ...
   const renderPaymentStep = () => {
       if (paymentStage === 'selection') return (
          <div className="pb-12 space-y-6 animate-fade-in">
+             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 mb-8 text-center shadow-sm">
+                 <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 mb-2">
+                     <ShieldCheck size={24} />
+                 </div>
+                 <h3 className="text-emerald-800 font-bold text-lg">Documento Gerado com Sucesso!</h3>
+                 <p className="text-emerald-600 text-sm mb-4">Seu documento foi assinado digitalmente e criptografado.</p>
+                 <div className="inline-block bg-white px-4 py-2 rounded-lg border border-emerald-200 shadow-inner">
+                     <p className="text-xs text-slate-400 uppercase font-bold tracking-wider">Hash de Autenticidade</p>
+                     <p className="text-lg font-mono font-bold text-slate-800 tracking-widest">{documentHash}</p>
+                 </div>
+             </div>
+
              <div className="text-center mb-8">
                  <h3 className="text-2xl font-bold text-slate-800">Escolha como prosseguir</h3>
                  <p className="text-slate-500 text-sm">Selecione o plano ideal.</p>
@@ -625,30 +712,74 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     switch(currentStep) {
         case 1:
             return (
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 animate-fade-in pb-12">
-                    {LAW_AREAS.map(area => (
-                        <div key={area.id} onClick={() => setFormData(prev => ({ ...prev, areaId: area.id }))} className={`p-4 rounded-xl cursor-pointer border-2 transition-all flex flex-col items-center justify-center text-center gap-3 h-32 hover:scale-105 ${formData.areaId === area.id ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md' : 'border-slate-100 bg-white text-slate-500 hover:border-blue-200 hover:shadow-sm'}`}>
-                            <area.icon size={24} /><span className="text-xs font-bold">{area.name}</span>
-                        </div>
-                    ))}
+                <div className="relative pb-12">
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 animate-fade-in max-h-[450px] overflow-y-auto pr-2 pb-8 scrollbar-thin">
+                        {LAW_AREAS.map(area => (
+                            <div key={area.id} onClick={() => setFormData(prev => ({ ...prev, areaId: area.id }))} className={`p-4 rounded-xl cursor-pointer border-2 transition-all flex flex-col items-center justify-center text-center gap-3 h-32 hover:scale-105 ${formData.areaId === area.id ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md' : 'border-slate-100 bg-white text-slate-500 hover:border-blue-200 hover:shadow-sm'}`}>
+                                <area.icon size={24} /><span className="text-xs font-bold">{area.name}</span>
+                            </div>
+                        ))}
+                    </div>
+                    {/* Botão Flutuante indicando mais opções */}
+                    <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 animate-bounce pointer-events-none text-slate-400 flex flex-col items-center">
+                        <span className="text-[10px] uppercase font-bold bg-white/80 px-2 rounded-full mb-1">Ver Mais</span>
+                        <ChevronDown size={20} />
+                    </div>
                 </div>
             );
         case 2:
             return (
                 <div className="space-y-6 pb-12 animate-slide-in-right">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {COMMON_SPECIES.map((specie, idx) => (
-                            <div key={idx} onClick={() => setFormData(prev => ({ ...prev, species: specie }))} className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${formData.species === specie ? 'border-purple-500 bg-purple-50 text-purple-700 shadow-md' : 'border-slate-100 bg-white hover:border-purple-200'}`}>
-                                <span className="text-sm font-medium">{specie}</span>
+                    <div className="flex flex-col md:flex-row gap-6">
+                        {/* Painel Esquerdo: Input de Fatos */}
+                        <div className="flex-1 space-y-4">
+                            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm h-full">
+                                <div className="flex items-center justify-between mb-4">
+                                    <label className="text-sm font-bold text-slate-800 flex items-center">
+                                        <MessageSquareQuote size={18} className="mr-2 text-blue-500"/> 
+                                        Relate os Acontecimentos
+                                    </label>
+                                </div>
+                                <textarea 
+                                    value={formData.facts} 
+                                    onChange={(e) => setFormData(prev => ({ ...prev, facts: e.target.value }))} 
+                                    className="w-full h-64 p-4 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-100 text-sm leading-relaxed resize-none bg-slate-50 focus:bg-white transition-all" 
+                                    placeholder="Descreva o ocorrido com detalhes, datas e valores... A IA utilizará estas informações para construir a fundamentação jurídica."
+                                />
+                                <p className="text-xs text-slate-400 mt-2 text-right">Mínimo recomendado: 50 caracteres</p>
                             </div>
-                        ))}
+                        </div>
+
+                        {/* Painel Direito: Instruções e Sugestões */}
+                        <div className="w-full md:w-80 space-y-4">
+                            <div className="bg-purple-50 p-5 rounded-2xl border border-purple-100">
+                                <h4 className="text-xs font-bold text-purple-700 uppercase mb-3 flex items-center">
+                                    <Lightbulb size={14} className="mr-2" /> Dicas da IA
+                                </h4>
+                                <ul className="space-y-2 text-xs text-purple-800/80">
+                                    <li>• Seja cronológico (início, meio e fim).</li>
+                                    <li>• Cite valores exatos e datas.</li>
+                                    <li>• Mencione tentativas anteriores de contato.</li>
+                                </ul>
+                            </div>
+
+                            <div className="space-y-2">
+                                <p className="text-xs font-bold text-slate-400 uppercase ml-1">Sugestões Rápidas</p>
+                                {FACTS_SUGGESTIONS.map((sug, idx) => (
+                                    <button 
+                                        key={idx}
+                                        onClick={() => setFormData(prev => ({ ...prev, facts: prev.facts ? prev.facts + '\n' + sug : sug }))}
+                                        className="w-full text-left p-3 bg-white border border-slate-200 rounded-xl text-xs text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-all shadow-sm active:scale-95"
+                                    >
+                                        {sug}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     </div>
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mt-8">
-                        <label className="text-sm font-bold text-slate-700 mb-2 block flex items-center"><FileText size={16} className="mr-2 text-slate-400"/> Descrição Detalhada dos Fatos</label>
-                        <textarea value={formData.facts} onChange={(e) => setFormData(prev => ({ ...prev, facts: e.target.value }))} className="w-full h-40 p-4 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-100 text-sm" placeholder="Descreva o ocorrido com detalhes, datas e valores..."/>
-                    </div>
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                        <label className="text-sm font-bold text-slate-700 mb-4 block flex items-center"><UploadCloud size={16} className="mr-2 text-slate-400"/> Anexar Evidências (Fotos, Vídeos, PDFs)</label>
+
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mt-4">
+                        <label className="text-sm font-bold text-slate-700 mb-4 block flex items-center"><UploadCloud size={16} className="mr-2 text-slate-400"/> Anexar Evidências (Opcional)</label>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                             {localFiles.map((file) => (
                                 <div key={file.id} className="relative group border border-slate-200 rounded-lg overflow-hidden h-24 flex items-center justify-center bg-slate-50">
@@ -688,9 +819,50 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                                 <h3 className="text-lg font-bold">Preenchimento das Partes</h3>
                                 <button onClick={() => setPartiesStep('role_selection')} className="text-xs text-slate-500 underline">Alterar Tipo</button>
                             </div>
-                            {role === 'representative' && <PersonForm title="Representante (Você)" data={formData.representative} section="representative" colorClass="border-purple-500" onInputChange={handleInputChange} onAddressChange={handleAddressChange} />}
-                            <PersonForm title={role === 'representative' ? "Cliente (Parte Ativa)" : "Seus Dados (Remetente)"} data={formData.sender} section="sender" colorClass="border-blue-500" onInputChange={handleInputChange} onAddressChange={handleAddressChange} />
-                            <PersonForm title="Parte Contrária (Destinatário)" data={formData.recipient} section="recipient" colorClass="border-red-500" onInputChange={handleInputChange} onAddressChange={handleAddressChange} />
+                            
+                            {/* FORMULÁRIO REPRESENTANTE (Se aplicável) */}
+                            {role === 'representative' && (
+                                <PersonForm 
+                                    title="Representante (Você)" 
+                                    data={formData.representative} 
+                                    section="representative" 
+                                    colorClass="border-purple-500" 
+                                    onInputChange={handleInputChange} 
+                                    onAddressChange={handleAddressChange}
+                                    documentLabel="CPF"
+                                    documentMask={MASKS.cpf}
+                                    documentMaxLength={14}
+                                    documentPlaceholder="000.000.000-00"
+                                />
+                            )}
+
+                            {/* FORMULÁRIO REMETENTE (Quem envia/assina a notificação) */}
+                            <PersonForm 
+                                title={role === 'representative' ? "Cliente (Parte Ativa)" : "Seus Dados (Remetente)"} 
+                                data={formData.sender} 
+                                section="sender" 
+                                colorClass="border-blue-500" 
+                                onInputChange={handleInputChange} 
+                                onAddressChange={handleAddressChange} 
+                                documentLabel={role === 'representative' ? "CPF ou CNPJ" : "CPF"}
+                                documentMask={role === 'representative' ? MASKS.cpfCnpj : MASKS.cpf}
+                                documentMaxLength={18}
+                                documentPlaceholder={role === 'representative' ? "CPF ou CNPJ" : "000.000.000-00"}
+                            />
+
+                            {/* FORMULÁRIO DESTINATÁRIO (Quem recebe) */}
+                            <PersonForm 
+                                title="Parte Contrária (Destinatário)" 
+                                data={formData.recipient} 
+                                section="recipient" 
+                                colorClass="border-red-500" 
+                                onInputChange={handleInputChange} 
+                                onAddressChange={handleAddressChange} 
+                                documentLabel="CPF ou CNPJ"
+                                documentMask={MASKS.cpfCnpj}
+                                documentMaxLength={18}
+                                documentPlaceholder="CPF ou CNPJ"
+                            />
                         </div>
                     )}
                 </div>
@@ -756,10 +928,16 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                                 </div>
                                 <div className="space-y-4 whitespace-pre-wrap text-justify">{formData.generatedContent}</div>
                                 {signatureData && (
-                                    <div className="mt-16 pt-8 border-t border-slate-300 w-64">
-                                        <img src={signatureData} alt="Assinatura" className="h-12 object-contain mb-2 -ml-4" />
-                                        <p className="font-bold text-slate-900">{formData.sender.name}</p>
-                                        <p className="text-xs text-slate-500">CPF: {formData.sender.cpfCnpj}</p>
+                                    <div className="mt-16 pt-6 border-2 border-slate-100 border-dashed rounded-lg p-4 bg-slate-50 w-full max-w-xs mx-auto text-center relative">
+                                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-white px-2 text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center">
+                                            <ShieldCheck size={12} className="mr-1 text-green-500" />
+                                            Assinado Digitalmente
+                                        </div>
+                                        <img src={signatureData} alt="Assinatura" className="h-16 object-contain mx-auto mb-2 filter grayscale" />
+                                        <div className="border-t border-slate-300 pt-2">
+                                            <p className="font-bold text-slate-900 uppercase text-xs">{formData.sender.name}</p>
+                                            <p className="text-[10px] text-slate-500">CPF: {formData.sender.cpfCnpj}</p>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -773,10 +951,11 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                                 </div>
                                 <button onClick={clearSignature} className="text-xs text-red-500 mt-2 font-bold hover:underline">Limpar Assinatura</button>
                             </div>
-                            <button onClick={async () => { try { await handlePersistData(); setCurrentStep(7); } catch(e) { alert("Erro ao salvar documento."); }}} disabled={isSavingData} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-4 rounded-xl font-bold shadow-xl shadow-emerald-200 transition-all flex items-center justify-center disabled:opacity-70">
+                            <button onClick={async () => { try { await handlePersistData(); } catch(e) { alert("Erro ao salvar documento: " + e); }}} disabled={isSavingData || !signatureData} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-4 rounded-xl font-bold shadow-xl shadow-emerald-200 transition-all flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed">
                                 {isSavingData ? <Loader2 className="animate-spin mr-2" /> : <CheckCircle2 className="mr-2" />}
-                                {isSavingData ? 'Salvando...' : 'Finalizar e Pagar'}
+                                {isSavingData ? 'Autenticando...' : 'Finalizar e Pagar'}
                             </button>
+                            {error && <p className="text-xs text-red-500 text-center">{error}</p>}
                         </div>
                     </div>
                 </div>

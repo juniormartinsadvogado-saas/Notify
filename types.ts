@@ -51,6 +51,7 @@ export interface NotificationItem {
     pdf_url?: string; // Caminho no Storage: /notificacoes_pdfs/$ID.pdf
     evidences: EvidenceItem[];
     signatureBase64?: string;
+    documentHash?: string; // Novo campo para o Hash único
 
     // Metadados
     createdAt: string;
