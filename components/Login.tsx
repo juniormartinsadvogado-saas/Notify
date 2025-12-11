@@ -1,5 +1,6 @@
+
 import React, { useState, useRef } from 'react';
-import { Mail, Lock, Loader2, User, CheckCircle, AlertCircle, Phone, FileText, Camera, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, Loader2, User, CheckCircle, AlertCircle, Phone, FileText, Camera, Eye, EyeOff, ArrowLeft, RefreshCw, LogIn } from 'lucide-react';
 import { auth } from '../services/firebase';
 import { 
   signInWithEmailAndPassword, 
@@ -7,7 +8,8 @@ import {
   sendEmailVerification, 
   sendPasswordResetEmail,
   updateProfile,
-  signOut
+  signOut,
+  User as FirebaseUser
 } from 'firebase/auth';
 import { createUserProfile, uploadUserPhoto } from '../services/userService';
 
@@ -63,6 +65,10 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   
+  // State para tela de verificação
+  const [unverifiedUser, setUnverifiedUser] = useState<FirebaseUser | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -76,14 +82,20 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
   const getFirebaseErrorMessage = (errCode: string) => {
       switch(errCode) {
-          case 'auth/invalid-credential': return 'Senha ou e-mail incorretos.';
-          case 'auth/user-not-found': return 'Usuário não encontrado.';
-          case 'auth/wrong-password': return 'Senha incorreta.';
-          case 'auth/email-already-in-use': return 'O usuário já existe! Entrar?';
-          case 'auth/weak-password': return 'A senha deve ter pelo menos 6 caracteres.';
-          case 'auth/invalid-email': return 'E-mail inválido.';
-          case 'auth/too-many-requests': return 'Muitas tentativas. Tente mais tarde.';
-          default: return 'Ocorreu um erro. Tente novamente.';
+          case 'auth/invalid-credential':
+          case 'auth/user-not-found':
+          case 'auth/wrong-password': 
+            return 'Senha ou e-mail incorretos.';
+          case 'auth/email-already-in-use': 
+            return 'O usuário já existe. Entrar?';
+          case 'auth/weak-password': 
+            return 'A senha deve ter pelo menos 6 caracteres.';
+          case 'auth/invalid-email': 
+            return 'E-mail inválido.';
+          case 'auth/too-many-requests': 
+            return 'Muitas tentativas. Tente mais tarde.';
+          default: 
+            return 'Ocorreu um erro. Tente novamente.';
       }
   };
 
@@ -96,9 +108,13 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
+        // VERIFICAÇÃO DE E-MAIL OBRIGATÓRIA
         if (!user.emailVerified) {
-            await signOut(auth); // Desloga para impedir acesso
+            setUnverifiedUser(user);
             setView('VERIFY_EMAIL');
+            // Não deslogamos imediatamente para permitir o reenvio do email,
+            // mas o App.tsx monitora o estado e não deve deixar passar sem verificação.
+            // Aqui, controlamos a UI.
             return;
         }
 
@@ -119,8 +135,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           return;
       }
 
-      if (!name || !cpf) {
-          setError("Preencha todos os campos obrigatórios.");
+      if (!name || !cpf || !phone) {
+          setError("Preencha todos os campos obrigatórios (Nome, CPF, Telefone).");
           return;
       }
 
@@ -134,7 +150,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           // 2. Upload da Foto (se houver)
           let photoUrl = '';
           if (photoFile) {
-              photoUrl = await uploadUserPhoto(user.uid, photoFile);
+              try {
+                photoUrl = await uploadUserPhoto(user.uid, photoFile);
+              } catch (e) {
+                console.warn("Falha no upload da foto inicial", e);
+              }
           }
 
           // 3. Atualizar Profile do Auth (Nome e Foto)
@@ -153,8 +173,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           // 5. Enviar Email de Verificação
           await sendEmailVerification(user);
 
-          // 6. Logout (não permitir login automático) e mostrar tela de verificação
-          await signOut(auth);
+          // 6. Configurar UI para Verificação (Não loga automaticamente)
+          setUnverifiedUser(user);
           setView('VERIFY_EMAIL');
 
       } catch (err: any) {
@@ -162,6 +182,32 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       } finally {
           setIsLoading(false);
       }
+  };
+
+  const handleResendVerification = async () => {
+      if (unverifiedUser && resendCooldown === 0) {
+          try {
+              await sendEmailVerification(unverifiedUser);
+              setSuccessMsg('E-mail reenviado com sucesso!');
+              setResendCooldown(60);
+              const interval = setInterval(() => {
+                  setResendCooldown((prev) => {
+                      if (prev <= 1) clearInterval(interval);
+                      return prev - 1;
+                  });
+              }, 1000);
+          } catch (error) {
+              setError('Erro ao reenviar. Tente novamente em instantes.');
+          }
+      }
+  };
+
+  const handleLogoutAndReturn = async () => {
+      await signOut(auth);
+      setUnverifiedUser(null);
+      setView('LOGIN');
+      setError('');
+      setSuccessMsg('');
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -206,15 +252,33 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 </div>
                 <h3 className="text-xl font-bold text-slate-900 mb-2">Verifique seu e-mail</h3>
                 <p className="text-slate-500 text-sm mb-6 leading-relaxed">
-                    Enviamos a você um e-mail de verificação para <strong className="text-slate-800">{email}</strong>. 
-                    <br/>Verifique sua caixa de entrada e spam.
+                    Enviamos a você um e-mail de verificação para <strong className="text-slate-800 break-all">{unverifiedUser?.email || email}</strong>. 
+                    <br/>Verifique e faça login.
                 </p>
-                <button 
-                    onClick={() => setView('LOGIN')}
-                    className="w-full bg-slate-900 text-white font-semibold py-3 rounded-xl hover:bg-slate-800 transition-colors"
-                >
-                    Voltar para Login
-                </button>
+
+                {successMsg && (
+                    <div className="mb-4 p-3 bg-green-50 text-green-700 text-xs rounded-lg flex items-center justify-center">
+                        <CheckCircle size={14} className="mr-2"/> {successMsg}
+                    </div>
+                )}
+                
+                <div className="space-y-3">
+                    <button 
+                        onClick={handleLogoutAndReturn}
+                        className="w-full bg-slate-900 text-white font-semibold py-3 rounded-xl hover:bg-slate-800 transition-colors flex items-center justify-center"
+                    >
+                        <LogIn size={18} className="mr-2"/> Fazer Login
+                    </button>
+
+                    <button 
+                        onClick={handleResendVerification}
+                        disabled={resendCooldown > 0}
+                        className="w-full bg-white border border-slate-200 text-slate-600 font-semibold py-3 rounded-xl hover:bg-slate-50 transition-colors flex items-center justify-center disabled:opacity-50"
+                    >
+                        <RefreshCw size={16} className={`mr-2 ${resendCooldown > 0 ? 'animate-spin' : ''}`}/> 
+                        {resendCooldown > 0 ? `Aguarde ${resendCooldown}s` : 'Reenviar E-mail'}
+                    </button>
+                </div>
             </div>
         )}
 

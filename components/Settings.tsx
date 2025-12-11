@@ -2,12 +2,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Mail, Shield, Bell, Moon, Database, Save, CheckCircle, Lock, Phone, FileText, Camera, Loader2, Trash2, AlertTriangle, X, Palette, Key, LogOut, Info } from 'lucide-react';
 import { getUserProfile, updateUserProfile, uploadUserPhoto, deleteFullUserAccount, UserData } from '../services/userService';
+import { auth } from '../services/firebase';
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from 'firebase/auth';
 
 interface SettingsProps {
     subView?: 'account' | 'platform';
     onThemeChange?: (darkMode: boolean, color: string) => void;
     initialTheme?: { darkMode: boolean, themeColor: string };
-    user?: any; // Recebe o usuário via prop para garantir consistência
+    user?: any; 
 }
 
 type SecurityAction = 'UPDATE_PROFILE' | 'CHANGE_PASSWORD' | 'DELETE_ACCOUNT' | null;
@@ -29,7 +31,6 @@ const MASKS = {
 };
 
 const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange, initialTheme, user: propUser }) => {
-  // Fallback para localStorage se não vier via prop (ex: refresh)
   const savedUser = localStorage.getItem('mock_session_user');
   const user = propUser || (savedUser ? JSON.parse(savedUser) : null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -92,7 +93,6 @@ const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange,
     loadProfile();
   }, [user]);
 
-  // Propagar mudanças de tema
   useEffect(() => {
       if (onThemeChange) {
           onThemeChange(darkMode, themeColor);
@@ -126,7 +126,6 @@ const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange,
       try {
           const downloadUrl = await uploadUserPhoto(user.uid, file);
           setCurrentPhoto(downloadUrl);
-          // Atualiza foto imediatamente no perfil local, pois não é crítico como alterar CPF/Senha
           await updateUserProfile(user.uid, { photoUrl: downloadUrl });
           setFeedbackMessage({ type: 'success', text: 'Foto atualizada com sucesso!' });
       } catch (error) {
@@ -137,8 +136,6 @@ const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange,
           setTimeout(() => setFeedbackMessage({ type: '', text: '' }), 3000);
       }
   };
-
-  // --- Security Modal Triggers ---
 
   const initiateUpdateProfile = () => {
       setFeedbackMessage({ type: '', text: '' });
@@ -166,21 +163,16 @@ const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange,
       setSecurityModal({ isOpen: true, action: 'DELETE_ACCOUNT' });
   };
 
-  // --- Final Action Execution ---
-
   const executeAction = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!currentPasswordInput) return;
+      if (!currentPasswordInput || !auth.currentUser) return;
       
       setIsProcessingAction(true);
 
-      // Simulação de verificação de senha (delay)
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
       try {
-          // Em um app real, verificaríamos a senha atual no backend aqui.
-          // const isPasswordCorrect = await verifyPassword(user.email, currentPasswordInput);
-          // if (!isPasswordCorrect) throw new Error("Senha incorreta");
+          // REAUTENTICAÇÃO REAL COM FIREBASE
+          const credential = EmailAuthProvider.credential(auth.currentUser.email!, currentPasswordInput);
+          await reauthenticateWithCredential(auth.currentUser, credential);
 
           if (securityModal.action === 'UPDATE_PROFILE') {
               if (user) {
@@ -193,28 +185,35 @@ const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange,
               }
           } 
           else if (securityModal.action === 'CHANGE_PASSWORD') {
-              // Mock de alteração de senha
+              await updatePassword(auth.currentUser, passwordData.newPassword);
               setFeedbackMessage({ type: 'success', text: 'Senha alterada com sucesso!' });
               setPasswordData({ newPassword: '', confirmNewPassword: '' });
           } 
           else if (securityModal.action === 'DELETE_ACCOUNT') {
               if (user) {
                   await deleteFullUserAccount(user);
+                  await auth.currentUser.delete(); // Deleta do Firebase Auth
                   localStorage.removeItem('mock_session_user');
-                  window.location.reload(); // Força logout e reload
-                  return; // Não fecha modal, vai recarregar
+                  window.location.reload(); 
+                  return;
               }
           }
 
           setSecurityModal({ isOpen: false, action: null });
           setCurrentPasswordInput('');
 
-      } catch (error) {
-          setFeedbackMessage({ type: 'error', text: 'Senha incorreta ou erro no servidor.' });
+      } catch (error: any) {
+          console.error("Erro na ação de segurança:", error);
+          if (error.code === 'auth/wrong-password') {
+              setFeedbackMessage({ type: 'error', text: 'Senha incorreta.' });
+          } else if (error.code === 'auth/too-many-requests') {
+              setFeedbackMessage({ type: 'error', text: 'Muitas tentativas. Tente mais tarde.' });
+          } else {
+              setFeedbackMessage({ type: 'error', text: 'Erro ao processar solicitação.' });
+          }
       } finally {
           setIsProcessingAction(false);
-          // Limpa mensagem após 3s
-          setTimeout(() => setFeedbackMessage({ type: '', text: '' }), 3000);
+          setTimeout(() => setFeedbackMessage({ type: '', text: '' }), 5000);
       }
   };
 
@@ -385,7 +384,7 @@ const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange,
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="md:col-span-2">
                              <p className="text-sm text-slate-500 mb-4">
-                                 Para atualizar sua senha, preencha os campos abaixo. Será necessário confirmar sua senha atual para efetivar a troca.
+                                 Para atualizar sua senha ou realizar ações sensíveis, solicitaremos sua senha atual para reautenticação imediata.
                              </p>
                         </div>
                         <div className="space-y-1">
@@ -567,7 +566,7 @@ const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange,
                           {securityModal.action === 'DELETE_ACCOUNT' 
                             ? 'Para sua segurança, confirme sua senha para excluir permanentemente sua conta.'
                             : securityModal.action === 'CHANGE_PASSWORD'
-                                ? 'Confirme sua senha atual para definir a nova senha.'
+                                ? 'Autenticação necessária. Confirme sua senha atual para definir a nova senha.'
                                 : 'Confirme sua senha para salvar as alterações nos dados cadastrais.'
                           }
                       </p>
