@@ -1,34 +1,6 @@
+
+import { GoogleGenAI } from "@google/genai";
 import { Attachment } from "../types";
-
-// Helper para converter arquivo em base64 para envio à API
-const fileToGenerativePart = async (file: File): Promise<{ inlineData: { data: string; mimeType: string } } | null> => {
-    // Permite imagens, PDFs e Vídeos
-    const isImage = file.type.startsWith('image/');
-    const isVideo = file.type.startsWith('video/');
-    const isPdf = file.type === 'application/pdf';
-
-    if (!isImage && !isVideo && !isPdf) {
-        console.warn(`Tipo de arquivo não suportado para IA: ${file.type}`);
-        return null;
-    }
-
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const base64String = reader.result as string;
-            // Separa o cabeçalho "data:image/png;base64," do conteúdo
-            const base64Data = base64String.split(',')[1];
-            resolve({
-                inlineData: {
-                    data: base64Data,
-                    mimeType: file.type
-                }
-            });
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
-};
 
 export const generateNotificationText = async (
   recipient: string,
@@ -39,53 +11,112 @@ export const generateNotificationText = async (
   contextInfo?: { area: string; species: string; areaDescription: string }
 ): Promise<string> => {
   try {
-    // 1. Processar anexos no cliente antes de enviar
-    const processedAttachments: any[] = [];
-    
-    for (const att of attachments) {
-        try {
-            const filePart = await fileToGenerativePart(att.file);
-            if (filePart) {
-                processedAttachments.push(filePart);
+    // Tenta obter a chave de várias fontes possíveis para garantir funcionamento em diferentes ambientes
+    let apiKey = '';
+    try {
+        // @ts-ignore
+        if (typeof process !== 'undefined' && process.env) apiKey = process.env.API_KEY || process.env.VITE_API_KEY || '';
+        // @ts-ignore
+        if (!apiKey && import.meta && import.meta.env) apiKey = import.meta.env.API_KEY || import.meta.env.VITE_API_KEY || '';
+    } catch (e) {
+        console.warn("Erro ao ler variáveis de ambiente:", e);
+    }
+
+    if (!apiKey) {
+        throw new Error("Chave de API (API_KEY) não configurada no sistema.");
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+
+    // Construção do Prompt Otimizado
+    const contextPrompt = contextInfo ? `
+      CONTEXTO ESTRUTURAL OBRIGATÓRIO:
+      1. ÁREA DO DIREITO: ${contextInfo.area} (${contextInfo.areaDescription})
+      2. ESPÉCIE: ${contextInfo.species}
+      
+      INSTRUÇÃO: O texto DEVE pertencer estritamente à área de "${contextInfo.area}". Use terminologia e leis específicas para "${contextInfo.species}".
+    ` : '';
+
+    const promptText = `
+      ATUAR COMO: Advogado Sênior Especialista em Direito Brasileiro.
+      TAREFA: Redigir uma Notificação Extrajudicial completa.
+      
+      ${contextPrompt}
+
+      DADOS:
+      - Destinatário: ${recipient}
+      - Assunto: ${subject}
+      - Tom: ${tone}
+      
+      FATOS RELATADOS:
+      ${details}
+      
+      ESTRUTURA (TEXTO PLANO - SEM MARKDOWN, SEM NEGRITO):
+      Use CAIXA ALTA para títulos.
+      
+      1. CABEÇALHO (Local e Data atual)
+      2. PREÂMBULO (Identificação COMPLETA das partes. Use os dados fornecidos: CPF, Endereço, etc.)
+      3. DOS FATOS (Narrativa detalhada)
+      4. DO DIREITO (Fundamentação jurídica, Artigos de Lei, Código Civil/Penal/CDC conforme a área)
+      5. DOS PEDIDOS (Exigências claras com prazo para cumprimento)
+      6. DAS CONSEQUÊNCIAS (Medidas judiciais caso não atendido)
+      7. FECHAMENTO (Assinatura)
+    `;
+
+    // Preparação das partes do conteúdo (Texto + Imagens)
+    const parts: any[] = [{ text: promptText }];
+
+    // Processamento de anexos para o modelo multimodal
+    if (attachments && attachments.length > 0) {
+        for (const att of attachments) {
+            if (att.type === 'image' || att.type === 'document') { 
+                 try {
+                     const base64Data = await fileToBase64(att.file);
+                     parts.push({
+                         inlineData: {
+                             mimeType: att.file.type,
+                             data: base64Data
+                         }
+                     });
+                 } catch (imgError) {
+                     console.error("Erro ao processar anexo para IA:", imgError);
+                 }
             }
-        } catch (fileError) {
-            console.error("Erro ao processar anexo para envio:", fileError);
         }
     }
 
-    // 2. Chamar a Serverless Function (Backend Vercel)
-    // Isso protege a API Key e evita problemas de ambiente no navegador
-    const response = await fetch('/api/generate', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            recipient,
-            subject,
-            details,
-            tone,
-            attachments: processedAttachments,
-            contextInfo
-        })
+    // Chamada ao Modelo
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: { parts },
+      config: {
+        temperature: 0.4, 
+      }
     });
 
-    if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || "Erro na comunicação com o servidor de IA.");
+    if (!response.text) {
+        throw new Error("A IA retornou uma resposta vazia.");
     }
 
-    const data = await response.json();
-
-    if (!data.text) {
-        throw new Error("Resposta vazia da IA.");
-    }
-
-    return data.text;
+    return response.text;
 
   } catch (error: any) {
-    // Tratamento de Erro para o Usuário
-    console.error("System Error (AI Generation):", error);
-    throw new Error("Não foi possível gerar o documento. Verifique sua conexão ou tente novamente em instantes.");
+    console.error("Erro CRÍTICO na geração IA:", error);
+    throw new Error(`Falha ao gerar documento: ${error.message || 'Erro de conexão com a IA'}`);
   }
+};
+
+// Helper para converter File em Base64 string pura
+const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = reader.result as string;
+            // Remove o prefixo "data:image/png;base64," para enviar apenas os bytes
+            const base64 = result.split(',')[1];
+            resolve(base64);
+        };
+        reader.onerror = error => reject(error);
+        reader.readAsDataURL(file);
+    });
 };

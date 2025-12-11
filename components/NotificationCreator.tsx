@@ -4,6 +4,7 @@ import { generateNotificationText } from '../services/geminiService';
 import { saveNotification, uploadEvidence, uploadSignedPdf } from '../services/notificationService';
 import { initiateCheckout } from '../services/paymentService';
 import { createMeeting } from '../services/meetingService';
+import { dispatchCommunications } from '../services/communicationService'; // Importação para disparo automático
 import { NotificationItem, NotificationStatus, EvidenceItem, Meeting, Transaction, Attachment } from '../types';
 import { 
   Wand2, Scale, Users, 
@@ -24,6 +25,11 @@ interface NotificationCreatorProps {
   };
 }
 
+// DECLARAÇÃO DO ÍCONE ANTES DO USO
+const SendIcon = ({size, className}: {size?:number, className?:string}) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size || 24} height={size || 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+);
+
 const STEPS = [
   { id: 1, label: 'Áreas', icon: Scale },
   { id: 2, label: 'Fatos', icon: FileText },
@@ -31,7 +37,7 @@ const STEPS = [
   { id: 4, label: 'Conciliação', icon: Video },
   { id: 5, label: 'Geração IA', icon: Wand2 },
   { id: 6, label: 'Assinatura', icon: PenTool },
-  { id: 7, label: 'Pagamento', icon: CreditCard },
+  { id: 7, label: 'Envio', icon: SendIcon }, 
 ];
 
 const LAW_AREAS = [
@@ -212,7 +218,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSavingData, setIsSavingData] = useState(false);
   const [error, setError] = useState('');
-  const [notificationId] = useState(`NOT-${Math.random().toString(36).substr(2, 9).toUpperCase()}`);
+  const [notificationId, setNotificationId] = useState(`NOT-${Math.random().toString(36).substr(2, 9).toUpperCase()}`);
   
   const [partiesStep, setPartiesStep] = useState<'role_selection' | 'forms'>('role_selection');
   const [role, setRole] = useState<'self' | 'representative' | null>(null);
@@ -254,6 +260,54 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
   const currentArea = LAW_AREAS.find(a => a.id === formData.areaId);
 
+  // --- PERSISTENCE LOGIC (15 MINUTES) ---
+  useEffect(() => {
+      const STORAGE_KEY = `notify_draft_${user?.uid}`;
+      
+      // RESTORE
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+          try {
+              const parsed = JSON.parse(saved);
+              const diff = Date.now() - parsed.timestamp;
+              // Se menos de 15 minutos, restaura
+              if (diff < 15 * 60 * 1000) { 
+                  setFormData(parsed.data);
+                  setCurrentStep(parsed.step);
+                  setNotificationId(parsed.id || notificationId);
+                  setSignatureData(parsed.signature || null);
+                  // Nota: Arquivos locais (LocalAttachment) não são persistidos no localStorage pois são Blob URLs
+              } else {
+                  localStorage.removeItem(STORAGE_KEY);
+              }
+          } catch(e) {
+              console.error("Erro ao restaurar rascunho", e);
+          }
+      }
+  }, [user?.uid]);
+
+  // SAVE
+  useEffect(() => {
+      const STORAGE_KEY = `notify_draft_${user?.uid}`;
+      if (currentStep > 1 && currentStep < 7) { // Só salva se começou a preencher e não finalizou
+          const payload = { 
+              timestamp: Date.now(), 
+              step: currentStep, 
+              data: formData,
+              id: notificationId,
+              signature: signatureData
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+      }
+  }, [formData, currentStep, signatureData, user?.uid, notificationId]);
+
+  // CLEAR ON FINISH
+  const clearDraft = () => {
+      const STORAGE_KEY = `notify_draft_${user?.uid}`;
+      localStorage.removeItem(STORAGE_KEY);
+  };
+  // --------------------------------------
+
   useEffect(() => {
     if (currentStep === 6 && containerRef.current && canvasRef.current) { 
       const containerWidth = containerRef.current.offsetWidth;
@@ -275,7 +329,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   };
 
   const validateAddresses = () => {
-      // Removemos a validação de complemento (addr.complement) para evitar bloqueio
       const validate = (addr: Address) => addr.cep && addr.street && addr.number && addr.neighborhood && addr.city && addr.state;
       
       if (!validate(formData.sender.address)) return "Endereço do Remetente incompleto (Verifique CEP, Rua, Número, Bairro, Cidade, UF).";
@@ -367,7 +420,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     }
     
     if (!formData.species || !formData.facts) {
-        alert("Por favor, preencha a 'Área Jurídica' e os 'Fatos' antes de gerar a minuta.");
+        alert("Por favor, preencha a 'Área Jurídica' e os 'Fatos' antes de gerar a notificação.");
         return;
     }
 
@@ -420,75 +473,17 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
         
         setFormData(prev => ({ ...prev, generatedContent: text }));
         
-        // Alerta de conclusão e transição
-        alert("Minuta gerada com sucesso! Prossiga para revisar e assinar o documento.");
+        alert("Notificação gerada com sucesso! Prossiga para revisar e assinar.");
         setCurrentStep(6); 
-    } catch (err) {
-        console.error(err);
-        alert("Erro ao gerar conteúdo. Tente novamente.");
+    } catch (err: any) {
+        console.error("Erro Generation:", err);
+        alert(`Erro ao gerar a notificação: ${err.message}. Tente novamente.`);
     } finally {
         setIsGenerating(false);
     }
   };
 
-  const generateAndUploadPdf = async (docHash: string): Promise<string> => {
-      // 1. Criação do PDF Binário com jsPDF
-      const doc = new jsPDF({
-          orientation: 'portrait',
-          unit: 'mm',
-          format: 'a4'
-      });
-
-      // Configuração de Fonte
-      doc.setFont("times", "normal");
-      doc.setFontSize(12);
-
-      // Título
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(16);
-      doc.text("NOTIFICAÇÃO EXTRAJUDICIAL", 105, 20, { align: "center" });
-
-      // Subtítulo / Hash
-      doc.setFontSize(10);
-      doc.setTextColor(100);
-      doc.text(`ID DO DOCUMENTO: ${docHash}`, 105, 28, { align: "center" });
-      doc.text(`Data de Emissão: ${new Date().toLocaleDateString()}`, 105, 33, { align: "center" });
-
-      // Corpo do Texto (com quebra automática)
-      doc.setTextColor(0);
-      doc.setFont("times", "normal");
-      doc.setFontSize(12);
-      
-      const splitText = doc.splitTextToSize(formData.generatedContent, 170); // 170mm de largura útil
-      doc.text(splitText, 20, 50);
-
-      // Assinatura (se houver)
-      if (signatureData) {
-          // Calcula posição Y para assinatura (baseado no texto)
-          let yPos = 50 + (splitText.length * 6) + 20; 
-          
-          // Se passar da página, cria nova
-          if (yPos > 250) {
-              doc.addPage();
-              yPos = 40;
-          }
-
-          doc.addImage(signatureData, 'PNG', 20, yPos, 60, 30);
-          
-          doc.setFontSize(10);
-          doc.text("__________________________________________", 20, yPos + 35);
-          doc.setFont("helvetica", "bold");
-          doc.text(formData.sender.name.toUpperCase(), 20, yPos + 40);
-          doc.setFont("helvetica", "normal");
-          doc.text(`CPF: ${formData.sender.cpfCnpj}`, 20, yPos + 45);
-          doc.text(`Assinado digitalmente via Plataforma Notify`, 20, yPos + 50);
-          doc.text(`Hash de Verificação: ${docHash}`, 20, yPos + 55);
-      }
-
-      const pdfBlob = doc.output('blob');
-      return await uploadSignedPdf(notificationId, pdfBlob);
-  };
-
+  // Persiste os dados como "Pendente de Pagamento"
   const handlePersistData = async () => {
       setIsSavingData(true);
       setError('');
@@ -499,10 +494,10 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           const uniqueHash = Array.from({length: 4}, () => Math.random().toString(36).substr(2, 4).toUpperCase()).join('-');
           setDocumentHash(uniqueHash);
 
-          // 2. Gera PDF Binário Real e Faz Upload
+          // 2. Gera PDF e Upload
           const pdfUrl = await generateAndUploadPdf(uniqueHash);
 
-          // 3. Upload de Evidências (somente após sucesso do PDF)
+          // 3. Upload Evidências
           const newEvidenceItems: EvidenceItem[] = [];
           if (localFiles.length > 0) {
               for (const lf of localFiles) {
@@ -510,20 +505,17 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                       const uploaded = await uploadEvidence(notificationId, lf.file);
                       newEvidenceItems.push(uploaded);
                   } catch (evErr) {
-                      console.error("Falha ao subir evidência específica:", lf.name, evErr);
-                      // Continua para o próximo arquivo, não trava o fluxo
+                      console.error("Erro evidência:", lf.name, evErr);
                   }
               }
           }
 
           const totalAmount = calculateTotal();
 
-          // CRIAÇÃO DO OBJETO FINAL (Schema novo)
+          // CRIAÇÃO DO OBJETO FINAL (Status: PENDING)
           const finalNotification: NotificationItem = {
               id: notificationId,
               documentHash: uniqueHash,
-              
-              // Novos campos obrigatórios para regras
               notificante_uid: user.uid,
               notificante_cpf: formData.sender.cpfCnpj.replace(/\D/g, ''),
               notificante_dados_expostos: {
@@ -533,12 +525,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                   foto_url: user.photoURL || undefined
               },
               notificados_cpfs: [formData.recipient.cpfCnpj.replace(/\D/g, '')],
-
-              // Dados visuais
               recipientName: formData.recipient.name,
               recipientEmail: formData.recipient.email,
               recipientPhone: formData.recipient.phone,
-              
               area: currentArea?.name || '',
               species: formData.species,
               facts: formData.facts,
@@ -548,7 +537,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               pdf_url: pdfUrl,
               signatureBase64: signatureData || undefined,
               createdAt: new Date().toISOString(),
-              status: NotificationStatus.PENDING_PAYMENT,
+              status: NotificationStatus.PENDING_PAYMENT, // Salva como pendente
               paymentAmount: totalAmount
           };
 
@@ -581,28 +570,66 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           }
 
           setCreatedData({ notif: finalNotification, meet: newMeeting, trans: newTransaction });
-          setCurrentStep(7); // Avança para pagamento
+          setCurrentStep(7); // Vai para o passo de Envio/Pagamento
 
       } catch (e: any) {
           console.error(e);
-          setError("Erro ao salvar dados: " + e.message);
+          setError("Erro ao salvar notificação: " + e.message);
       } finally {
           setIsSavingData(false);
       }
   };
 
+  const generateAndUploadPdf = async (docHash: string): Promise<string> => {
+      const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      doc.setFont("times", "normal");
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text("NOTIFICAÇÃO EXTRAJUDICIAL", 105, 20, { align: "center" });
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(`ID DO DOCUMENTO: ${docHash}`, 105, 28, { align: "center" });
+      doc.text(`Data de Emissão: ${new Date().toLocaleDateString()}`, 105, 33, { align: "center" });
+      doc.setTextColor(0);
+      doc.setFont("times", "normal");
+      doc.setFontSize(12);
+      
+      const splitText = doc.splitTextToSize(formData.generatedContent, 170); 
+      doc.text(splitText, 20, 50);
+
+      if (signatureData) {
+          let yPos = 50 + (splitText.length * 6) + 20; 
+          if (yPos > 250) { doc.addPage(); yPos = 40; }
+          doc.addImage(signatureData, 'PNG', 20, yPos, 60, 30);
+          doc.setFontSize(10);
+          doc.text("__________________________________________", 20, yPos + 35);
+          doc.setFont("helvetica", "bold");
+          doc.text(formData.sender.name.toUpperCase(), 20, yPos + 40);
+          doc.setFont("helvetica", "normal");
+          doc.text(`CPF: ${formData.sender.cpfCnpj}`, 20, yPos + 45);
+          doc.text(`Assinado digitalmente via Plataforma Notify`, 20, yPos + 50);
+          doc.text(`Hash de Verificação: ${docHash}`, 20, yPos + 55);
+      }
+
+      const pdfBlob = doc.output('blob');
+      return await uploadSignedPdf(notificationId, pdfBlob);
+  };
+
   const handleUseCredit = async () => {
-      // Atalho para quem tem assinatura: não precisa pagar, apenas confirma o envio
       if(!user || !createdData.notif) return;
       setIsProcessingAction(true);
-      
       try {
-          // Atualiza status para SENT diretamente, pois já foi "pago" pelo crédito
+          // Atualiza status para SENT (Enviado) pois consumiu crédito
           const updatedNotif = { ...createdData.notif, status: NotificationStatus.SENT };
           
-          // Chama onSave sem transação, pois foi usado crédito
-          onSave(updatedNotif, createdData.meet, undefined);
+          // Dispara comunicações automaticamente
+          await dispatchCommunications(updatedNotif);
+
+          alert(`PROTOCOLO DE ENVIO: ${updatedNotif.id}\n\nNotificação enviada com sucesso utilizando 1 crédito do seu plano.`);
           
+          clearDraft(); // Limpa rascunho
+          onSave(updatedNotif, createdData.meet, undefined);
       } catch (e) {
           setError("Erro ao processar crédito.");
       } finally {
@@ -613,7 +640,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const handleProcessPayment = async () => {
       setIsProcessingAction(true);
       setError('');
-      
       try {
           if(!user || !createdData.notif || !selectedMethod) return;
 
@@ -634,8 +660,20 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
           if (selectedMethod === 'PIX' && checkoutResponse.pixData) {
               setPixData(checkoutResponse.pixData);
+              // Para PIX, salvamos como PENDENTE e limpamos o rascunho
+              clearDraft();
           } else if (selectedMethod === 'CREDIT_CARD') {
-              onSave(createdData.notif, createdData.meet, { ...createdData.trans!, status: 'Pago' });
+              // Sucesso no cartão -> Notificação Enviada
+              const updatedNotif = { ...createdData.notif, status: NotificationStatus.SENT };
+              const updatedTrans = { ...createdData.trans!, status: 'Pago' as const };
+              
+              // Dispara E-mail e WhatsApp Automaticamente
+              await dispatchCommunications(updatedNotif);
+
+              alert(`PROTOCOLO DE PAGAMENTO: ${updatedTrans.id}\n\nPagamento confirmado! A notificação foi enviada.`);
+              
+              clearDraft(); // Limpa rascunho
+              onSave(updatedNotif, createdData.meet, updatedTrans);
           }
 
       } catch (e) {
@@ -655,37 +693,39 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 mb-2">
                      <ShieldCheck size={24} />
                  </div>
-                 <h3 className="text-emerald-800 font-bold text-lg">Documento Gerado com Sucesso!</h3>
-                 <p className="text-emerald-600 text-sm mb-4">Seu documento foi assinado digitalmente e criptografado.</p>
+                 <h3 className="text-emerald-800 font-bold text-lg">Documento Salvo e Pendente!</h3>
+                 <p className="text-emerald-600 text-sm mb-4">Sua notificação foi salva com sucesso na pasta de Pendências. Finalize o envio agora.</p>
                  <div className="inline-block bg-white px-4 py-2 rounded-lg border border-emerald-200 shadow-inner">
-                     <p className="text-xs text-slate-400 uppercase font-bold tracking-wider">Hash de Autenticidade</p>
+                     <p className="text-xs text-slate-400 uppercase font-bold tracking-wider">Protocolo Provisório</p>
                      <p className="text-lg font-mono font-bold text-slate-800 tracking-widest">{documentHash}</p>
                  </div>
              </div>
 
              <div className="text-center mb-8">
-                 <h3 className="text-2xl font-bold text-slate-800">Escolha como prosseguir</h3>
-                 <p className="text-slate-500 text-sm">Selecione o plano ideal para o envio.</p>
+                 <h3 className="text-2xl font-bold text-slate-800">Selecione o pacote de envio</h3>
+                 <p className="text-slate-500 text-sm">Escolha como deseja despachar este documento.</p>
              </div>
 
-             {/* OPCÕES INTELIGENTES BASEADAS NA ASSINATURA */}
+             {/* OPÇÃO DE CRÉDITO PARA ASSINANTES */}
              {hasCredits ? (
                  <div className="max-w-md mx-auto">
-                     <div className="p-8 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-xl relative overflow-hidden group hover:scale-[1.02] transition-transform cursor-pointer" onClick={handleUseCredit}>
+                     <div className="p-8 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-xl relative overflow-hidden group hover:scale-[1.02] transition-transform cursor-pointer border border-slate-700" onClick={handleUseCredit}>
                          <div className="absolute top-0 right-0 p-4 opacity-10"><Ticket size={100} /></div>
-                         <h4 className="font-bold text-xl mb-2">Usar Crédito de Assinatura</h4>
-                         <p className="text-slate-300 text-sm mb-6">Você possui uma assinatura ativa.</p>
+                         <h4 className="font-bold text-xl mb-2 flex items-center"><Ticket className="mr-2 text-yellow-400"/> Usar Crédito de Assinatura</h4>
+                         <p className="text-slate-300 text-sm mb-6">Você já possui um plano ativo.</p>
                          <div className="flex items-center justify-between mb-6 bg-white/10 p-3 rounded-lg">
                              <span className="text-xs font-bold uppercase tracking-wider">Créditos Restantes</span>
                              <span className="text-xl font-bold">{subscriptionData?.creditsTotal - subscriptionData?.creditsUsed}</span>
                          </div>
-                         <button disabled={isProcessingAction} className="w-full bg-white text-slate-900 font-bold py-3 rounded-xl hover:bg-slate-100 transition flex items-center justify-center">
-                             {isProcessingAction ? <Loader2 className="animate-spin mr-2"/> : <CheckCircle2 className="mr-2"/>}
+                         <button disabled={isProcessingAction} className="w-full bg-white text-slate-900 font-bold py-3 rounded-xl hover:bg-slate-100 transition flex items-center justify-center shadow-lg">
+                             {isProcessingAction ? <Loader2 className="animate-spin mr-2"/> : <CheckCircle2 className="mr-2 text-green-600"/>}
                              Confirmar Envio (1 Crédito)
                          </button>
                      </div>
+                     <p className="text-center text-xs text-slate-400 mt-4">Ou se preferir, selecione um envio avulso abaixo para não gastar créditos.</p>
                  </div>
              ) : (
+                 // OPÇÕES DE PAGAMENTO (AVULSO OU ASSINATURA)
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
                     <div onClick={() => setPaymentPlan('single')} className={`relative p-8 rounded-2xl cursor-pointer transition-all duration-300 group overflow-hidden ${paymentPlan==='single' ? 'bg-white ring-2 ring-blue-500 shadow-xl scale-[1.02]' : 'bg-white border border-slate-200 hover:border-blue-300 hover:shadow-lg'}`}>
                          {paymentPlan === 'single' && <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl shadow-sm">SELECIONADO</div>}
@@ -694,19 +734,20 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                              <p className="text-4xl font-bold text-slate-900 mt-4">R$ 57,92</p>
                              <p className="text-xs text-slate-400 font-medium uppercase mt-1">pagamento único</p>
                              <ul className="mt-6 space-y-3 text-sm text-slate-600 text-left">
-                                <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5"/> <span>Envio via WhatsApp/SMS/E-mail</span></li>
-                                <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5"/> <span>PDF com Assinatura</span></li>
+                                <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5"/> <span>Envio Imediato (WhatsApp/E-mail)</span></li>
+                                <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5"/> <span>Documento Assinado Digitalmente</span></li>
                             </ul>
                          </div>
                     </div>
                     <div onClick={() => setPaymentPlan('subscription')} className={`relative p-8 rounded-2xl cursor-pointer transition-all duration-300 group overflow-hidden ${paymentPlan==='subscription' ? 'bg-slate-900 ring-2 ring-purple-500 shadow-2xl scale-[1.02]' : 'bg-white border border-slate-200 hover:border-purple-300 hover:shadow-lg'}`}>
-                         {paymentPlan === 'subscription' && <div className="absolute top-0 right-0 bg-purple-600 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl shadow-sm">RECOMENDADO</div>}
+                         {paymentPlan === 'subscription' && <div className="absolute top-0 right-0 bg-purple-600 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl shadow-sm">MAIS VANTAJOSO</div>}
                          <div className="flex flex-col h-full">
                              <h4 className={`font-bold text-xl ${paymentPlan==='subscription' ? 'text-white' : 'text-slate-900'}`}>Assinatura Pro</h4>
                              <p className={`text-4xl font-bold mt-4 ${paymentPlan==='subscription' ? 'text-white' : 'text-slate-900'}`}>R$ 259,97 <span className="text-sm font-normal opacity-60">/mês</span></p>
                              <ul className={`mt-6 space-y-3 text-sm text-left ${paymentPlan === 'subscription' ? 'text-slate-300' : 'text-slate-600'}`}>
-                                <li className="flex items-start"><Check size={16} className="mr-2 text-purple-400"/> <span><strong>10 Envios</strong> (Até 30 dias)</span></li>
-                                <li className="flex items-start"><Check size={16} className="mr-2 text-purple-400"/> <span>Renovação Mensal</span></li>
+                                <li className="flex items-start"><Check size={16} className="mr-2 text-purple-400"/> <span><strong>10 Envios</strong> (aprox. R$ 25,90/cada)</span></li>
+                                <li className="flex items-start"><Check size={16} className="mr-2 text-purple-400"/> <span>Validade de 30 dias</span></li>
+                                <li className="flex items-start"><Check size={16} className="mr-2 text-purple-400"/> <span>Renovação Automática</span></li>
                             </ul>
                          </div>
                     </div>
@@ -751,7 +792,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                     <p className="text-sm text-emerald-700 font-bold mb-4">Escaneie para pagar</p>
                     <img src={`data:image/png;base64,${pixData.encodedImage}`} alt="QR Code Pix" className="w-48 h-48 mx-auto border-4 border-white shadow-lg rounded-lg mb-4" />
                     <div className="flex items-center gap-2"><input type="text" readOnly value={pixData.payload} className="flex-1 p-2 text-xs bg-slate-100 rounded border border-slate-200 text-slate-500 truncate" /><button onClick={() => {navigator.clipboard.writeText(pixData.payload); alert("Código copiado!");}} className="p-2 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 font-bold text-xs flex items-center"><Copy size={14} className="mr-1"/> Copiar</button></div>
-                    <p className="text-[10px] text-slate-400 mt-4">A confirmação é automática após o pagamento.</p>
+                    <p className="text-[10px] text-slate-400 mt-4">Após o pagamento, o envio será realizado automaticamente.</p>
                 </div>
             )}
             {selectedMethod && !pixData && (
@@ -1011,8 +1052,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                                 <button onClick={clearSignature} className="text-xs text-red-500 mt-2 font-bold hover:underline">Limpar Assinatura</button>
                             </div>
                             <button onClick={async () => { try { await handlePersistData(); } catch(e) { alert("Erro ao salvar documento: " + e); }}} disabled={isSavingData || !signatureData} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-4 rounded-xl font-bold shadow-xl shadow-emerald-200 transition-all flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed">
-                                {isSavingData ? <Loader2 className="animate-spin mr-2" /> : <CheckCircle2 className="mr-2" />}
-                                {isSavingData ? 'Autenticando...' : 'Finalizar e Pagar'}
+                                {isSavingData ? <Loader2 className="animate-spin mr-2" /> : <ArrowRight className="mr-2" />}
+                                {isSavingData ? 'Salvando...' : 'Avançar para Envio'}
                             </button>
                             {error && <p className="text-xs text-red-500 text-center">{error}</p>}
                         </div>
