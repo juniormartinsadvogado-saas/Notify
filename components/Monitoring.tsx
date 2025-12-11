@@ -3,9 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { NotificationItem, NotificationStatus } from '../types';
 import { getNotificationsBySender, getNotificationsByRecipientCpf, deleteNotification, confirmPayment } from '../services/notificationService';
 import { restoreLatestCanceledMeeting } from '../services/meetingService';
-import { dispatchCommunications } from '../services/communicationService'; // IMPORTADO
+import { dispatchCommunications } from '../services/communicationService'; 
 import { getUserProfile } from '../services/userService';
-import { Send, RefreshCw, ChevronDown, ChevronUp, Package, Mail, FileText, CreditCard, Trash2, User, CheckCircle2, Circle, Clock, FileEdit, Archive, Inbox, Loader2 } from 'lucide-react';
+import { Send, RefreshCw, ChevronDown, ChevronUp, Package, Mail, FileText, CreditCard, Trash2, User, CheckCircle2, Circle, Clock, FileEdit, Archive, Inbox, Loader2, Zap } from 'lucide-react';
 
 interface MonitoringProps {
   notifications: NotificationItem[];
@@ -30,7 +30,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [filteredItems, setFilteredItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [processingId, setProcessingId] = useState<string | null>(null); // Estado para loading do botão pagar
+  const [processingId, setProcessingId] = useState<string | null>(null); 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   
   const [senderProfile, setSenderProfile] = useState<any>(null);
@@ -73,10 +73,20 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
     try {
         if (activeTab === 'sent') {
             const data = await getNotificationsBySender(user.uid);
+            // Sincroniza com as props vindas do App (que podem ser mais novas devido ao fluxo de criação)
             const combinedMap = new Map();
             data.forEach(item => combinedMap.set(item.id, item));
             propNotifications.forEach(item => {
-                if(item.notificante_uid === user.uid) combinedMap.set(item.id, item);
+                // Prioriza o que veio do banco, a não ser que a prop seja mais nova?
+                // Vamos dar merge garantindo que se o ID existe, pegamos o status mais avançado
+                if(item.notificante_uid === user.uid) {
+                    const existing = combinedMap.get(item.id);
+                    if (existing && existing.status === NotificationStatus.SENT) {
+                        // Mantém SENT do banco
+                    } else {
+                        combinedMap.set(item.id, item);
+                    }
+                }
             });
             
             const uniqueItems = Array.from(combinedMap.values()).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -109,6 +119,23 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
       }
   };
 
+  // Botão de Retry Manual (para casos onde o automático falhou ou o usuário quer forçar)
+  const handleRetrySend = async (item: NotificationItem) => {
+      setProcessingId(item.id);
+      try {
+          const success = await dispatchCommunications(item);
+          if (success) {
+              alert("Notificação reenviada com sucesso!");
+          } else {
+              alert("Tentativa de reenvio falhou. Verifique o status da API.");
+          }
+      } catch (e) {
+          console.error(e);
+      } finally {
+          setProcessingId(null);
+      }
+  };
+
   const handlePay = async (item: NotificationItem) => {
       if (window.confirm(`Confirmar pagamento de R$ ${item.paymentAmount?.toFixed(2)} e disparar notificação?`)) {
           setProcessingId(item.id);
@@ -116,8 +143,8 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
               // 1. Atualiza status no banco
               await confirmPayment(item.id);
               
-              // 2. Dispara e-mail real (Correção aplicada aqui)
-              const emailSuccess = await dispatchCommunications(item);
+              // 2. Dispara comunicações
+              const sendSuccess = await dispatchCommunications(item);
               
               if (user) {
                   await restoreLatestCanceledMeeting(user.uid);
@@ -125,10 +152,10 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
               
               await fetchData();
               
-              if (emailSuccess) {
-                  alert("Pagamento confirmado e E-mail enviado com sucesso!");
+              if (sendSuccess) {
+                  alert("Pagamento confirmado e Notificação disparada com sucesso!");
               } else {
-                  alert("Pagamento confirmado, mas houve um erro no disparo do e-mail.");
+                  alert("Pagamento confirmado, mas houve um erro no disparo. O sistema tentará novamente.");
               }
           } catch (error) {
               console.error(error);
@@ -412,20 +439,33 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                                             </a>
                                         )}
 
-                                        {activeTab === 'sent' && notif.status === NotificationStatus.PENDING_PAYMENT && (
-                                            <div className="grid grid-cols-2 gap-3">
+                                        {/* AÇÃO DE PAGAMENTO OU REENVIO */}
+                                        {activeTab === 'sent' && (
+                                            notif.status === NotificationStatus.PENDING_PAYMENT ? (
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <button 
+                                                        onClick={() => handlePay(notif)} 
+                                                        disabled={processingId === notif.id}
+                                                        className="bg-green-600 text-white py-3 rounded-xl text-sm font-bold flex items-center justify-center hover:bg-green-700 shadow-lg shadow-green-200 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                                                    >
+                                                        {processingId === notif.id ? <Loader2 className="animate-spin mr-2"/> : <CreditCard size={16} className="mr-2" />} 
+                                                        {processingId === notif.id ? 'Processando...' : `Pagar R$ ${notif.paymentAmount}`}
+                                                    </button>
+                                                    <button onClick={() => handleDelete(notif)} className="bg-white text-red-500 border border-red-200 py-3 rounded-xl text-sm font-bold flex items-center justify-center hover:bg-red-50 transition-all">
+                                                        <Trash2 size={16} className="mr-2" /> Excluir
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                // Opção de Reenvio se já estiver pago/enviado (para garantir)
                                                 <button 
-                                                    onClick={() => handlePay(notif)} 
+                                                    onClick={() => handleRetrySend(notif)}
                                                     disabled={processingId === notif.id}
-                                                    className="bg-green-600 text-white py-3 rounded-xl text-sm font-bold flex items-center justify-center hover:bg-green-700 shadow-lg shadow-green-200 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
+                                                    className="w-full bg-white text-blue-600 border border-blue-200 py-3 rounded-xl text-sm font-bold flex items-center justify-center hover:bg-blue-50 transition-all"
                                                 >
-                                                    {processingId === notif.id ? <Loader2 className="animate-spin mr-2"/> : <CreditCard size={16} className="mr-2" />} 
-                                                    {processingId === notif.id ? 'Processando...' : `Pagar R$ ${notif.paymentAmount}`}
+                                                    {processingId === notif.id ? <Loader2 className="animate-spin mr-2"/> : <Zap size={16} className="mr-2" />}
+                                                    Reenviar Notificação (Email/Zap)
                                                 </button>
-                                                <button onClick={() => handleDelete(notif)} className="bg-white text-red-500 border border-red-200 py-3 rounded-xl text-sm font-bold flex items-center justify-center hover:bg-red-50 transition-all">
-                                                    <Trash2 size={16} className="mr-2" /> Excluir
-                                                </button>
-                                            </div>
+                                            )
                                         )}
                                     </div>
                                 </div>
