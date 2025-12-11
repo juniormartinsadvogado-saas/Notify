@@ -953,7 +953,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                         <p className="text-xs text-blue-700 font-bold mb-2">Instruções:</p>
                         <ol className="text-[10px] text-blue-600 text-left list-decimal list-inside space-y-1">
                             <li>Abra o app do seu banco.</li>
-                            <li>Escolha a opção Pix > Pagar com QR Code.</li>
+                            <li>Escolha a opção Pix &gt; Pagar com QR Code.</li>
                             <li>Escaneie o código ou use o Copia e Cola.</li>
                             <li>Após confirmar no banco, clique abaixo.</li>
                         </ol>
