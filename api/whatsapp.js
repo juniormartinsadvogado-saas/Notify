@@ -1,3 +1,4 @@
+
 export default async function handler(req, res) {
   // CORS Configuration
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -18,16 +19,17 @@ export default async function handler(req, res) {
   }
 
   const { phone, message, pdfUrl, fileName } = req.body;
-  const instanceId = process.env.ZAPI_INSTANCE_ID;
-  const token = process.env.ZAPI_INSTANCE_TOKEN;
+  
+  // Utiliza as variáveis solicitadas: API_INSTANCE_ID e API_INSTANCE_TOKEN
+  const instanceId = process.env.API_INSTANCE_ID || process.env.ZAPI_INSTANCE_ID;
+  const token = process.env.API_INSTANCE_TOKEN || process.env.ZAPI_INSTANCE_TOKEN;
 
   if (!instanceId || !token) {
-    console.error("ZAPI Credentials não configuradas.");
-    return res.status(500).json({ error: "Configuração de Z-API incompleta." });
+    console.error("Credenciais WhatsApp (API_INSTANCE_ID/TOKEN) não configuradas.");
+    return res.status(500).json({ error: "Configuração de API WhatsApp incompleta." });
   }
 
   // Formatar telefone para padrão internacional (55 + DDD + Numero) sem caracteres especiais
-  // Remove tudo que não é dígito
   let cleanPhone = phone.replace(/\D/g, '');
   if (cleanPhone.length < 12) {
       // Assume Brasil se não tiver código de país e for tamanho típico
@@ -45,7 +47,7 @@ export default async function handler(req, res) {
 
     // Se houver PDF, usamos o endpoint de documento
     if (pdfUrl) {
-        endpoint = '/send-document-pdf'; // Alguns endpoints da Z-API podem ser /send-document
+        endpoint = '/send-document-pdf'; 
         body = {
             phone: cleanPhone,
             document: pdfUrl,
@@ -64,7 +66,7 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
         console.error("Z-API Error Response:", data);
-        throw new Error(data.message || "Erro ao enviar mensagem Z-API");
+        throw new Error(data.message || "Erro ao enviar mensagem WhatsApp");
     }
 
     return res.status(200).json({ success: true, data });

@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 
 export default async function handler(req, res) {
@@ -23,16 +24,17 @@ export default async function handler(req, res) {
     const { recipient, subject, details, tone, attachments, contextInfo } = req.body;
 
     // Busca a chave de API nas variáveis de ambiente do servidor (Vercel)
+    // Prioriza GOOGLE_GENERATIVE_AI_API_KEY conforme solicitado
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY;
 
     if (!apiKey) {
-      console.error("API Key do Gemini não configurada no servidor.");
+      console.error("API Key do Gemini (GOOGLE_GENERATIVE_AI_API_KEY) não configurada no servidor.");
       return res.status(500).json({ error: 'Configuração de servidor incompleta (API Key missing).' });
     }
 
     const ai = new GoogleGenAI({ apiKey });
 
-    // --- RECONSTRUÇÃO DO PROMPT (Lógica movida para o backend) ---
+    // --- CONSTRUÇÃO DO PROMPT ---
     const contextPrompt = contextInfo ? `
       CONTEXTO ESTRUTURAL OBRIGATÓRIO (SEGUIR RIGOROSAMENTE):
       O usuário navegou e selecionou especificamente as seguintes categorias na plataforma:
@@ -78,7 +80,7 @@ export default async function handler(req, res) {
 
     const parts = [{ text: promptText }];
 
-    // Adiciona anexos se houver (já devem vir em formato base64 inlineData do frontend)
+    // Adiciona anexos se houver
     if (attachments && Array.isArray(attachments)) {
         attachments.forEach(att => {
             if (att.inlineData) {

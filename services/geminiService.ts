@@ -1,5 +1,4 @@
 
-import { GoogleGenAI } from "@google/genai";
 import { Attachment } from "../types";
 
 export const generateNotificationText = async (
@@ -11,68 +10,14 @@ export const generateNotificationText = async (
   contextInfo?: { area: string; species: string; areaDescription: string }
 ): Promise<string> => {
   try {
-    // Tenta obter a chave de várias fontes possíveis para garantir funcionamento em diferentes ambientes
-    let apiKey = '';
-    try {
-        // @ts-ignore
-        if (typeof process !== 'undefined' && process.env) apiKey = process.env.API_KEY || process.env.VITE_API_KEY || '';
-        // @ts-ignore
-        if (!apiKey && import.meta && import.meta.env) apiKey = import.meta.env.API_KEY || import.meta.env.VITE_API_KEY || '';
-    } catch (e) {
-        console.warn("Erro ao ler variáveis de ambiente:", e);
-    }
-
-    if (!apiKey) {
-        throw new Error("Chave de API (API_KEY) não configurada no sistema.");
-    }
-
-    const ai = new GoogleGenAI({ apiKey });
-
-    // Construção do Prompt Otimizado
-    const contextPrompt = contextInfo ? `
-      CONTEXTO ESTRUTURAL OBRIGATÓRIO:
-      1. ÁREA DO DIREITO: ${contextInfo.area} (${contextInfo.areaDescription})
-      2. ESPÉCIE: ${contextInfo.species}
-      
-      INSTRUÇÃO: O texto DEVE pertencer estritamente à área de "${contextInfo.area}". Use terminologia e leis específicas para "${contextInfo.species}".
-    ` : '';
-
-    const promptText = `
-      ATUAR COMO: Advogado Sênior Especialista em Direito Brasileiro.
-      TAREFA: Redigir uma Notificação Extrajudicial completa.
-      
-      ${contextPrompt}
-
-      DADOS:
-      - Destinatário: ${recipient}
-      - Assunto: ${subject}
-      - Tom: ${tone}
-      
-      FATOS RELATADOS:
-      ${details}
-      
-      ESTRUTURA (TEXTO PLANO - SEM MARKDOWN, SEM NEGRITO):
-      Use CAIXA ALTA para títulos.
-      
-      1. CABEÇALHO (Local e Data atual)
-      2. PREÂMBULO (Identificação COMPLETA das partes. Use os dados fornecidos: CPF, Endereço, etc.)
-      3. DOS FATOS (Narrativa detalhada)
-      4. DO DIREITO (Fundamentação jurídica, Artigos de Lei, Código Civil/Penal/CDC conforme a área)
-      5. DOS PEDIDOS (Exigências claras com prazo para cumprimento)
-      6. DAS CONSEQUÊNCIAS (Medidas judiciais caso não atendido)
-      7. FECHAMENTO (Assinatura)
-    `;
-
-    // Preparação das partes do conteúdo (Texto + Imagens)
-    const parts: any[] = [{ text: promptText }];
-
-    // Processamento de anexos para o modelo multimodal
+    // Prepara os anexos para envio ao backend (converte para base64 se necessário)
+    const processedAttachments = [];
     if (attachments && attachments.length > 0) {
         for (const att of attachments) {
             if (att.type === 'image' || att.type === 'document') { 
                  try {
                      const base64Data = await fileToBase64(att.file);
-                     parts.push({
+                     processedAttachments.push({
                          inlineData: {
                              mimeType: att.file.type,
                              data: base64Data
@@ -85,24 +30,39 @@ export const generateNotificationText = async (
         }
     }
 
-    // Chamada ao Modelo
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: { parts },
-      config: {
-        temperature: 0.4, 
-      }
+    // Chamada ao Backend (Serverless Function)
+    // Isso garante que a chave GOOGLE_GENERATIVE_AI_API_KEY seja lida do servidor
+    const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            recipient,
+            subject,
+            details,
+            tone,
+            attachments: processedAttachments,
+            contextInfo
+        })
     });
 
-    if (!response.text) {
+    if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || "Erro na comunicação com a IA.");
+    }
+
+    const data = await response.json();
+    
+    if (!data.text) {
         throw new Error("A IA retornou uma resposta vazia.");
     }
 
-    return response.text;
+    return data.text;
 
   } catch (error: any) {
-    console.error("Erro CRÍTICO na geração IA:", error);
-    throw new Error(`Falha ao gerar documento: ${error.message || 'Erro de conexão com a IA'}`);
+    console.error("Erro na geração IA:", error);
+    throw new Error(`Falha ao gerar documento: ${error.message || 'Erro desconhecido'}`);
   }
 };
 

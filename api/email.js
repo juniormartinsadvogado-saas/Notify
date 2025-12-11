@@ -1,3 +1,4 @@
+
 import sgMail from '@sendgrid/mail';
 
 export default async function handler(req, res) {
@@ -24,12 +25,15 @@ export default async function handler(req, res) {
   const { recipientEmail, recipientName, subject, pdfUrl } = req.body;
 
   // Verifica se a chave do SendGrid está configurada nas variáveis de ambiente da Vercel
-  if (!process.env.SENDGRID_EMAIL_API_KEY) {
+  // Aceita tanto ENDGRID quanto SENDGRID para compatibilidade
+  const apiKey = process.env.SENDGRID_EMAIL_API_KEY || process.env.ENDGRID_EMAIL_API_KEY;
+
+  if (!apiKey) {
     console.error("SENDGRID_EMAIL_API_KEY não encontrada.");
     return res.status(500).json({ error: 'Configuração de servidor incompleta.' });
   }
 
-  sgMail.setApiKey(process.env.SENDGRID_EMAIL_API_KEY);
+  sgMail.setApiKey(apiKey);
   
   // Define o remetente (deve ser um e-mail validado no SendGrid)
   const senderEmail = process.env.SENDGRID_FROM_EMAIL || 'notify@seuservico.com';

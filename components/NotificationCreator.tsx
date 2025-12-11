@@ -29,9 +29,10 @@ const SendIcon = ({size, className}: {size?:number, className?:string}) => (
     <svg xmlns="http://www.w3.org/2000/svg" width={size || 24} height={size || 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
 );
 
+// ATUALIZAÇÃO DOS NOMES DAS ETAPAS
 const STEPS = [
-  { id: 1, label: 'Área Jurídica', icon: Scale },
-  { id: 2, label: 'Fatos & Tipo', icon: FileText },
+  { id: 1, label: 'Áreas', icon: Scale },
+  { id: 2, label: 'Fatos', icon: FileText },
   { id: 3, label: 'Partes', icon: Users },
   { id: 4, label: 'Conciliação', icon: Video },
   { id: 5, label: 'Geração IA', icon: Wand2 },
@@ -230,6 +231,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const [error, setError] = useState('');
   const [notificationId, setNotificationId] = useState(`NOT-${Math.random().toString(36).substr(2, 9).toUpperCase()}`);
   
+  const [showAllAreas, setShowAllAreas] = useState(false);
+
   const [partiesStep, setPartiesStep] = useState<'role_selection' | 'forms'>('role_selection');
   const [role, setRole] = useState<'self' | 'representative' | null>(null);
 
@@ -807,6 +810,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       return null;
   };
 
+  // Cálculo das Áreas Visíveis (Step 1)
+  const visibleAreas = showAllAreas ? LAW_AREAS : LAW_AREAS.slice(0, 4);
+
   const renderStepContent = () => {
     switch(currentStep) {
         case 1:
@@ -816,18 +822,26 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                         <Scale size={24} className="mr-2 text-blue-600"/>
                         Escolha a Área do Direito
                     </h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 overflow-y-auto max-h-[450px] pb-8 scrollbar-thin px-2">
-                        {LAW_AREAS.map(area => (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pb-4 px-2">
+                        {visibleAreas.map(area => (
                             <div key={area.id} onClick={() => { setFormData(prev => ({ ...prev, areaId: area.id, species: '' })); }} className={`p-4 rounded-xl cursor-pointer border-2 transition-all flex flex-col items-center justify-center text-center gap-3 h-32 hover:scale-[1.03] ${formData.areaId === area.id ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-md ring-2 ring-blue-100' : 'border-slate-100 bg-white text-slate-500 hover:border-blue-200 hover:shadow-sm'}`}>
                                 <area.icon size={28} className={formData.areaId === area.id ? 'text-blue-600' : 'text-slate-400'} />
                                 <span className="text-xs font-bold leading-tight uppercase tracking-wide">{area.name}</span>
                             </div>
                         ))}
                     </div>
-                    {/* Botão Flutuante FIXO - Ajustado para não sumir */}
-                    <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 pointer-events-none text-slate-400 flex flex-col items-center z-20">
-                        <span className="text-[10px] uppercase font-bold bg-white/90 px-3 py-1 rounded-full mb-1 shadow-sm border border-slate-100 backdrop-blur-sm">Rolar para ver mais</span>
-                        <ChevronDown size={20} className="animate-bounce" />
+                    {/* Botão Ver Mais / Ver Menos */}
+                    <div className="flex justify-center mt-2">
+                        <button 
+                            onClick={() => setShowAllAreas(!showAllAreas)}
+                            className="flex items-center text-xs font-bold text-slate-500 hover:text-blue-600 bg-slate-100 hover:bg-blue-50 px-4 py-2 rounded-full transition-colors"
+                        >
+                            {showAllAreas ? (
+                                <>Ver Menos <ChevronLeft className="ml-1 rotate-90" size={14} /></>
+                            ) : (
+                                <>Ver Mais Áreas <ChevronDown className="ml-1" size={14} /></>
+                            )}
+                        </button>
                     </div>
                 </div>
             );
