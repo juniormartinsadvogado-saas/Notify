@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Mail, Shield, Bell, Moon, Database, Save, CheckCircle, Lock, Phone, FileText, Camera, Loader2, Trash2, AlertTriangle, X, Palette, Key, LogOut, Info } from 'lucide-react';
 import { getUserProfile, updateUserProfile, uploadUserPhoto, deleteFullUserAccount, UserData } from '../services/userService';
@@ -70,15 +71,15 @@ const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange,
     const loadProfile = async () => {
         if(user) {
             const profile = await getUserProfile(user.uid);
-            // Preenchimento com dados simulados se estiver vazio (Modo Demo)
-            const demoData = {
-                name: profile?.name || user.displayName || 'Usuário Demo',
+            
+            const profileData = {
+                name: profile?.name || user.displayName || '',
                 email: profile?.email || user.email || '',
                 cpf: profile?.cpf || '',
                 phone: profile?.phone || ''
             };
 
-            setFormData(demoData);
+            setFormData(profileData);
             
             if (profile?.photoUrl) {
                 setCurrentPhoto(profile.photoUrl);
@@ -247,17 +248,6 @@ const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange,
         {subView === 'account' && (
             <div className="lg:col-span-2 space-y-8 animate-slide-in-down">
                 
-                {/* BANNER MODO SIMULADO */}
-                <div className="bg-amber-50 border-l-4 border-amber-400 p-4 rounded-r-xl shadow-sm flex items-start">
-                    <Info className="text-amber-500 mr-3 mt-0.5 shrink-0" size={20} />
-                    <div>
-                        <h4 className="font-bold text-amber-800 text-sm">Ambiente de Simulação (Modo Demo)</h4>
-                        <p className="text-xs text-amber-700 mt-1">
-                            Você está visualizando dados fictícios para fins de demonstração. As alterações feitas aqui serão salvas apenas localmente neste navegador.
-                        </p>
-                    </div>
-                </div>
-
                 {/* MENSAGEM DE FEEDBACK GERAL */}
                 {feedbackMessage.text && (
                     <div className={`p-4 rounded-xl flex items-center shadow-sm animate-fade-in ${feedbackMessage.type === 'error' ? 'bg-red-50 text-red-600 border border-red-200' : 'bg-green-50 text-green-600 border border-green-200'}`}>

@@ -8,9 +8,8 @@ import {
   ref, uploadBytes, getDownloadURL, deleteObject 
 } from 'firebase/storage';
 import { NotificationItem, EvidenceItem, NotificationStatus } from '../types';
-import { getUserProfile } from './userService'; // Necessário para montar dados expostos
+import { getUserProfile } from './userService';
 
-// Alterado para 'notificacoes' conforme especificação
 const NOTIFICATIONS_COLLECTION = 'notificacoes';
 
 // --- HELPERS ---
@@ -25,8 +24,9 @@ const getMediaType = (mimeType: string): 'fotos' | 'videos' | 'documentos' => {
 
 export const uploadSignedPdf = async (notificationId: string, pdfBlob: Blob): Promise<string> => {
     try {
-        // Caminho Especificado: /notificacoes_pdfs/$ID_notificacao.pdf
-        const storagePath = `notificacoes_pdfs/${notificationId}.pdf`;
+        // MUDANÇA: O PDF agora fica dentro da pasta da notificação para herdar as regras de segurança da pasta
+        // Caminho seguro: notificacoes/{id}/documento_assinado.pdf
+        const storagePath = `notificacoes/${notificationId}/documento_assinado.pdf`;
         const storageRef = ref(storage, storagePath);
 
         await uploadBytes(storageRef, pdfBlob);
@@ -78,10 +78,8 @@ export const deleteEvidence = async (storagePath: string) => {
 
 export const saveNotification = async (notification: NotificationItem) => {
     try {
-        // Recupera dados atuais do notificante para criar o snapshot de 'dados expostos'
         const notificanteProfile = await getUserProfile(notification.notificante_uid);
         
-        // Garante que temos os campos obrigatórios conforme regras
         const notificationData: NotificationItem = {
             ...notification,
             notificante_dados_expostos: {
@@ -91,7 +89,6 @@ export const saveNotification = async (notification: NotificationItem) => {
                 foto_url: notificanteProfile?.photoUrl || notification.notificante_dados_expostos.foto_url
             },
             notificante_cpf: notificanteProfile?.cpf || notification.notificante_cpf,
-            // Garante que o CPF do destinatário esteja no array para permitir leitura pelas regras de segurança
             notificados_cpfs: notification.notificados_cpfs
         };
 
@@ -113,8 +110,8 @@ export const deleteNotification = async (notification: NotificationItem) => {
         if (notification.evidences && notification.evidences.length > 0) {
             await Promise.all(notification.evidences.map(ev => deleteEvidence(ev.storagePath)));
         }
-        // Tenta apagar PDF principal
-        const pdfRef = ref(storage, `notificacoes_pdfs/${notification.id}.pdf`);
+        // Deleta o PDF principal no novo caminho
+        const pdfRef = ref(storage, `notificacoes/${notification.id}/documento_assinado.pdf`);
         await deleteObject(pdfRef).catch(() => {});
 
         await deleteDoc(doc(db, NOTIFICATIONS_COLLECTION, notification.id));
@@ -124,11 +121,10 @@ export const deleteNotification = async (notification: NotificationItem) => {
     }
 };
 
-// --- LEITURA (Queries Ajustadas) ---
+// --- LEITURA ---
 
 export const getNotificationsBySender = async (senderUid: string): Promise<NotificationItem[]> => {
     try {
-        // Query pelo campo 'notificante_uid' conforme schema novo
         const q = query(
             collection(db, NOTIFICATIONS_COLLECTION),
             where("notificante_uid", "==", senderUid)
@@ -151,7 +147,6 @@ export const getNotificationsByRecipientCpf = async (cpf: string): Promise<Notif
     try {
         const cleanCpf = cpf.replace(/\D/g, '');
         
-        // Query de array-contains no campo 'notificados_cpfs'
         const q = query(
             collection(db, NOTIFICATIONS_COLLECTION),
             where("notificados_cpfs", "array-contains", cleanCpf)
@@ -161,7 +156,6 @@ export const getNotificationsByRecipientCpf = async (cpf: string): Promise<Notif
         const items: NotificationItem[] = [];
         querySnapshot.forEach((doc) => {
             const data = doc.data() as NotificationItem;
-            // Filtra rascunhos para o destinatário
             if (data.status !== NotificationStatus.DRAFT && data.status !== NotificationStatus.PENDING_PAYMENT) {
                 items.push(data);
             }
@@ -174,22 +168,12 @@ export const getNotificationsByRecipientCpf = async (cpf: string): Promise<Notif
     }
 };
 
-// --- FASE 3: ATUALIZAÇÃO PÓS-PAGAMENTO ---
-// Nota: Em produção, isso seria feito via Cloud Function (Admin SDK), 
-// pois as regras de segurança bloqueiam 'update' do cliente.
-// Para simulação local funcionar sem backend real, mantemos aqui, 
-// mas sabendo que as regras 'allow update: if false' quebrariam isso se ativadas estritamente agora.
-// Para este demo funcionar, você precisaria temporariamente permitir update nas regras OU usar o backend.
 export const confirmPayment = async (notificationId: string) => {
-    // ATENÇÃO: Se as regras 'allow update: if false' estiverem ativas, isso falhará no cliente.
-    // Solução Mock: Chamada API Backend que usa Admin SDK.
     try {
         const docRef = doc(db, NOTIFICATIONS_COLLECTION, notificationId);
-        // Tenta update direto (pode falhar com regras estritas)
         await setDoc(docRef, { status: NotificationStatus.SENT }, { merge: true });
     } catch (error) {
-        console.error("Erro ao confirmar pagamento (Client-Side Blocked?):", error);
-        // Em um cenário real, aqui chamaríamos fetch('/api/confirm-payment')
+        console.error("Erro ao confirmar pagamento:", error);
         throw error;
     }
 };

@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
 import { ViewState } from '../types';
-import { LayoutDashboard, FilePlus, Monitor, Video, CreditCard, LogOut, Settings, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CheckCircle, Clock, AlertCircle, Calendar, XCircle, FileText, Send, User, Palette, Crown, Zap, History } from 'lucide-react';
+import { LayoutDashboard, FilePlus, Monitor, Video, CreditCard, LogOut, Settings, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, CheckCircle, Clock, AlertCircle, Calendar, XCircle, FileText, Send, User, Palette, Crown, Zap, History, MessageCircle } from 'lucide-react';
 
 interface SidebarProps {
   currentView: ViewState;
@@ -130,10 +131,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
         </span>
       </div>
 
-      {/* Featured Buttons - Simplified Version (Painel Removido) */}
-      <div className={`px-4 mb-6 space-y-3 transition-opacity duration-200 ${isOpen ? 'opacity-100' : 'opacity-100 px-3'}`}>
-          
-          {/* NOVA NOTIFICAÇÃO */}
+      {/* Featured Buttons */}
+      <div className={`px-4 mb-6 space-y-3 shrink-0 transition-opacity duration-200 ${isOpen ? 'opacity-100' : 'opacity-100 px-3'}`}>
           <button
             onClick={() => {
                 onChangeView(ViewState.CREATE_NOTIFICATION);
@@ -155,7 +154,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
           </button>
       </div>
 
-      {/* Navigation */}
+      {/* Navigation - Flex 1 para ocupar espaço e rolar se necessário */}
       <nav className="flex-1 px-4 space-y-2 overflow-y-auto overflow-x-hidden scrollbar-none py-4">
         {isOpen && (
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-2 mb-2 animate-fade-in">
@@ -233,18 +232,30 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
         })}
       </nav>
 
-      {/* Footer User/Logout */}
-      <div className="p-4 shrink-0 border-t border-slate-800/50">
-         <div className={`rounded-xl transition-colors ${isOpen ? '' : 'flex justify-center p-2'}`}>
-            <button 
+      {/* Footer Fixed - Suporte & Logout */}
+      <div className="p-4 shrink-0 border-t border-slate-800/50 flex flex-col gap-2 bg-[#0F172A] z-10">
+         
+         {/* Botão WhatsApp */}
+         <a 
+            href="https://wa.me/558391559429" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            title={!isOpen ? "Suporte WhatsApp" : ""}
+            className={`w-full flex items-center ${isOpen ? 'space-x-3 px-4 py-3' : 'justify-center p-2'} text-slate-400 hover:text-white hover:bg-emerald-500/10 rounded-xl group transition-all duration-200`}
+         >
+            <MessageCircle size={20} className="group-hover:text-emerald-400 transition-colors" />
+            <span className={`whitespace-nowrap font-bold text-sm transition-all duration-300 group-hover:text-emerald-400 ${isOpen ? 'opacity-100' : 'opacity-0 w-0 hidden'}`}>Suporte WhatsApp</span>
+         </a>
+
+         {/* Botão Sair */}
+         <button 
             onClick={onLogout}
             title={!isOpen ? "Sair da conta" : ''}
             className={`w-full flex items-center ${isOpen ? 'space-x-3 px-4 py-3' : 'justify-center p-2'} text-slate-400 hover:text-white hover:bg-red-500/10 rounded-xl group transition-all duration-200`}
-            >
+         >
             <LogOut size={20} className="group-hover:text-red-400 transition-colors" />
             <span className={`whitespace-nowrap font-bold text-sm transition-all duration-300 group-hover:text-red-400 ${isOpen ? 'opacity-100' : 'opacity-0 w-0 hidden'}`}>Sair da Conta</span>
-            </button>
-         </div>
+         </button>
       </div>
     </div>
   );

@@ -1,78 +1,67 @@
 
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     // --- FUNÇÕES AUXILIARES ---
-    
+
+    // Verifica se o usuário está logado
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    // Verifica se o UID do usuário bate com o solicitado
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
     }
 
-    // Busca o CPF do usuário que está tentando ler o documento
+    // Busca o CPF do usuário logado na coleção 'usuarios'
+    // Isso é usado para saber se o usuário pode ler uma notificação recebida
     function getUserCpf() {
-      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.cpf;
+       return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.cpf;
     }
 
-    // --- COLEÇÃO USUARIOS ---
-    // Dados Pessoais: Apenas o dono lê/escreve.
+    // --- REGRAS DAS COLEÇÕES ---
+
+    // 1. USUÁRIOS
     match /usuarios/{userId} {
       allow read, write: if isOwner(userId);
     }
 
-    // --- COLEÇÃO NOTIFICACOES ---
+    // 2. NOTIFICAÇÕES
     match /notificacoes/{notificationId} {
+      // CRIAÇÃO: Permitido se o campo 'notificante_uid' for igual ao ID do usuário
+      allow create: if isAuthenticated() && request.resource.data.notificante_uid == request.auth.uid;
       
-      // CRIAÇÃO: O usuário deve ser o notificante declarado
-      allow create: if isAuthenticated() 
-                    && request.resource.data.notificante_uid == request.auth.uid;
+      // ATUALIZAÇÃO/DELEÇÃO: Apenas o dono (quem criou) pode alterar ou apagar
+      allow update, delete: if isAuthenticated() && resource.data.notificante_uid == request.auth.uid;
       
-      // ATUALIZAÇÃO: Permitida apenas ao Notificante (ex: confirmar pagamento, cancelar)
-      // Bloqueia alteração de campos críticos como 'notificacoes_cpfs' após criação para integridade
-      allow update: if isAuthenticated() 
-                    && resource.data.notificante_uid == request.auth.uid
-                    && request.resource.data.notificante_uid == resource.data.notificante_uid; // Não pode mudar o dono
-      
-      // DELEÇÃO: Apenas o Notificante (se ainda for rascunho ou pendente, idealmente)
-      allow delete: if isAuthenticated() && resource.data.notificante_uid == request.auth.uid;
-
       // LEITURA (Lógica Híbrida):
-      // 1. O usuário é o Notificante (Dono).
+      // Permite ler se:
+      // A) O usuário é o dono (Remetente)
       // OU
-      // 2. O CPF do usuário logado está na lista de destinatários.
+      // B) O CPF do usuário está na lista de destinatários (notificados_cpfs)
       allow read: if isAuthenticated() && (
         resource.data.notificante_uid == request.auth.uid ||
         (getUserCpf() in resource.data.notificados_cpfs)
       );
     }
 
-    // --- REUNIÕES ---
+    // 3. REUNIÕES
     match /reunioes/{meetingId} {
-      // Host tem controle total
-      allow create: if isAuthenticated() && request.resource.data.hostUid == request.auth.uid;
-      allow update, delete: if isAuthenticated() && resource.data.hostUid == request.auth.uid;
-      
-      // Leitura: Host ou Convidado (via match de email ou CPF se implementado no doc da reunião)
-      // Simplificado aqui para Host + Autenticados (Lobby público se tiver o ID)
-      allow read: if isAuthenticated(); 
+      // Leitura e escrita permitida para usuários autenticados
+      allow read, write: if isAuthenticated();
     }
 
-    // --- TRANSAÇÕES FINANCEIRAS ---
+    // 4. TRANSAÇÕES
     match /transactions/{transactionId} {
-      allow read, write: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid
-      );
+      allow read, write: if isAuthenticated();
     }
 
-    // --- MEUS ARQUIVOS (File Manager) ---
+    // 5. ARQUIVOS PESSOAIS (File Manager)
     match /files/{fileId} {
-      allow read, write: if isAuthenticated() && (
-        resource.data.uid == request.auth.uid || request.resource.data.uid == request.auth.uid
-      );
+      allow read, write: if isAuthenticated();
     }
   }
 }

@@ -1,48 +1,48 @@
 
 rules_version = '2';
+
 service firebase.storage {
   match /b/{bucket}/o {
-    
+
+    // --- FUNÇÕES AUXILIARES ---
+
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // --- FOTOS DE PERFIL ---
-    // Caminho: fotos_perfil/$UID
-    match /fotos_perfil/{userId} {
-      allow read: if isAuthenticated(); // Leitura pública para avatares no app
-      allow write: if isAuthenticated() && request.auth.uid == userId; // Apenas dono altera
+    // Helper para buscar a notificação no Firestore e verificar permissões
+    function getNotification(id) {
+      return firestore.get(/databases/(default)/documents/notificacoes/$(id));
     }
-
-    // --- ARQUIVOS DE NOTIFICAÇÃO (PDFs e Evidências) ---
-    // A segurança aqui depende dos metadados salvos no Firestore
     
-    // Regra Genérica para a pasta da notificação e subpastas
-    match /notificacoes/{notificationId}/{allPaths=**} {
-      allow write: if isAuthenticated(); // Criação permitida (validada via UI/Backend logic)
-      
-      // LEITURA SEGURA:
-      // O Storage vai até o Firestore, pega o documento da notificação e checa:
-      // 1. Sou o dono (notificante_uid)?
-      // 2. Sou um dos notificados (meu CPF está na lista)?
-      allow read: if isAuthenticated() && (
-        firestore.get(/databases/(default)/documents/notificacoes/$(notificationId)).data.notificante_uid == request.auth.uid ||
-        firestore.get(/databases/(default)/documents/usuarios/$(request.auth.uid)).data.cpf in firestore.get(/databases/(default)/documents/notificacoes/$(notificationId)).data.notificados_cpfs
-      );
+    // Helper para buscar o CPF do usuário logado
+    function getUserCpf() {
+       return firestore.get(/databases/(default)/documents/usuarios/$(request.auth.uid)).data.cpf;
     }
 
-    // Caso específico para o PDF raiz (se salvo fora da pasta, ajuste conforme path do service)
-    // No service atual: `notificacoes_pdfs/{notificationId}.pdf`
-    match /notificacoes_pdfs/{notificationId}.pdf {
+    // --- REGRAS ---
+
+    // 1. FOTO DE PERFIL
+    match /fotos_perfil/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // 2. PASTA DA NOTIFICAÇÃO (PDF Assinado e Evidências)
+    // A regra {allPaths=**} aplica a segurança para QUALQUER arquivo dentro desta pasta
+    match /notificacoes/{notificationId}/{allPaths=**} {
+      // Upload: Permitido para usuários autenticados
       allow write: if isAuthenticated();
       
+      // Leitura Segura:
+      // Verifica no Firestore se o usuário é o DONO ou o DESTINATÁRIO (via CPF)
       allow read: if isAuthenticated() && (
-        firestore.get(/databases/(default)/documents/notificacoes/$(notificationId)).data.notificante_uid == request.auth.uid ||
-        firestore.get(/databases/(default)/documents/usuarios/$(request.auth.uid)).data.cpf in firestore.get(/databases/(default)/documents/notificacoes/$(notificationId)).data.notificados_cpfs
+        getNotification(notificationId).data.notificante_uid == request.auth.uid ||
+        getUserCpf() in getNotification(notificationId).data.notificados_cpfs
       );
     }
-
-    // --- MEUS ARQUIVOS PESSOAIS ---
+    
+    // 3. ARQUIVOS PESSOAIS (File Manager)
     match /user_files/{userId}/{allPaths=**} {
       allow read, write: if isAuthenticated() && request.auth.uid == userId;
     }

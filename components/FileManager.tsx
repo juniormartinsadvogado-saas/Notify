@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Upload, Trash2, FileText, Download, Loader2, BrainCircuit, MessageSquareText } from 'lucide-react';
 import { uploadUserFile, getUserFiles, deleteUserFile, updateFileMetadata } from '../services/userService';
@@ -124,7 +125,7 @@ const FileManager: React.FC = () => {
              <FileText className="mr-2 text-blue-600" />
              Gestão de Arquivos
           </h2>
-          <p className="text-slate-500">Armazenamento local (Demo Mode).</p>
+          <p className="text-slate-500">Armazenamento Seguro na Nuvem.</p>
         </div>
         
         <div className="flex items-center gap-3">
