@@ -24,7 +24,6 @@ export default async function handler(req, res) {
     const { recipient, subject, details, tone, attachments, contextInfo } = req.body;
 
     // Busca a chave de API nas variáveis de ambiente do servidor (Vercel)
-    // Prioriza GOOGLE_GENERATIVE_AI_API_KEY conforme solicitado
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.VITE_GOOGLE_GENERATIVE_AI_API_KEY;
 
     if (!apiKey) {
@@ -41,6 +40,8 @@ export default async function handler(req, res) {
       1. ÁREA DO DIREITO: ${contextInfo.area}
          - Definição da Área: ${contextInfo.areaDescription}
       2. ESPÉCIE DOCUMENTAL: ${contextInfo.species}
+      
+      DATA DE EMISSÃO: ${contextInfo.currentDate} (Use esta data no cabeçalho ou fechamento se necessário).
       
       INSTRUÇÃO DE ALINHAMENTO:
       O texto gerado DEVE pertencer estritamente à área de "${contextInfo.area}". 
@@ -69,7 +70,7 @@ export default async function handler(req, res) {
       ESTRUTURA DO DOCUMENTO (TEXTO PLANO OBRIGATÓRIO - SEM MARKDOWN):
       Não use negrito (**), itálico (*) ou headers (#). Use CAIXA ALTA para títulos se necessário.
       
-      1. CABEÇALHO (Local e Data atual)
+      1. CABEÇALHO (Local e Data atual: ${contextInfo?.currentDate || 'Data de Hoje'})
       2. PREÂMBULO (Identificação COMPLETA das partes usando os dados fornecidos. Inclua endereço, CPF/CNPJ e contatos EXATAMENTE como fornecidos.)
       3. DOS FATOS (Narrativa detalhada e técnica)
       4. DO DIREITO (Fundamentação jurídica citando Artigos de Leis, Códigos ou Súmulas aplicáveis)

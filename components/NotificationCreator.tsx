@@ -584,8 +584,11 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               await createMeeting(newMeeting);
           }
 
+          // CRITICAL: Set state BEFORE changing step to prevent "loading failure"
           setCreatedData({ notif: finalNotification, meet: newMeeting, trans: newTransaction });
-          setCurrentStep(7); // Vai para o passo de Envio/Pagamento
+          
+          // Small delay to ensure state propagation
+          setTimeout(() => setCurrentStep(7), 100);
 
       } catch (e: any) {
           console.error(e);
@@ -597,34 +600,65 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
   const generateAndUploadPdf = async (docHash: string): Promise<string> => {
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pageWidth = doc.internal.pageSize.width;
+      const pageHeight = doc.internal.pageSize.height;
+      const margin = 20;
+      const maxLineWidth = pageWidth - (margin * 2);
+      
+      // DATA COMPLETA NO TOPO (EX: 25 de Outubro de 2023)
+      const today = new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+      
       doc.setFont("times", "normal");
-      doc.setFontSize(12);
+      doc.setFontSize(10);
+      doc.text(`Brasil, ${today}`, pageWidth - margin, 15, { align: "right" });
+
       doc.setFont("helvetica", "bold");
       doc.setFontSize(16);
-      doc.text("NOTIFICAÇÃO EXTRAJUDICIAL", 105, 20, { align: "center" });
+      doc.text("NOTIFICAÇÃO EXTRAJUDICIAL", pageWidth / 2, 25, { align: "center" });
+      
       doc.setFontSize(10);
       doc.setTextColor(100);
-      doc.text(`ID DO DOCUMENTO: ${docHash}`, 105, 28, { align: "center" });
-      doc.text(`Data de Emissão: ${new Date().toLocaleDateString()}`, 105, 33, { align: "center" });
+      doc.text(`ID DO DOCUMENTO: ${docHash}`, pageWidth / 2, 32, { align: "center" });
       doc.setTextColor(0);
+      
       doc.setFont("times", "normal");
       doc.setFontSize(12);
       
-      const splitText = doc.splitTextToSize(formData.generatedContent, 170); 
-      doc.text(splitText, 20, 50);
+      const splitText = doc.splitTextToSize(formData.generatedContent, maxLineWidth); 
+      
+      let cursorY = 45;
+      const lineHeight = 6;
 
+      // PAGINAÇÃO INTELIGENTE
+      splitText.forEach((line: string) => {
+          if (cursorY > pageHeight - margin - 30) { // -30 para deixar espaço para assinatura se for a última
+              doc.addPage();
+              cursorY = 20; // Margem superior na nova página
+          }
+          doc.text(line, margin, cursorY);
+          cursorY += lineHeight;
+      });
+
+      // ASSINATURA
       if (signatureData) {
-          let yPos = 50 + (splitText.length * 6) + 20; 
-          if (yPos > 250) { doc.addPage(); yPos = 40; }
-          doc.addImage(signatureData, 'PNG', 20, yPos, 60, 30);
+          // Verifica se cabe na página atual
+          if (cursorY + 60 > pageHeight - margin) {
+              doc.addPage();
+              cursorY = 40;
+          } else {
+              cursorY += 20; // Espaço antes da assinatura
+          }
+
+          doc.addImage(signatureData, 'PNG', margin, cursorY, 60, 30);
+          
           doc.setFontSize(10);
-          doc.text("__________________________________________", 20, yPos + 35);
+          doc.text("__________________________________________", margin, cursorY + 35);
           doc.setFont("helvetica", "bold");
-          doc.text(formData.sender.name.toUpperCase(), 20, yPos + 40);
+          doc.text(formData.sender.name.toUpperCase(), margin, cursorY + 40);
           doc.setFont("helvetica", "normal");
-          doc.text(`CPF: ${formData.sender.cpfCnpj}`, 20, yPos + 45);
-          doc.text(`Assinado digitalmente via Plataforma Notify`, 20, yPos + 50);
-          doc.text(`Hash de Verificação: ${docHash}`, 20, yPos + 55);
+          doc.text(`CPF: ${formData.sender.cpfCnpj}`, margin, cursorY + 45);
+          doc.text(`Assinado digitalmente via Plataforma Notify`, margin, cursorY + 50);
+          doc.text(`Hash de Verificação: ${docHash}`, margin, cursorY + 55);
       }
 
       const pdfBlob = doc.output('blob');
@@ -689,6 +723,16 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   };
 
   const renderPaymentStep = () => {
+      // SAFETY CHECK: Ensure data exists before rendering
+      if (!createdData.notif) {
+          return (
+              <div className="flex flex-col items-center justify-center h-64">
+                  <Loader2 className="animate-spin text-slate-400 mb-4" size={32} />
+                  <p className="text-slate-500 text-sm">Finalizando documento e preparando envio...</p>
+              </div>
+          );
+      }
+
       const hasCredits = subscriptionData?.active && (subscriptionData.creditsUsed < subscriptionData.creditsTotal);
       
       if (paymentStage === 'selection') return (

@@ -30,8 +30,10 @@ export const generateNotificationText = async (
         }
     }
 
+    // DATA ATUAL PARA CONTEXTO
+    const currentDate = new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
+
     // Chamada ao Backend (Serverless Function)
-    // Isso garante que a chave GOOGLE_GENERATIVE_AI_API_KEY seja lida do servidor
     const response = await fetch('/api/generate', {
         method: 'POST',
         headers: {
@@ -43,7 +45,7 @@ export const generateNotificationText = async (
             details,
             tone,
             attachments: processedAttachments,
-            contextInfo
+            contextInfo: { ...contextInfo, currentDate } // Passa a data atual
         })
     });
 
