@@ -5,7 +5,7 @@ import { getNotificationsBySender, getNotificationsByRecipientCpf, deleteNotific
 import { restoreLatestCanceledMeeting } from '../services/meetingService';
 import { dispatchCommunications } from '../services/communicationService'; 
 import { getUserProfile } from '../services/userService';
-import { Send, RefreshCw, ChevronDown, ChevronUp, Package, Mail, FileText, CreditCard, Trash2, User, CheckCircle2, Circle, Clock, FileEdit, Archive, Inbox, Loader2, Zap } from 'lucide-react';
+import { Send, RefreshCw, ChevronDown, ChevronUp, Package, Mail, FileText, CreditCard, Trash2, User, CheckCircle2, Circle, Clock, FileEdit, Archive, Inbox, Loader2, Zap, MapPin } from 'lucide-react';
 
 interface MonitoringProps {
   notifications: NotificationItem[];
@@ -380,7 +380,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                                         <DeliveryFlow status={notif.status} />
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div className="grid grid-cols-2 gap-4 text-sm mb-4">
                                         <div>
                                             <p className="text-slate-400 text-xs">Protocolo</p>
                                             <p className="font-mono text-slate-700 font-bold">{notif.id}</p>
@@ -390,6 +390,34 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                                             <p className="text-slate-700 font-medium">{notif.species}</p>
                                         </div>
                                     </div>
+                                    
+                                    {/* DADOS DO DESTINATÁRIO - AGORA VISÍVEIS SE FOR ENVIADO */}
+                                    {activeTab === 'sent' && (
+                                        <div className="bg-white p-4 rounded-xl border border-slate-200 mt-4 shadow-sm">
+                                            <h6 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center"><User size={12} className="mr-1"/> Dados do Destinatário</h6>
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between border-b border-slate-50 pb-2">
+                                                    <span className="text-xs text-slate-400">Nome</span>
+                                                    <span className="text-xs font-medium text-slate-700">{notif.recipientName}</span>
+                                                </div>
+                                                <div className="flex justify-between border-b border-slate-50 pb-2">
+                                                    <span className="text-xs text-slate-400">Documento (CPF/CNPJ)</span>
+                                                    <span className="text-xs font-medium text-slate-700">{notif.recipientDocument || 'Não registrado'}</span>
+                                                </div>
+                                                <div className="flex justify-between border-b border-slate-50 pb-2">
+                                                    <span className="text-xs text-slate-400">Telefone</span>
+                                                    <span className="text-xs font-medium text-slate-700">{notif.recipientPhone || '-'}</span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-xs text-slate-400 block mb-1">Endereço</span>
+                                                    <div className="text-xs font-medium text-slate-700 bg-slate-50 p-2 rounded flex items-start">
+                                                        <MapPin size={12} className="mr-1 mt-0.5 shrink-0 text-slate-400" />
+                                                        {notif.recipientAddress || 'Endereço não registrado'}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                     
                                     {activeTab === 'received' && senderProfile && (
                                         <div className="bg-white p-4 rounded-xl border border-blue-100 mt-6 shadow-sm">

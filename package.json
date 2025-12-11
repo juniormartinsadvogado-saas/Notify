@@ -18,7 +18,8 @@
     "@stripe/stripe-js": "^8.5.3",
     "jspdf": "^2.5.1",
     "@sendgrid/mail": "^8.1.6",
-    "stripe": "^20.0.0"
+    "stripe": "^20.0.0",
+    "firebase-admin": "^13.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

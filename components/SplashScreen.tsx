@@ -26,38 +26,39 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
   const subtitleLetters = "Inteligência Jurídica".split("");
 
   useEffect(() => {
-    // Simulação da Barra de Progresso (aprox 8s para chegar a 100%)
+    // Simulação da Barra de Progresso
     const progressInterval = setInterval(() => {
         setProgress(prev => {
             if (prev >= 100) {
                 clearInterval(progressInterval);
                 return 100;
             }
-            // Incremento calculado para durar o tempo total
-            return prev + (100 / 80); 
+            return prev + (100 / 60); 
         });
     }, 100);
 
     // Sequência de Textos de Carregamento
     setTimeout(() => setLoadingText('Carregando modelos de IA...'), 2000);
-    setTimeout(() => setLoadingText('Verificando protocolos de segurança...'), 4500);
-    setTimeout(() => setLoadingText('Sincronizando banco de dados...'), 6000);
+    setTimeout(() => setLoadingText('Verificando protocolos de segurança...'), 4000);
+    setTimeout(() => setLoadingText('Sincronizando banco de dados...'), 5500);
 
     // Sequência de Estágios Visuais
     // Estágio 1: Aparece o subtítulo
     const t1 = setTimeout(() => setStage(1), 2500); 
     
     // Estágio 2: Sistema Pronto
+    // Aparece aos 6.5s
     const t2 = setTimeout(() => {
         setStage(2);
         setLoadingText('Sistema Pronto');
-    }, 7000); 
+    }, 6500); 
     
     // Estágio 3: Flash de luz final
-    const t3 = setTimeout(() => setShowFlash(true), 7800); 
+    // Aparece aos 8.5s (Garantindo 2 segundos exatos de "Sistema Pronto")
+    const t3 = setTimeout(() => setShowFlash(true), 8500); 
     
-    // Finaliza (Total: 8.5 segundos)
-    const t4 = setTimeout(onFinish, 8500); 
+    // Finaliza
+    const t4 = setTimeout(onFinish, 9200); 
 
     return () => {
       clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); clearTimeout(t4);
@@ -181,4 +182,3 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ onFinish }) => {
 };
 
 export default SplashScreen;
-    

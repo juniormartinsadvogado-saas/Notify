@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import { Transaction } from '../types';
-import { CreditCard, Download, ArrowUpRight, ArrowDownLeft, Clock, RefreshCcw, FolderOpen, CheckCircle, AlertCircle, Filter, Zap } from 'lucide-react';
+import { Download, ArrowUpRight, ArrowDownLeft, Clock, RefreshCcw, FolderOpen, CheckCircle, Filter, Zap, MessageCircle } from 'lucide-react';
 
 interface BillingProps {
   transactions: Transaction[];
@@ -76,11 +77,20 @@ const Billing: React.FC<BillingProps> = ({ transactions, filterStatus, onRefund 
   };
 
   const handleSubscription = () => {
-      if(confirm('Deseja assinar o Plano Mensal Pro?\n\n- 10 Notificações/mês\n- Prioridade no suporte\n\nValor: R$ 259,97 / mês')) {
-          alert('Redirecionando para checkout seguro...');
-          // Mock de sucesso
-          alert('Assinatura realizada com sucesso! (Simulação)');
+      if(confirm('Deseja liberar o acesso ao Plano Pro?\n\n- 10 Notificações/mês\n- Prioridade no suporte\n\nValor: R$ 259,97 / mês')) {
+          // O fluxo real é tratado no componente pai ou redireciona para a view de assinatura
+          // Aqui é apenas um trigger visual se necessário, mas geralmente esse botão muda a view
+          // Para este exemplo, assumimos que a mudança de view é tratada externamente ou este botão apenas sinaliza a intenção.
+          // Como o App.tsx controla a view, este botão idealmente chamaria uma função para mudar a view, 
+          // mas como não temos essa prop aqui, vamos deixar o alerta informativo.
+          alert('Acesse o menu "Assinatura" para gerar o QR Code Pix.');
       }
+  };
+
+  const handleWhatsAppRefund = (transactionId: string) => {
+      const message = `Olá, gostaria de solicitar o reembolso da transação ${transactionId}.`;
+      const url = `https://wa.me/558391559429?text=${encodeURIComponent(message)}`;
+      window.open(url, '_blank');
   };
 
   // Helper para configuração visual baseada no filtro
@@ -191,24 +201,16 @@ const Billing: React.FC<BillingProps> = ({ transactions, filterStatus, onRefund 
                                 </button>
                             )}
                             
-                            {/* Botão de Reembolso apenas para PAGOS */}
-                            {t.status === 'Pago' && onRefund && (
-                                canRefund ? (
-                                    <button 
-                                        onClick={() => {
-                                            if(window.confirm("ATENÇÃO: Solicitar reembolso cancelará a notificação e a conciliação associadas a este pagamento. Deseja continuar?")) {
-                                                onRefund(t.id);
-                                            }
-                                        }}
-                                        className="text-xs font-bold text-red-500 hover:text-red-700 border border-red-200 hover:bg-red-50 px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
-                                    >
-                                        Reembolsar
-                                    </button>
-                                ) : (
-                                    <span className="text-[10px] text-slate-300 font-medium opacity-0 group-hover:opacity-100 transition-opacity cursor-not-allowed select-none">
-                                        Prazo Expirado
-                                    </span>
-                                )
+                            {/* Botão de Reembolso -> WhatsApp */}
+                            {t.status === 'Pago' && (
+                                <button 
+                                    onClick={() => handleWhatsAppRefund(t.id)}
+                                    className="flex items-center text-xs font-bold text-slate-500 hover:text-green-600 border border-slate-200 hover:border-green-300 hover:bg-green-50 px-3 py-1.5 rounded-lg transition-all group/btn"
+                                    title="Solicitar Reembolso via WhatsApp"
+                                >
+                                    <MessageCircle size={14} className="mr-1.5" />
+                                    Suporte / Reembolso
+                                </button>
                             )}
                         </td>
                         </tr>
@@ -262,13 +264,13 @@ const Billing: React.FC<BillingProps> = ({ transactions, filterStatus, onRefund 
              Gerencie faturas e histórico de pagamentos.
           </p>
         </div>
-        <button 
-            onClick={handleSubscription}
-            className="mt-4 md:mt-0 bg-gradient-to-r from-slate-900 to-slate-800 text-white px-5 py-2.5 rounded-lg flex items-center hover:shadow-lg hover:scale-105 transition-all shadow-sm font-bold text-sm"
+        {/* Botão apenas indicativo visual, a navegação ocorre pelo menu lateral 'Assinatura' */}
+        <div 
+            className="mt-4 md:mt-0 bg-slate-100 text-slate-600 px-5 py-2.5 rounded-lg flex items-center font-bold text-sm cursor-default border border-slate-200"
         >
-          <Zap className="mr-2 text-yellow-400" size={16} />
-          Assinatura Mensal (R$ 259,97)
-        </button>
+          <Zap className="mr-2 text-yellow-500" size={16} />
+          Upgrade Plano Pro (Pix)
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">

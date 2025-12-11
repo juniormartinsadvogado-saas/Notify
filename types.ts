@@ -35,10 +35,12 @@ export interface NotificationItem {
     // Dados dos Notificados (Quem recebe - Array para validação de segurança)
     notificados_cpfs: string[]; // Array de CPFs (apenas números)
     
-    // Dados Legados/Visuais para UI (Mantidos para compatibilidade visual do card)
+    // Dados do Destinatário (Para exibição e Envios)
     recipientName: string;
     recipientEmail: string;
     recipientPhone?: string;
+    recipientDocument?: string; // CPF ou CNPJ formatado
+    recipientAddress?: string; // Endereço completo formatado
 
     // Conteúdo
     area: string;

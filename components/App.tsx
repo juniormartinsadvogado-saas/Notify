@@ -10,13 +10,12 @@ import Billing from './components/Billing';
 import Settings from './components/Settings';
 import FileManager from './components/FileManager';
 import Login from './components/Login';
-import SubscriptionManager from './components/SubscriptionManager'; 
 import SplashScreen from './components/SplashScreen'; 
 import { ViewState, NotificationItem, NotificationStatus, Meeting, Transaction } from './types';
 import { Bell, Search, Menu, X, CheckCircle, FileText, ArrowLeft, LogOut, Loader2, Settings as SettingsIcon, AlertCircle } from 'lucide-react';
 import { ensureUserProfile, getUserProfile } from './services/userService';
 import { getNotificationsByRecipientCpf, confirmPayment, getNotificationsBySender } from './services/notificationService';
-import { saveTransaction, getUserTransactions, updateSubscriptionStatus } from './services/paymentService'; 
+import { saveTransaction, getUserTransactions } from './services/paymentService'; 
 import { dispatchCommunications } from './services/communicationService';
 import { auth } from './services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -44,18 +43,8 @@ const App: React.FC = () => {
   const [darkMode, setDarkMode] = useState(false);
   const [themeColor, setThemeColor] = useState('blue');
   
-  // Lista de Notificações do Sistema (Sino) - Mistura recebidos, pagamentos e alertas
   const [systemNotifications, setSystemNotifications] = useState<any[]>([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
-
-  const [subscriptionData, setSubscriptionData] = useState({
-      active: false,
-      planName: 'Plano Gratuito',
-      creditsTotal: 0,
-      creditsUsed: 0,
-      nextBillingDate: '',
-      invoices: [] as Transaction[]
-  });
 
   const [badgeCounts, setBadgeCounts] = useState<Record<string, number>>({
     [ViewState.RECEIVED_NOTIFICATIONS]: 0,
@@ -81,7 +70,7 @@ const App: React.FC = () => {
         if (currentUser) {
             if (currentUser.emailVerified) {
                 setUser(currentUser);
-                const profile = await ensureUserProfile(currentUser);
+                await ensureUserProfile(currentUser);
                 
                 // 1. CARREGAR DADOS BÁSICOS
                 const realTransactions = await getUserTransactions(currentUser.uid);
@@ -89,20 +78,7 @@ const App: React.FC = () => {
                 const sentNotifications = await getNotificationsBySender(currentUser.uid);
                 setNotifications(sentNotifications);
 
-                // 2. SINCRONIZAR ASSINATURA
-                if (profile) {
-                    setSubscriptionData(prev => ({
-                        ...prev,
-                        active: profile.subscriptionActive || false,
-                        planName: profile.subscriptionPlan || 'Plano Gratuito',
-                        creditsTotal: profile.creditsTotal || 0,
-                        creditsUsed: profile.creditsUsed || 0,
-                        nextBillingDate: profile.nextBillingDate || '',
-                        invoices: realTransactions.filter(t => t.description.includes('Assinatura'))
-                    }));
-                }
-
-                // 3. EXECUTAR MECANISMO DE RECUPERAÇÃO E POPULAR SINO
+                // 2. EXECUTAR MECANISMO DE RECUPERAÇÃO E POPULAR SINO
                 await runRecoveryAndAlerts(currentUser.uid, realTransactions, sentNotifications);
 
             } else {
@@ -128,12 +104,10 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // --- MECANISMO DE RECUPERAÇÃO E ALERTAS ---
   const runRecoveryAndAlerts = async (uid: string, txs: Transaction[], notifs: NotificationItem[]) => {
       const alerts: any[] = [];
       let recoveredCount = 0;
 
-      // A. Verificar Notificações Recebidas (Pelo CPF)
       try {
           const profile = await getUserProfile(uid);
           if (profile && profile.cpf) {
@@ -153,26 +127,21 @@ const App: React.FC = () => {
           }
       } catch (e) { console.error(e); }
 
-      // B. Mecanismo de Recuperação: Pagos mas Pendentes
-      // Procura Transações 'Pago' onde a Notificação correspondente ainda está 'PENDING_PAYMENT'
-      // Lógica de Matching: Valor igual e data da transação posterior à criação da notificação
       const pendingNotifs = notifs.filter(n => n.status === NotificationStatus.PENDING_PAYMENT);
       
       for (const n of pendingNotifs) {
           const matchTx = txs.find(t => 
               t.status === 'Pago' && 
-              Math.abs(t.amount - (n.paymentAmount || 0)) < 0.1 && // Margem de erro mínima
-              new Date(t.date).getTime() >= new Date(n.createdAt).getTime() - 60000 // Aceita pagamento 1 min antes (clock skew)
+              Math.abs(t.amount - (n.paymentAmount || 0)) < 0.1 && 
+              new Date(t.date).getTime() >= new Date(n.createdAt).getTime() - 60000 
           );
 
           if (matchTx) {
-              console.log(`[RECUPERAÇÃO] Notificação ${n.id} paga mas não enviada. Tentando agora...`);
               try {
-                  await confirmPayment(n.id); // Atualiza Banco
-                  await dispatchCommunications(n); // Dispara Zap/Email
+                  await confirmPayment(n.id);
+                  await dispatchCommunications(n);
                   recoveredCount++;
                   
-                  // Atualiza lista local
                   n.status = NotificationStatus.SENT; 
                   
                   alerts.push({
@@ -188,7 +157,6 @@ const App: React.FC = () => {
           }
       }
 
-      // C. Adicionar Transações Recentes ao Alerta
       txs.slice(0, 5).forEach(t => {
           alerts.push({
               id: t.id,
@@ -199,7 +167,6 @@ const App: React.FC = () => {
           });
       });
 
-      // Ordenar e Setar
       alerts.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       setSystemNotifications(alerts);
       
@@ -255,9 +222,7 @@ const App: React.FC = () => {
   };
 
   const handleSaveNotification = async (notification: NotificationItem, meeting?: Meeting, transaction?: Transaction) => {
-    // Atualização Otimista
     setNotifications(prev => {
-        // Se já existe (edicao/recuperacao), substitui. Se não, adiciona.
         const exists = prev.some(n => n.id === notification.id);
         if (exists) return prev.map(n => n.id === notification.id ? notification : n);
         return [notification, ...prev];
@@ -265,41 +230,19 @@ const App: React.FC = () => {
 
     if (meeting) setMeetings(prev => [meeting, ...prev]);
     
-    if (user) {
-        if (transaction) {
-            // Salva transação
-            await saveTransaction(user.uid, transaction);
-            setTransactions(prev => [transaction, ...prev]);
-            
-            // Adiciona notificação ao sino
-            setSystemNotifications(prev => [{
-                id: `pay-${transaction.id}`,
-                type: 'payment',
-                title: 'Pagamento Realizado',
-                desc: transaction.description,
-                date: new Date().toISOString()
-            }, ...prev]);
-
-            if (transaction.description.includes('Assinatura')) {
-                const nextMonth = new Date();
-                nextMonth.setMonth(nextMonth.getMonth() + 1);
-                const newSubState = {
-                    active: true, planName: 'Plano Pro', creditsTotal: 10, creditsUsed: 1, nextBillingDate: nextMonth.toLocaleDateString()
-                };
-                await updateSubscriptionStatus(user.uid, newSubState);
-                setSubscriptionData(prev => ({ ...prev, ...newSubState, invoices: [transaction, ...prev.invoices] }));
-            }
-        } 
-        else if (subscriptionData.active && subscriptionData.creditsUsed < subscriptionData.creditsTotal) {
-            const newUsed = subscriptionData.creditsUsed + 1;
-            await updateSubscriptionStatus(user.uid, { 
-                active: true, planName: subscriptionData.planName, creditsTotal: subscriptionData.creditsTotal, creditsUsed: newUsed, nextBillingDate: subscriptionData.nextBillingDate
-            });
-            setSubscriptionData(prev => ({ ...prev, creditsUsed: newUsed }));
-        }
+    if (user && transaction) {
+        await saveTransaction(user.uid, transaction);
+        setTransactions(prev => [transaction, ...prev]);
+        
+        setSystemNotifications(prev => [{
+            id: `pay-${transaction.id}`,
+            type: 'payment',
+            title: 'Pagamento Realizado',
+            desc: transaction.description,
+            date: new Date().toISOString()
+        }, ...prev]);
     }
 
-    // Se a notificação foi enviada agora, adiciona ao sino
     if (notification.status === NotificationStatus.SENT) {
         setSystemNotifications(prev => [{
             id: `sent-${notification.id}`,
@@ -314,23 +257,6 @@ const App: React.FC = () => {
     setBadgeCounts(prev => ({ ...prev, [ViewState.DASHBOARD]: (prev[ViewState.DASHBOARD] || 0) + 1 }));
   };
 
-  const handleToggleSubscription = async () => {
-      if (!user) return;
-      const willActivate = !subscriptionData.active;
-      const nextMonth = new Date();
-      nextMonth.setMonth(nextMonth.getMonth() + 1);
-      const newState = { active: willActivate, planName: willActivate ? 'Plano Pro' : 'Plano Gratuito', creditsTotal: willActivate ? 10 : 0, nextBillingDate: willActivate ? nextMonth.toLocaleDateString() : '' };
-      await updateSubscriptionStatus(user.uid, newState);
-      if (willActivate) {
-          const newInvoice: Transaction = { id: `SUB-${Date.now()}`, description: 'Assinatura Mensal Pro', amount: 259.97, date: new Date().toISOString(), status: 'Pago' };
-          await saveTransaction(user.uid, newInvoice);
-          setTransactions(prev => [newInvoice, ...prev]);
-      } else {
-          if (!window.confirm("Deseja realmente cancelar a assinatura?")) return; 
-      }
-      setSubscriptionData(prev => ({ ...prev, ...newState, creditsUsed: 0, invoices: willActivate ? [{ id: `SUB-${Date.now()}`, description: 'Assinatura Mensal Pro', amount: 259.97, date: new Date().toISOString(), status: 'Pago' }, ...prev.invoices] : prev.invoices }));
-  };
-
   const handleThemeChange = (isDark: boolean, color: string) => {
       setDarkMode(isDark);
       setThemeColor(color);
@@ -340,7 +266,7 @@ const App: React.FC = () => {
   const renderContent = () => {
     switch (currentView) {
       case ViewState.DASHBOARD: return <Dashboard notifications={notifications} meetings={meetings} transactions={transactions} onNavigate={setCurrentView} user={user} />;
-      case ViewState.CREATE_NOTIFICATION: return <NotificationCreator onSave={handleSaveNotification} user={user} onBack={() => setCurrentView(ViewState.DASHBOARD)} subscriptionData={subscriptionData} />;
+      case ViewState.CREATE_NOTIFICATION: return <NotificationCreator onSave={handleSaveNotification} user={user} onBack={() => setCurrentView(ViewState.DASHBOARD)} />;
       case ViewState.RECEIVED_NOTIFICATIONS: return <ReceivedNotifications />;
       case ViewState.MONITORING: return <Monitoring notifications={notifications} searchQuery={searchQuery} />;
       case ViewState.NOTIFICATIONS_CREATED: return <Monitoring notifications={notifications} filterStatus={FILTER_CREATED} searchQuery={searchQuery} />;
@@ -352,8 +278,6 @@ const App: React.FC = () => {
       case ViewState.PAYMENTS_CONFIRMED: return <Billing transactions={transactions} filterStatus={FILTER_PAYMENT_CONFIRMED} onRefund={handleRefund} />;
       case ViewState.PAYMENTS_PENDING: return <Billing transactions={transactions} filterStatus={FILTER_PAYMENT_PENDING} onRefund={handleRefund} />;
       case ViewState.PAYMENTS_REFUNDED: return <Billing transactions={transactions} filterStatus={FILTER_PAYMENT_REFUNDED} onRefund={handleRefund} />;
-      case ViewState.SUBSCRIPTION_PLAN: return <SubscriptionManager subView="plan" subscriptionData={subscriptionData} onToggleSubscription={handleToggleSubscription} />;
-      case ViewState.SUBSCRIPTION_HISTORY: return <SubscriptionManager subView="history" subscriptionData={subscriptionData} onToggleSubscription={handleToggleSubscription} />;
       case ViewState.MEETINGS: return <MeetingScheduler meetingsProp={meetings} />;
       case ViewState.BILLING: return <Billing transactions={transactions} onRefund={handleRefund} />;
       case ViewState.FILES: return <FileManager />;
@@ -385,7 +309,7 @@ const App: React.FC = () => {
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-10 pt-2 gap-4 relative">
           <div className="flex items-center w-full md:w-auto">
             <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className={`md:hidden mr-3 p-2 rounded-lg ${darkMode ? 'text-slate-300 hover:bg-slate-800' : 'text-slate-600 hover:bg-slate-200'}`}><Menu size={24} /></button>
-            {currentView !== ViewState.DASHBOARD && (<div><h1 className={`text-2xl md:text-3xl font-bold capitalize tracking-tight truncate max-w-[200px] md:max-w-none ${darkMode ? 'text-white' : 'text-slate-900'}`}>{currentView === ViewState.CREATE_NOTIFICATION ? 'Nova Notificação' : currentView.includes('settings') ? 'Configurações' : currentView === ViewState.RECEIVED_NOTIFICATIONS ? 'Caixa de Entrada' : currentView === ViewState.FILES ? 'Meus Arquivos' : currentView.includes('subscription') ? 'Assinatura' : currentView.replace(/_/g, ' ').replace('notifications', 'Notificações').replace('conciliations', 'Conciliações').replace('payments', 'Pagamentos')}</h1><p className={`text-xs md:text-sm mt-1 font-light truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Painel do usuário, <span className={`font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{user.displayName || 'Usuário'}</span>.</p></div>)}
+            {currentView !== ViewState.DASHBOARD && (<div><h1 className={`text-2xl md:text-3xl font-bold capitalize tracking-tight truncate max-w-[200px] md:max-w-none ${darkMode ? 'text-white' : 'text-slate-900'}`}>{currentView === ViewState.CREATE_NOTIFICATION ? 'Nova Notificação' : currentView.includes('settings') ? 'Configurações' : currentView === ViewState.RECEIVED_NOTIFICATIONS ? 'Caixa de Entrada' : currentView === ViewState.FILES ? 'Meus Arquivos' : currentView.replace(/_/g, ' ').replace('notifications', 'Notificações').replace('conciliations', 'Conciliações').replace('payments', 'Pagamentos')}</h1><p className={`text-xs md:text-sm mt-1 font-light truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Painel do usuário, <span className={`font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{user.displayName || 'Usuário'}</span>.</p></div>)}
           </div>
           <div className="flex items-center space-x-3 md:space-x-6 w-full md:w-auto justify-end">
              <div className={`hidden md:flex items-center px-4 py-2.5 rounded-full border shadow-sm transition-all ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} ${theme.ring}`}><Search size={18} className={darkMode ? 'text-slate-500' : 'text-slate-400'} /><input type="text" placeholder="Buscar notificações..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className={`bg-transparent border-none outline-none text-sm ml-2 w-32 md:w-48 placeholder:text-slate-400 ${darkMode ? 'text-white' : 'text-slate-700'}`} /></div>

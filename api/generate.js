@@ -43,15 +43,15 @@ export default async function handler(req, res) {
       
       DATA DE EMISSÃO: ${contextInfo.currentDate} (Use esta data no cabeçalho ou fechamento se necessário).
       
-      INSTRUÇÃO DE ALINHAMENTO:
+      INSTRUÇÃO DE ALINHAMENTO JURÍDICO:
       O texto gerado DEVE pertencer estritamente à área de "${contextInfo.area}". 
       Use terminologia, leis e estrutura jurídica específicas para "${contextInfo.species}".
       Não desvie para outras áreas do direito.
     ` : '';
 
     const promptText = `
-      ATUAR COMO: Advogado Sênior Especialista em Direito Brasileiro.
-      TAREFA: Redigir uma Notificação Extrajudicial completa e técnica.
+      ATUAR COMO: Advogado Sênior Especialista em Direito Brasileiro e Gramático da Língua Portuguesa.
+      TAREFA: Redigir uma Notificação Extrajudicial completa, técnica e gramaticalmente perfeita.
       
       ${contextPrompt}
 
@@ -65,18 +65,25 @@ export default async function handler(req, res) {
       ${details}
       ---
       
-      ${attachments && attachments.length > 0 ? `NOTA ADICIONAL: O usuário anexou ${attachments.length} arquivos probatórios. Analise o conteúdo visual/textual destes anexos se possível para enriquecer a descrição dos fatos.` : ''}
+      ${attachments && attachments.length > 0 ? `NOTA ADICIONAL: O usuário anexou ${attachments.length} arquivos probatórios. Cite a existência de anexos comprobatórios no corpo do texto para dar força material.` : ''}
+
+      REGRAS DE REDAÇÃO E GRAMÁTICA (CRÍTICO):
+      1. NORMA CULTA: Utilize o português brasileiro formal padrão.
+      2. PONTUAÇÃO: Atenção redobrada ao uso de vírgulas, pontos e ponto-e-vírgula. Separe orações coordenadas e subordinadas corretamente.
+      3. CONCORDÂNCIA E REGÊNCIA: Garanta a concordância nominal e verbal perfeita. Verifique a regência de verbos jurídicos (ex: "implicar em" vs "implicar algo").
+      4. ORTOGRAFIA: Sem erros de digitação ou ortografia.
+      5. COESÃO E COERÊNCIA: O texto deve fluir logicamente, com conectivos adequados entre os parágrafos.
 
       ESTRUTURA DO DOCUMENTO (TEXTO PLANO OBRIGATÓRIO - SEM MARKDOWN):
-      Não use negrito (**), itálico (*) ou headers (#). Use CAIXA ALTA para títulos se necessário.
+      Não use negrito (**), itálico (*) ou headers (#). Use APENAS CAIXA ALTA para destacar títulos e seções importantes.
       
       1. CABEÇALHO (Local e Data atual: ${contextInfo?.currentDate || 'Data de Hoje'})
       2. PREÂMBULO (Identificação COMPLETA das partes usando os dados fornecidos. Inclua endereço, CPF/CNPJ e contatos EXATAMENTE como fornecidos.)
-      3. DOS FATOS (Narrativa detalhada e técnica)
-      4. DO DIREITO (Fundamentação jurídica citando Artigos de Leis, Códigos ou Súmulas aplicáveis)
-      5. DOS PEDIDOS (Exigências claras com prazo explícito para cumprimento)
-      6. DAS CONSEQUÊNCIAS (Medidas judiciais cabíveis)
-      7. FECHAMENTO (Assinatura e contatos)
+      3. DOS FATOS (Narrativa detalhada, técnica e cronológica dos acontecimentos)
+      4. DO DIREITO (Fundamentação jurídica citando Artigos de Leis, Códigos ou Súmulas aplicáveis ao caso concreto)
+      5. DOS PEDIDOS (Exigências claras, valor líquido se houver, e prazo explícito em horas ou dias úteis para cumprimento)
+      6. DAS CONSEQUÊNCIAS (Medidas judiciais cabíveis em caso de inércia, incluindo perdas e danos, honorários e custas)
+      7. FECHAMENTO (Expressão de encerramento formal, espaço para assinatura e dados de contato do remetente)
     `;
 
     const parts = [{ text: promptText }];
@@ -94,8 +101,8 @@ export default async function handler(req, res) {
       model: 'gemini-2.5-flash',
       contents: { parts },
       config: {
-        systemInstruction: "Você é a 'Notify AI', assistente jurídica de elite. Gere o texto em formato TXT puro, profissional, ideal para documentos jurídicos formais. EVITE COMPLETAMENTE O USO DE MARKDOWN (como **, ##, *). Use apenas espaçamento e caixa alta para destacar seções.",
-        temperature: 0.4, 
+        systemInstruction: "Você é a 'Notify IA', uma assistente jurídica de elite. Sua prioridade absoluta é a correção gramatical e a validade jurídica. O texto deve ser sério, intimidatório (no sentido legal) e seguir rigorosamente a norma culta da língua portuguesa (uso correto de vírgulas, crases, concordância). NÃO use Markdown.",
+        temperature: 0.3, // Temperatura mais baixa para ser mais preciso e menos criativo/alucinado
       }
     });
 

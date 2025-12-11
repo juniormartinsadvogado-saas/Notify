@@ -85,7 +85,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           case 'auth/invalid-credential':
           case 'auth/user-not-found':
           case 'auth/wrong-password': 
-            return 'Senha ou e-mail incorretos.';
+            return 'Senha ou e-mail incorretos';
           case 'auth/email-already-in-use': 
             return 'O usuário já existe. Entrar?';
           case 'auth/weak-password': 
@@ -95,7 +95,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           case 'auth/too-many-requests': 
             return 'Muitas tentativas. Tente mais tarde.';
           default: 
-            return 'Ocorreu um erro. Tente novamente.';
+            return 'Senha ou e-mail incorretos';
       }
   };
 
@@ -112,9 +112,9 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         if (!user.emailVerified) {
             setUnverifiedUser(user);
             setView('VERIFY_EMAIL');
-            // Não deslogamos imediatamente para permitir o reenvio do email,
-            // mas o App.tsx monitora o estado e não deve deixar passar sem verificação.
-            // Aqui, controlamos a UI.
+            // IMPORTANTE: Não chamamos onLogin(user) aqui.
+            // O usuário permanece "autenticado" no Firebase, mas bloqueado na UI
+            // até que verifique e clique em "Fazer Login" novamente (ou refresh).
             return;
         }
 

@@ -93,9 +93,12 @@ export const saveNotification = async (notification: NotificationItem) => {
         };
 
         const docRef = doc(db, NOTIFICATIONS_COLLECTION, notification.id);
+        
+        // Remove campos undefined para evitar erros no Firestore
         const dataToSave = JSON.parse(JSON.stringify(notificationData));
         
-        await setDoc(docRef, dataToSave);
+        // Use merge: true para permitir atualizações de rascunho sem sobrescrever tudo
+        await setDoc(docRef, dataToSave, { merge: true });
     } catch (error: any) {
         console.error("Erro ao salvar notificação:", error);
         if (error.code === 'permission-denied') {
@@ -156,6 +159,7 @@ export const getNotificationsByRecipientCpf = async (cpf: string): Promise<Notif
         const items: NotificationItem[] = [];
         querySnapshot.forEach((doc) => {
             const data = doc.data() as NotificationItem;
+            // Filtra rascunhos para o destinatário (eles não devem ver rascunhos)
             if (data.status !== NotificationStatus.DRAFT && data.status !== NotificationStatus.PENDING_PAYMENT) {
                 items.push(data);
             }

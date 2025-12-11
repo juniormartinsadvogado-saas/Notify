@@ -8,11 +8,13 @@ import { dispatchCommunications } from '../services/communicationService';
 import { NotificationItem, NotificationStatus, EvidenceItem, Meeting, Transaction, Attachment } from '../types';
 import { 
   Wand2, Scale, Users, 
-  FileText, PenTool, CreditCard, Check, Loader2, 
-  Briefcase, ShoppingBag, Home, Heart, FileSignature, Scroll, UploadCloud, X, User, Video, CheckCircle2, ArrowRight, Calendar, Lock, ChevronLeft, Sparkles,
-  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode, Copy, AlertCircle, Plane, Zap, Rocket, Monitor, Trophy, Anchor, Hash, ShieldCheck, ChevronDown, Lightbulb, MessageSquareQuote, Ticket, Printer, Share2
+  FileText, PenTool, Check, Loader2, 
+  Briefcase, ShoppingBag, Home, Heart, FileSignature, Scroll, UploadCloud, X, User, Video, CheckCircle2, ArrowRight, Calendar, ChevronLeft, Sparkles,
+  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode, Copy, AlertCircle, Plane, Zap, Rocket, Monitor, Trophy, Anchor, ShieldCheck, ChevronDown, Lightbulb, Printer, Lock, Send, Smartphone, Mail, MessageCircle, Save
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
+import { db } from '../services/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 interface NotificationCreatorProps {
   onSave: (notification: NotificationItem, meeting?: Meeting, transaction?: Transaction) => void;
@@ -25,11 +27,7 @@ interface NotificationCreatorProps {
   };
 }
 
-const SendIcon = ({size, className}: {size?:number, className?:string}) => (
-    <svg xmlns="http://www.w3.org/2000/svg" width={size || 24} height={size || 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-);
-
-// ATUALIZAÇÃO DOS NOMES DAS ETAPAS - Etapa 7 agora é PAGAMENTO
+// ATUALIZAÇÃO DOS NOMES DAS ETAPAS - Etapa 7 agora é PAGAMENTO PIX
 const STEPS = [
   { id: 1, label: 'Áreas', icon: Scale },
   { id: 2, label: 'Fatos', icon: FileText },
@@ -37,7 +35,7 @@ const STEPS = [
   { id: 4, label: 'Conciliação', icon: Video },
   { id: 5, label: 'Geração IA', icon: Wand2 },
   { id: 6, label: 'Assinatura', icon: PenTool },
-  { id: 7, label: 'Pagamento', icon: CreditCard }, 
+  { id: 7, label: 'Envio Oficial', icon: ShieldCheck }, 
 ];
 
 const LAW_AREAS = [
@@ -101,14 +99,6 @@ interface LocalAttachment {
     type: 'image' | 'video' | 'document';
 }
 
-interface CardData {
-    holderName: string;
-    number: string;
-    expiryMonth: string;
-    expiryYear: string;
-    ccv: string;
-}
-
 const initialAddress: Address = {
   cep: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: ''
 };
@@ -121,8 +111,7 @@ const MASKS = {
       return v.replace(/^(\d{2})(\d)/, '$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d)/, '.$1/$2').replace(/(\d{4})(\d)/, '$1-$2');
     },
     phone: (value: string) => value.replace(/\D/g, '').replace(/^(\d{2})(\d)/, '($1) $2').replace(/(\d)(\d{4})$/, '$1-$2'),
-    cep: (value: string) => value.replace(/\D/g, '').replace(/^(\d{5})(\d)/, '$1-$2'),
-    card: (value: string) => value.replace(/\D/g, '').replace(/(\d{4})(?=\d)/g, '$1 ')
+    cep: (value: string) => value.replace(/\D/g, '').replace(/^(\d{5})(\d)/, '$1-$2')
 };
 
 const formatAddressString = (addr: Address) => {
@@ -261,15 +250,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const [localFiles, setLocalFiles] = useState<LocalAttachment[]>([]);
   
   // Payment States
-  const [paymentPlan, setPaymentPlan] = useState<'single' | 'subscription'>('single');
-  const [paymentStage, setPaymentStage] = useState<'selection' | 'input'>('selection');
-  const [selectedMethod, setSelectedMethod] = useState<'CREDIT_CARD' | 'PIX' | null>(null);
   const [isProcessingAction, setIsProcessingAction] = useState(false);
   const [protocolSuccess, setProtocolSuccess] = useState<boolean>(false);
-  
   const [pixData, setPixData] = useState<{ encodedImage: string, payload: string } | null>(null);
-  const [cardData, setCardData] = useState<CardData>({ holderName: '', number: '', expiryMonth: '', expiryYear: '', ccv: '' });
-
   const [createdData, setCreatedData] = useState<{notif?: NotificationItem, meet?: Meeting, trans?: Transaction}>({});
 
   const currentArea = LAW_AREAS.find(a => a.id === formData.areaId);
@@ -278,20 +261,16 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   // --- PERSISTENCE LOGIC (15 MINUTES) ---
   useEffect(() => {
       const STORAGE_KEY = `notify_draft_${user?.uid}`;
-      
-      // RESTORE
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
           try {
               const parsed = JSON.parse(saved);
               const diff = Date.now() - parsed.timestamp;
-              // Se menos de 15 minutos, restaura
               if (diff < 15 * 60 * 1000) { 
                   setFormData(parsed.data);
                   setCurrentStep(parsed.step);
                   setNotificationId(parsed.id || notificationId);
                   setSignatureData(parsed.signature || null);
-                  // Nota: Arquivos locais (LocalAttachment) não são persistidos no localStorage pois são Blob URLs
               } else {
                   localStorage.removeItem(STORAGE_KEY);
               }
@@ -301,10 +280,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   }, [user?.uid]);
 
-  // SAVE
   useEffect(() => {
       const STORAGE_KEY = `notify_draft_${user?.uid}`;
-      if (currentStep > 1 && currentStep < 7) { // Só salva se começou a preencher e não finalizou
+      if (currentStep > 1 && currentStep < 7) { 
           const payload = { 
               timestamp: Date.now(), 
               step: currentStep, 
@@ -316,12 +294,57 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   }, [formData, currentStep, signatureData, user?.uid, notificationId]);
 
-  // CLEAR ON FINISH
+  // --- NOVO: AUTO-SAVE TO FIRESTORE AS DRAFT ---
+  const handleAutoSaveDraft = async () => {
+    if (!user) return;
+    
+    // Mapeia os dados atuais do formulário para o formato NotificationItem
+    // Preenchendo campos obrigatórios com valores provisórios se necessário
+    const uniqueHash = documentHash || Array.from({length: 4}, () => Math.random().toString(36).substr(2, 4).toUpperCase()).join('-');
+    
+    const draftItem: NotificationItem = {
+        id: notificationId,
+        documentHash: uniqueHash,
+        notificante_uid: user.uid,
+        notificante_cpf: formData.sender.cpfCnpj.replace(/\D/g, ''),
+        notificante_dados_expostos: {
+            nome: formData.sender.name,
+            email: formData.sender.email,
+            telefone: formData.sender.phone,
+            foto_url: user.photoURL || undefined
+        },
+        // O destinatário é crucial para o rascunho ser útil
+        notificados_cpfs: [formData.recipient.cpfCnpj.replace(/\D/g, '')],
+        recipientName: formData.recipient.name,
+        recipientEmail: formData.recipient.email,
+        recipientPhone: formData.recipient.phone,
+        recipientDocument: formData.recipient.cpfCnpj,
+        recipientAddress: formatAddressString(formData.recipient.address),
+        area: currentArea?.name || formData.areaId || 'Indefinida',
+        species: formData.species || 'Rascunho',
+        facts: formData.facts || 'Em preenchimento...',
+        subject: formData.subject || formData.species || 'Rascunho',
+        content: formData.generatedContent || '',
+        evidences: [], // Evidências não salvas no auto-save simples para não fazer upload repetido
+        signatureBase64: signatureData || undefined,
+        createdAt: new Date().toISOString(),
+        status: NotificationStatus.DRAFT,
+        paymentAmount: calculateTotal()
+    };
+
+    try {
+        console.log("Auto-salvando rascunho no Firestore...");
+        await saveNotification(draftItem);
+    } catch (e) {
+        console.warn("Erro ao salvar rascunho automático:", e);
+        // Não bloqueia o fluxo, apenas loga
+    }
+  };
+
   const clearDraft = () => {
       const STORAGE_KEY = `notify_draft_${user?.uid}`;
       localStorage.removeItem(STORAGE_KEY);
   };
-  // --------------------------------------
 
   useEffect(() => {
     if (currentStep === 6 && containerRef.current && canvasRef.current) { 
@@ -338,16 +361,76 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     }
   }, [currentStep]);
 
+  // AUTOMATIC PIX GENERATION & REAL-TIME LISTENER
+  useEffect(() => {
+      if (currentStep === 7 && createdData.notif && !protocolSuccess) {
+          // 1. Gera o Pix se ainda não tiver
+          if (!pixData && !isProcessingAction) {
+              generatePix();
+          }
+
+          // 2. Inicia Listener do Firestore para detectar pagamento (Webhook)
+          const unsub = onSnapshot(doc(db, 'notificacoes', createdData.notif.id), (docSnapshot) => {
+             const data = docSnapshot.data();
+             if (data && (data.status === 'SENT' || data.status === 'Enviada')) {
+                 // Pagamento confirmado pelo Webhook!
+                 handleWebhookSuccess();
+             }
+          });
+
+          return () => unsub(); // Limpa o listener ao sair
+      }
+  }, [currentStep, createdData.notif, protocolSuccess]);
+
+  const generatePix = async () => {
+      setIsProcessingAction(true);
+      setError('');
+      try {
+          if(!user || !createdData.notif) return;
+
+          // Força criação de cobrança PIX Avulsa
+          const checkoutResponse = await initiateCheckout(createdData.notif, 'single', 'PIX');
+
+          if (!checkoutResponse.success) {
+             setError(checkoutResponse.error || "Erro ao gerar Pix.");
+             return;
+          }
+
+          if (checkoutResponse.pixData) {
+              setPixData(checkoutResponse.pixData);
+          }
+      } catch (e) {
+          console.error(e);
+          setError("Erro de comunicação com Asaas.");
+      } finally {
+          setIsProcessingAction(false);
+      }
+  };
+
+  const handleWebhookSuccess = async () => {
+      if (!user || !createdData.notif || !createdData.trans) return;
+      
+      // Atualiza estados locais
+      const updatedNotif = { ...createdData.notif, status: NotificationStatus.SENT };
+      const updatedTrans: Transaction = { ...createdData.trans, status: 'Pago' };
+      
+      // Salva transação no histórico do usuário
+      // (A notificação já foi atualizada pelo Webhook, então não chamamos saveNotification de novo, apenas atualizamos local)
+      await saveTransaction(user.uid, updatedTrans);
+
+      setCreatedData({ notif: updatedNotif, meet: createdData.meet, trans: updatedTrans });
+      setProtocolSuccess(true);
+      clearDraft();
+  };
+
   const calculateTotal = () => {
-    if (paymentPlan === 'subscription') return 259.97;
     return 57.92;
   };
 
   const validateAddresses = () => {
       const validate = (addr: Address) => addr.cep && addr.street && addr.number && addr.neighborhood && addr.city && addr.state;
-      
-      if (!validate(formData.sender.address)) return "Endereço do Remetente incompleto (Verifique CEP, Rua, Número, Bairro, Cidade, UF).";
-      if (!validate(formData.recipient.address)) return "Endereço do Destinatário incompleto (Verifique CEP, Rua, Número, Bairro, Cidade, UF).";
+      if (!validate(formData.sender.address)) return "Endereço do Remetente incompleto.";
+      if (!validate(formData.recipient.address)) return "Endereço do Destinatário incompleto.";
       if (role === 'representative' && !validate(formData.representative.address)) return "Seu endereço profissional incompleto.";
       return null;
   };
@@ -433,8 +516,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
         alert(addressError);
         return;
     }
-    
-    // Validação de Fatos e Espécie
     if (!formData.species || !formData.facts) {
         alert("Erro: Certifique-se de ter selecionado o 'Tipo da Notificação' e preenchido os 'Fatos' no Passo 2.");
         return;
@@ -488,23 +569,24 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
         );
         
         setFormData(prev => ({ ...prev, generatedContent: text }));
+        alert("Minuta jurídica gerada com sucesso!");
         
-        alert("Minuta jurídica gerada com sucesso! Prossiga para revisão e assinatura.");
+        // Save draft after generation
+        await handleAutoSaveDraft();
+        
         setCurrentStep(6); 
     } catch (err: any) {
         console.error("Erro Generation:", err);
-        alert(`Erro ao gerar a notificação: ${err.message}. Tente novamente.`);
+        alert(`Erro ao gerar a notificação: ${err.message}.`);
     } finally {
         setIsGenerating(false);
     }
   };
 
-  // Persiste os dados com robustez (Falha Graciosa)
   const handlePersistData = async () => {
       setIsSavingData(true);
       setError('');
       
-      // Define variáveis fora do bloco try para serem acessíveis se houver falha parcial
       let finalNotif: NotificationItem | null = null;
       let newTrans: Transaction | null = null;
       let newMeet: Meeting | undefined = undefined;
@@ -512,20 +594,16 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       try {
           if (!user) throw new Error("Usuário não autenticado");
 
-          // 1. Gera Hash Único (se ainda não existir)
           const uniqueHash = documentHash || Array.from({length: 4}, () => Math.random().toString(36).substr(2, 4).toUpperCase()).join('-');
           if (!documentHash) setDocumentHash(uniqueHash);
 
-          // 2. Gera PDF e Upload (Tenta, mas se falhar, loga e segue se possível)
           let pdfUrl = '';
           try {
              pdfUrl = await generateAndUploadPdf(uniqueHash);
           } catch (e) {
-             console.error("Aviso: Upload do PDF falhou, mas continuando com o salvamento dos dados.", e);
-             // Não lança erro para não bloquear o fluxo se o usuário disse que "storage salva"
+             console.error("Aviso: Upload do PDF falhou, mas continuando.", e);
           }
 
-          // 3. Upload Evidências (Falha silenciosa para não bloquear fluxo principal)
           const newEvidenceItems: EvidenceItem[] = [];
           if (localFiles.length > 0) {
               for (const lf of localFiles) {
@@ -540,7 +618,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
           const totalAmount = calculateTotal();
 
-          // CRIAÇÃO DO OBJETO FINAL
           finalNotif = {
               id: notificationId,
               documentHash: uniqueHash,
@@ -556,6 +633,10 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               recipientName: formData.recipient.name,
               recipientEmail: formData.recipient.email,
               recipientPhone: formData.recipient.phone,
+              // SALVANDO DADOS EXTRAS DO DESTINATÁRIO
+              recipientDocument: formData.recipient.cpfCnpj,
+              recipientAddress: formatAddressString(formData.recipient.address),
+
               area: currentArea?.name || '',
               species: formData.species,
               facts: formData.facts,
@@ -565,16 +646,15 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               pdf_url: pdfUrl,
               signatureBase64: signatureData || undefined,
               createdAt: new Date().toISOString(),
-              status: NotificationStatus.PENDING_PAYMENT, // Salva como pendente
+              status: NotificationStatus.PENDING_PAYMENT,
               paymentAmount: totalAmount
           };
 
-          // SALVAMENTO PRINCIPAL (Se falhar aqui, realmente é erro)
           await saveNotification(finalNotif);
 
           newTrans = {
               id: `TX-${Date.now()}`,
-              description: paymentPlan === 'subscription' ? 'Assinatura Mensal' : `Notificação - ${formData.species}`,
+              description: `Notificação - ${formData.species}`,
               amount: totalAmount,
               date: new Date().toISOString(),
               status: 'Pendente'
@@ -597,22 +677,20 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                   };
                   await createMeeting(newMeet);
               } catch (meetErr) {
-                  console.warn("Criação de reunião falhou, mas prosseguindo com o fluxo.", meetErr);
+                  console.warn("Criação de reunião falhou.", meetErr);
               }
           }
 
-          // SUCESSO: Define dados e avança
           setCreatedData({ notif: finalNotif, meet: newMeet, trans: newTrans });
           setTimeout(() => setCurrentStep(7), 100);
 
       } catch (e: any) {
           console.error(e);
-          // Se conseguimos criar o objeto final (significa que o salvamento principal funcionou ou estava prestes a), tentamos avançar
           if (finalNotif) {
              setCreatedData({ notif: finalNotif, meet: newMeet, trans: newTrans! });
              setCurrentStep(7);
           } else {
-             console.error("Erro crítico bloqueado visualmente a pedido:", e.message);
+             alert(e.message);
           }
       } finally {
           setIsSavingData(false);
@@ -626,7 +704,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       const margin = 20;
       const maxLineWidth = pageWidth - (margin * 2);
       
-      // DATA COMPLETA NO TOPO
       const today = new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' });
       
       doc.setFont("times", "normal");
@@ -646,23 +723,19 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       doc.setFontSize(12);
       
       const splitText = doc.splitTextToSize(formData.generatedContent, maxLineWidth); 
-      
       let cursorY = 45;
       const lineHeight = 6;
 
-      // PAGINAÇÃO INTELIGENTE
       splitText.forEach((line: string) => {
           if (cursorY > pageHeight - margin - 30) { 
               doc.addPage();
-              cursorY = 20; // Margem superior na nova página
+              cursorY = 20;
           }
           doc.text(line, margin, cursorY);
           cursorY += lineHeight;
       });
 
-      // ASSINATURA
       if (signatureData) {
-          // Verifica se cabe na página atual
           if (cursorY + 60 > pageHeight - margin) {
               doc.addPage();
               cursorY = 40;
@@ -686,155 +759,79 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       return await uploadSignedPdf(notificationId, pdfBlob);
   };
 
-  const handleUseCredit = async () => {
-      if(!user || !createdData.notif) return;
-      setIsProcessingAction(true);
-      try {
-          await finalizeSuccessFlow();
-      } catch (e) {
-          setError("Erro ao processar crédito.");
-      } finally {
-          setIsProcessingAction(false);
-      }
-  };
-
-  const handleProcessPayment = async () => {
-      setIsProcessingAction(true);
-      setError('');
-      try {
-          if(!user || !createdData.notif || !selectedMethod) return;
-
-          if (selectedMethod === 'CREDIT_CARD') {
-              if(!cardData.number || !cardData.holderName || !cardData.ccv || !cardData.expiryMonth) {
-                  setError("Preencha todos os dados do cartão.");
-                  setIsProcessingAction(false);
-                  return;
-              }
-          }
-
-          const checkoutResponse = await initiateCheckout(createdData.notif, paymentPlan, selectedMethod, cardData);
-
-          if (!checkoutResponse.success) {
-             setError(checkoutResponse.error || "Erro ao processar pagamento.");
-             setIsProcessingAction(false);
-             return;
-          }
-
-          if (selectedMethod === 'PIX' && checkoutResponse.pixData) {
-              setPixData(checkoutResponse.pixData);
-              setIsProcessingAction(false); // Para no Pix para mostrar QR
-          } else if (selectedMethod === 'CREDIT_CARD') {
-              // CARTÃO: SUCESSO IMEDIATO
-              await finalizeSuccessFlow();
-          }
-
-      } catch (e) {
-          console.error(e);
-          setError("Erro de comunicação com gateway de pagamento.");
-          setIsProcessingAction(false);
-      }
-  };
-
-  // FLUXO CRÍTICO DE SUCESSO E DISPARO
-  const finalizeSuccessFlow = async () => {
-      if (!user || !createdData.notif || !createdData.trans) return;
-      
-      try {
-          // 1. Atualiza Status da Notificação no Banco (Sent)
-          await confirmPayment(createdData.notif.id);
-          
-          // 2. Atualiza Objeto da Notificação Local
-          const updatedNotif = { ...createdData.notif, status: NotificationStatus.SENT };
-          
-          // 3. Salva Transação como 'Pago' no Histórico
-          const updatedTrans: Transaction = { ...createdData.trans, status: 'Pago' };
-          await saveTransaction(user.uid, updatedTrans);
-
-          // 4. Dispara Comunicações (API Call para Z-API e SendGrid)
-          // Isso garante o envio imediato após confirmação
-          await dispatchCommunications(updatedNotif);
-
-          // 5. Mostra Tela de Protocolo
-          setCreatedData({ notif: updatedNotif, meet: createdData.meet, trans: updatedTrans });
-          setProtocolSuccess(true);
-          clearDraft();
-
-      } catch (e) {
-          console.error("Erro no fluxo de finalização:", e);
-          setError("Pagamento confirmado, mas houve erro no disparo automático. O sistema tentará novamente.");
-      } finally {
-          setIsProcessingAction(false);
-      }
-  };
-
   const renderProtocolScreen = () => (
-      <div className="flex flex-col items-center justify-center min-h-[500px] animate-fade-in text-center p-6">
-          <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-green-100 relative">
-              <div className="absolute inset-0 bg-green-100 rounded-full animate-ping opacity-50"></div>
-              <CheckCircle2 size={64} className="text-green-600 relative z-10" />
+      <div className="flex flex-col items-center justify-center animate-fade-in text-center p-6 bg-white rounded-2xl border border-slate-200 shadow-xl max-w-2xl mx-auto my-8">
+          
+          <div className="relative mb-8 mt-4">
+               <div className="absolute inset-0 bg-green-400 blur-2xl opacity-20 rounded-full animate-pulse"></div>
+               <div className="relative bg-white p-6 rounded-full border-4 border-green-50 shadow-lg">
+                  <ShieldCheck size={64} className="text-green-500" />
+               </div>
+               <div className="absolute -bottom-2 -right-2 bg-slate-900 text-white p-2 rounded-full border-2 border-white">
+                   <Check size={16} strokeWidth={4} />
+               </div>
           </div>
-          <h2 className="text-3xl font-bold text-slate-800 mb-2">Sucesso!</h2>
-          <p className="text-slate-500 mb-8 max-w-md">
-              Sua notificação foi paga e enviada automaticamente para o destinatário via WhatsApp e E-mail.
+
+          <h2 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight">Protocolo de Sucesso</h2>
+          <p className="text-slate-500 mb-10 max-w-md text-lg leading-relaxed">
+              Sua notificação foi registrada e está sendo enviada automaticamente para o destinatário.
           </p>
 
-          <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 w-full max-w-md mb-8 text-left relative overflow-hidden shadow-inner">
-              <div className="absolute top-0 right-0 p-3 opacity-10"><ShieldCheck size={80}/></div>
-              <div className="space-y-3 relative z-10">
-                  <div className="flex justify-between items-center border-b border-slate-200 pb-2">
-                      <div>
-                          <p className="text-xs font-bold text-slate-400 uppercase">Protocolo de Envio</p>
-                          <p className="font-mono text-xl font-bold text-slate-800 tracking-wider">{createdData.notif?.id}</p>
-                      </div>
-                      <div className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold flex items-center">
-                          <CheckCircle2 size={12} className="mr-1"/> Enviado
-                      </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full mb-8">
+              <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-center">
+                   <div className="bg-green-100 p-2 rounded-lg mb-2 text-green-700"><Smartphone size={20}/></div>
+                   <span className="text-xs font-bold text-slate-400 uppercase">WhatsApp</span>
+                   <span className="font-bold text-slate-800">Enviado</span>
+              </div>
+              <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-center">
+                   <div className="bg-blue-100 p-2 rounded-lg mb-2 text-blue-700"><Mail size={20}/></div>
+                   <span className="text-xs font-bold text-slate-400 uppercase">E-mail</span>
+                   <span className="font-bold text-slate-800">Enviado</span>
+              </div>
+          </div>
+
+          <div className="w-full bg-slate-50 rounded-xl border border-slate-200 p-6 text-left relative overflow-hidden mb-8">
+              <div className="absolute top-0 right-0 p-4 opacity-5"><FileText size={100} /></div>
+              <div className="relative z-10 space-y-4">
+                  <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+                      <span className="text-xs font-bold text-slate-400 uppercase">ID do Protocolo</span>
+                      <span className="font-mono text-lg font-bold text-slate-800 tracking-wider">{createdData.notif?.id}</span>
                   </div>
-                  <div className="grid grid-cols-2 gap-4 pt-2">
-                      <div>
-                          <p className="text-xs font-bold text-slate-400 uppercase">Data</p>
-                          <p className="text-sm font-medium text-slate-700">{new Date().toLocaleDateString()}</p>
-                      </div>
-                      <div>
-                          <p className="text-xs font-bold text-slate-400 uppercase">Valor</p>
-                          <p className="text-sm font-medium text-slate-700">R$ {createdData.trans?.amount.toFixed(2)}</p>
-                      </div>
+                  <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-slate-400 uppercase">Destinatário</span>
+                      <span className="font-medium text-slate-700">{createdData.notif?.recipientName}</span>
                   </div>
-                  <div>
-                      <p className="text-xs font-bold text-slate-400 uppercase">Destinatário</p>
-                      <p className="text-sm font-medium text-slate-700">{createdData.notif?.recipientName}</p>
+                  <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-slate-400 uppercase">Status Jurídico</span>
+                      <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold flex items-center">
+                          <CheckCircle2 size={12} className="mr-1"/> Válido
+                      </span>
                   </div>
               </div>
           </div>
 
-          <div className="flex gap-4 w-full max-w-md">
-              <button 
-                  onClick={() => {
-                      if (createdData.notif && createdData.meet && createdData.trans) {
-                          onSave(createdData.notif, createdData.meet, createdData.trans);
-                      } else {
-                          onBack?.();
-                      }
-                  }} 
-                  className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-slate-800 transition transform hover:scale-105 flex items-center justify-center"
-              >
-                  <ArrowRight size={18} className="mr-2" />
-                  Ir para Painel
-              </button>
-              <button onClick={() => window.print()} className="bg-white border border-slate-200 text-slate-600 p-3 rounded-xl hover:bg-slate-50 transition" title="Imprimir Protocolo">
-                  <Printer size={20} />
-              </button>
-          </div>
+          <button 
+              onClick={() => {
+                  if (createdData.notif && createdData.meet && createdData.trans) {
+                      onSave(createdData.notif, createdData.meet, createdData.trans);
+                  } else {
+                      onBack?.();
+                  }
+              }} 
+              className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-slate-800 transition transform hover:scale-[1.02] flex items-center justify-center text-lg"
+          >
+              <ArrowRight size={20} className="mr-2" />
+              Acompanhar no Painel
+          </button>
       </div>
   );
 
   const renderPaymentStep = () => {
-      // GARANTIA DE RENDERIZAÇÃO
       if (!createdData.notif) {
           return (
-              <div className="flex flex-col items-center justify-center h-64">
-                  <Loader2 className="animate-spin text-slate-400 mb-4" size={32} />
-                  <p className="text-slate-500 text-sm">Preparando ambiente seguro...</p>
+              <div className="flex flex-col items-center justify-center h-96">
+                  <Loader2 className="animate-spin text-slate-400 mb-4" size={48} />
+                  <p className="text-slate-500 text-lg font-medium">Gerando registro seguro...</p>
               </div>
           );
       }
@@ -843,165 +840,177 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           return renderProtocolScreen();
       }
 
-      const hasCredits = subscriptionData?.active && (subscriptionData.creditsUsed < subscriptionData.creditsTotal);
-      
-      if (paymentStage === 'selection') return (
-         <div className="pb-12 space-y-6 animate-fade-in">
-             <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 mb-8 text-center shadow-sm">
-                 <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 mb-2">
-                     <ShieldCheck size={24} />
-                 </div>
-                 <h3 className="text-emerald-800 font-bold text-lg">Documento Salvo e Pendente!</h3>
-                 <p className="text-emerald-600 text-sm mb-4">Sua notificação foi salva. Realize o pagamento para disparo imediato.</p>
-                 <div className="inline-block bg-white px-4 py-2 rounded-lg border border-emerald-200 shadow-inner">
-                     <p className="text-xs text-slate-400 uppercase font-bold tracking-wider">Protocolo Provisório</p>
-                     <p className="text-lg font-mono font-bold text-slate-800 tracking-widest">{documentHash}</p>
-                 </div>
-             </div>
-
-             <div className="text-center mb-8">
-                 <h3 className="text-2xl font-bold text-slate-800">Selecione o pacote de envio</h3>
-                 <p className="text-slate-500 text-sm">Escolha como deseja despachar este documento.</p>
-             </div>
-
-             {hasCredits ? (
-                 <div className="max-w-md mx-auto">
-                     <div className="p-8 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-xl relative overflow-hidden group hover:scale-[1.02] transition-transform cursor-pointer border border-slate-700" onClick={handleUseCredit}>
-                         <div className="absolute top-0 right-0 p-4 opacity-10"><Ticket size={100} /></div>
-                         <h4 className="font-bold text-xl mb-2 flex items-center"><Ticket className="mr-2 text-yellow-400"/> Usar Crédito de Assinatura</h4>
-                         <p className="text-slate-300 text-sm mb-6">Você já possui um plano ativo.</p>
-                         <div className="flex items-center justify-between mb-6 bg-white/10 p-3 rounded-lg">
-                             <span className="text-xs font-bold uppercase tracking-wider">Créditos Restantes</span>
-                             <span className="text-xl font-bold">{subscriptionData?.creditsTotal - subscriptionData?.creditsUsed}</span>
-                         </div>
-                         <button disabled={isProcessingAction} className="w-full bg-white text-slate-900 font-bold py-3 rounded-xl hover:bg-slate-100 transition flex items-center justify-center shadow-lg">
-                             {isProcessingAction ? <Loader2 className="animate-spin mr-2"/> : <CheckCircle2 className="mr-2 text-green-600"/>}
-                             Confirmar Envio (1 Crédito)
-                         </button>
-                     </div>
-                     <p className="text-center text-xs text-slate-400 mt-4">Ou se preferir, selecione um envio avulso abaixo para não gastar créditos.</p>
-                 </div>
-             ) : (
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-                    <div onClick={() => setPaymentPlan('single')} className={`relative p-8 rounded-2xl cursor-pointer transition-all duration-300 group overflow-hidden ${paymentPlan==='single' ? 'bg-white ring-2 ring-blue-500 shadow-xl scale-[1.02]' : 'bg-white border border-slate-200 hover:border-blue-300 hover:shadow-lg'}`}>
-                         {paymentPlan === 'single' && <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl shadow-sm">SELECIONADO</div>}
-                         <div className="flex flex-col h-full">
-                             <h4 className="font-bold text-slate-900 text-xl">Envio Avulso</h4>
-                             <p className="text-4xl font-bold text-slate-900 mt-4">R$ 57,92</p>
-                             <p className="text-xs text-slate-400 font-medium uppercase mt-1">pagamento único</p>
-                             <ul className="mt-6 space-y-3 text-sm text-slate-600 text-left">
-                                <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5"/> <span>Envio Imediato (WhatsApp/E-mail)</span></li>
-                                <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5"/> <span>Documento Assinado Digitalmente</span></li>
-                            </ul>
-                         </div>
+      return (
+        <div className="pb-12 max-w-6xl mx-auto animate-fade-in">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+                
+                {/* COLUNA ESQUERDA: Valor e Persuasão */}
+                <div className="space-y-8">
+                    <div>
+                        <h3 className="text-3xl font-bold text-slate-900 mb-2">Finalizar Envio Oficial</h3>
+                        <p className="text-slate-500 text-lg leading-relaxed">
+                            Garanta a validade jurídica e a entrega certificada da sua notificação agora mesmo.
+                        </p>
                     </div>
-                    <div onClick={() => setPaymentPlan('subscription')} className={`relative p-8 rounded-2xl cursor-pointer transition-all duration-300 group overflow-hidden ${paymentPlan==='subscription' ? 'bg-slate-900 ring-2 ring-purple-500 shadow-2xl scale-[1.02]' : 'bg-white border border-slate-200 hover:border-purple-300 hover:shadow-lg'}`}>
-                         {paymentPlan === 'subscription' && <div className="absolute top-0 right-0 bg-purple-600 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl shadow-sm">MAIS VANTAJOSO</div>}
-                         <div className="flex flex-col h-full">
-                             <h4 className={`font-bold text-xl ${paymentPlan==='subscription' ? 'text-white' : 'text-slate-900'}`}>Assinatura Pro</h4>
-                             <p className={`text-4xl font-bold mt-4 ${paymentPlan==='subscription' ? 'text-white' : 'text-slate-900'}`}>R$ 259,97 <span className="text-sm font-normal opacity-60">/mês</span></p>
-                             <ul className={`mt-6 space-y-3 text-sm text-left ${paymentPlan === 'subscription' ? 'text-slate-300' : 'text-slate-600'}`}>
-                                <li className="flex items-start"><Check size={16} className="mr-2 text-purple-400"/> <span><strong>10 Envios</strong> (aprox. R$ 25,90/cada)</span></li>
-                                <li className="flex items-start"><Check size={16} className="mr-2 text-purple-400"/> <span>Validade de 30 dias</span></li>
-                                <li className="flex items-start"><Check size={16} className="mr-2 text-purple-400"/> <span>Renovação Automática</span></li>
-                            </ul>
-                         </div>
-                    </div>
-                 </div>
-             )}
 
-             {!hasCredits && (
-                 <div className="max-w-md mx-auto pt-6">
-                     <button onClick={() => setPaymentStage('input')} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-xl flex items-center justify-center hover:bg-slate-800 transition transform hover:scale-105">
-                         Ir para Pagamento <ArrowRight className="ml-2" size={18} />
-                     </button>
-                 </div>
-             )}
-         </div>
-      );
-      if (paymentStage === 'input') return (
-        <div className="pb-12 max-w-lg mx-auto animate-fade-in text-center">
-            <h3 className="text-xl font-bold text-slate-800 mb-2">Finalizar Pagamento</h3>
-            <p className="text-slate-500 text-sm mb-6">Total a pagar: <strong className="text-slate-900 ml-1">R$ {calculateTotal().toFixed(2)}</strong></p>
-            <div className="grid grid-cols-2 gap-4 mb-8">
-                <button onClick={() => { setSelectedMethod('CREDIT_CARD'); setPixData(null); }} className={`flex flex-col items-center justify-center p-4 border-2 rounded-xl transition-all ${selectedMethod === 'CREDIT_CARD' ? 'border-purple-600 bg-purple-50' : 'border-slate-200 hover:border-purple-300'}`}>
-                    <CreditCard size={24} className={selectedMethod === 'CREDIT_CARD' ? 'text-purple-600' : 'text-slate-400'}/>
-                    <span className={`text-sm font-bold mt-2 ${selectedMethod === 'CREDIT_CARD' ? 'text-purple-700' : 'text-slate-600'}`}>Cartão de Crédito</span>
-                </button>
-                <button onClick={() => { setSelectedMethod('PIX'); setPixData(null); }} className={`flex flex-col items-center justify-center p-4 border-2 rounded-xl transition-all ${selectedMethod === 'PIX' ? 'border-emerald-600 bg-emerald-50' : 'border-slate-200 hover:border-emerald-300'}`}>
-                    <QrCode size={24} className={selectedMethod === 'PIX' ? 'text-emerald-600' : 'text-slate-400'}/>
-                    <span className={`text-sm font-bold mt-2 ${selectedMethod === 'PIX' ? 'text-emerald-700' : 'text-slate-600'}`}>Pix</span>
-                </button>
+                    <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-xl relative overflow-hidden group hover:border-blue-300 transition-all">
+                        <div className="absolute top-0 right-0 bg-gradient-to-l from-blue-600 to-blue-500 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl z-20 shadow-md">
+                            PREMIUM
+                        </div>
+                        
+                        <div className="relative z-10">
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Produto Selecionado</p>
+                            <h3 className="text-2xl font-extrabold text-slate-900 mb-1">Notificação Full Time</h3>
+                            <p className="text-slate-500 text-sm mb-6">Máxima eficácia jurídica e garantia de entrega.</p>
+
+                            <div className="flex items-baseline mb-8">
+                                <span className="text-5xl font-extrabold text-slate-900 tracking-tight">R$ {calculateTotal().toFixed(2).replace('.', ',')}</span>
+                                <span className="ml-2 text-slate-500 font-medium">/ documento</span>
+                            </div>
+                            
+                            <div className="bg-slate-50 rounded-xl p-5 border border-slate-100 mb-6">
+                                <h4 className="font-bold text-slate-800 mb-4 flex items-center text-sm uppercase tracking-wide">
+                                    <Zap className="text-yellow-500 mr-2" size={16} fill="currentColor" />
+                                    Canais de Envio (Inclusos)
+                                </h4>
+                                <div className="space-y-4">
+                                    <div className="flex items-center">
+                                        <div className="w-10 h-10 rounded-full bg-green-100 text-green-600 flex items-center justify-center mr-3 shrink-0">
+                                            <MessageCircle size={20} />
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-slate-800 text-sm">WhatsApp Oficial</p>
+                                            <p className="text-xs text-slate-500">Disparo imediato com PDF anexo.</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center">
+                                        <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mr-3 shrink-0">
+                                            <Mail size={20} />
+                                        </div>
+                                        <div>
+                                            <p className="font-bold text-slate-800 text-sm">E-mail Certificado</p>
+                                            <p className="text-xs text-slate-500">Rastreamento de abertura e leitura.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <ul className="space-y-3 border-t border-slate-100 pt-6">
+                                <li className="flex items-center text-sm text-slate-600">
+                                    <CheckCircle2 size={16} className="text-emerald-500 mr-3 shrink-0" />
+                                    <span>Validade Jurídica (Assinatura Digital)</span>
+                                </li>
+                                <li className="flex items-center text-sm text-slate-600">
+                                    <CheckCircle2 size={16} className="text-emerald-500 mr-3 shrink-0" />
+                                    <span>Backup Vitalício e Link Público</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center justify-center text-slate-400 text-xs gap-4">
+                         <span className="flex items-center"><Lock size={12} className="mr-1"/> Pagamento Seguro</span>
+                         <span className="flex items-center"><Zap size={12} className="mr-1"/> Processamento Instantâneo</span>
+                    </div>
+                </div>
+
+                {/* COLUNA DIREITA: QR Code Pix */}
+                <div className="bg-slate-900 text-white p-8 lg:p-10 rounded-3xl shadow-2xl relative overflow-hidden flex flex-col items-center text-center h-full justify-center min-h-[500px]">
+                    {/* Background decorativo */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-900 z-0"></div>
+                    <div className="absolute -top-24 -right-24 w-64 h-64 bg-emerald-500/20 rounded-full blur-3xl"></div>
+                    <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-blue-500/20 rounded-full blur-3xl"></div>
+
+                    <div className="relative z-10 w-full max-w-sm">
+                        <div className="mb-6">
+                            <div className="inline-flex items-center justify-center p-3 bg-white/10 rounded-xl backdrop-blur-sm mb-4 border border-white/10">
+                                <QrCode size={32} className="text-emerald-400" />
+                            </div>
+                            <h4 className="text-xl font-bold">Pagamento via Pix</h4>
+                            <p className="text-slate-400 text-sm mt-1">Aprovação imediata e envio automático.</p>
+                        </div>
+
+                        {isProcessingAction && !pixData ? (
+                            <div className="bg-white/5 rounded-2xl p-12 border border-white/10 backdrop-blur-sm">
+                                <Loader2 size={48} className="text-emerald-400 animate-spin mx-auto mb-4" />
+                                <p className="text-slate-300 font-medium animate-pulse">Gerando Código Exclusivo...</p>
+                            </div>
+                        ) : pixData ? (
+                            <div className="bg-white p-6 rounded-2xl shadow-lg animate-scale-in">
+                                <div className="relative group">
+                                    <img 
+                                        src={`data:image/png;base64,${pixData.encodedImage}`} 
+                                        alt="QR Code Pix" 
+                                        className="w-full h-auto rounded-lg border-2 border-slate-100" 
+                                    />
+                                    {/* Scan Line Animation */}
+                                    <div className="absolute inset-0 border-b-2 border-emerald-500 opacity-50 animate-scan pointer-events-none"></div>
+                                </div>
+                                
+                                <div className="mt-6">
+                                    <p className="text-slate-500 text-xs mb-2 font-bold uppercase tracking-wider">Código Copia e Cola</p>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            readOnly 
+                                            value={pixData.payload} 
+                                            className="w-full bg-slate-100 border border-slate-200 text-slate-500 text-xs p-3 rounded-lg outline-none" 
+                                        />
+                                        <button 
+                                            onClick={() => {navigator.clipboard.writeText(pixData.payload); alert("Código Pix copiado!");}} 
+                                            className="bg-emerald-500 hover:bg-emerald-600 text-white p-3 rounded-lg transition-colors flex items-center justify-center shrink-0"
+                                            title="Copiar"
+                                        >
+                                            <Copy size={18} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="bg-red-500/10 p-6 rounded-2xl border border-red-500/30 text-red-200">
+                                <AlertCircle className="mx-auto mb-2" size={32}/>
+                                <p className="mb-4">{error || "Erro ao conectar com o banco."}</p>
+                                <button onClick={generatePix} className="bg-white text-red-600 px-6 py-2 rounded-lg font-bold hover:bg-red-50 transition">Tentar Novamente</button>
+                            </div>
+                        )}
+
+                        {pixData && (
+                            <div className="mt-8 flex items-center justify-center text-emerald-400 text-sm animate-pulse font-medium">
+                                <Loader2 size={16} className="animate-spin mr-2" />
+                                Aguardando confirmação do banco...
+                            </div>
+                        )}
+                        
+                        {/* Fallback Manual */}
+                        <div className="mt-4">
+                             <button onClick={handleWebhookSuccess} className="text-xs text-slate-500 hover:text-white transition-colors underline decoration-slate-600 hover:decoration-white">
+                                 Simular Confirmação (Teste)
+                             </button>
+                        </div>
+                    </div>
+                </div>
             </div>
-            {selectedMethod === 'CREDIT_CARD' && (
-                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-left space-y-4 mb-6 animate-slide-in-down">
-                    <div><label className="text-xs font-bold text-slate-500 uppercase">Número do Cartão</label><input type="text" className="w-full p-3 bg-slate-50 rounded-lg border border-slate-200 outline-none focus:border-purple-500 transition font-mono" placeholder="0000 0000 0000 0000" maxLength={19} value={cardData.number} onChange={e => setCardData({...cardData, number: MASKS.card(e.target.value)})}/></div>
-                    <div><label className="text-xs font-bold text-slate-500 uppercase">Nome no Cartão</label><input type="text" className="w-full p-3 bg-slate-50 rounded-lg border border-slate-200 outline-none focus:border-purple-500 transition" placeholder="COMO NO CARTAO" value={cardData.holderName} onChange={e => setCardData({...cardData, holderName: e.target.value.toUpperCase()})}/></div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div><label className="text-xs font-bold text-slate-500 uppercase">Validade</label><div className="flex gap-2"><input type="text" placeholder="MM" maxLength={2} className="w-full p-3 bg-slate-50 rounded-lg border border-slate-200 outline-none focus:border-purple-500 text-center" value={cardData.expiryMonth} onChange={e => setCardData({...cardData, expiryMonth: e.target.value})}/><input type="text" placeholder="AAAA" maxLength={4} className="w-full p-3 bg-slate-50 rounded-lg border border-slate-200 outline-none focus:border-purple-500 text-center" value={cardData.expiryYear} onChange={e => setCardData({...cardData, expiryYear: e.target.value})}/></div></div>
-                        <div><label className="text-xs font-bold text-slate-500 uppercase">CVV</label><input type="text" className="w-full p-3 bg-slate-50 rounded-lg border border-slate-200 outline-none focus:border-purple-500 text-center font-mono" placeholder="123" maxLength={4} value={cardData.ccv} onChange={e => setCardData({...cardData, ccv: e.target.value})}/></div>
-                    </div>
-                </div>
-            )}
-            {selectedMethod === 'PIX' && pixData && (
-                <div className="bg-white p-6 rounded-2xl border border-emerald-200 shadow-sm text-center mb-6 animate-fade-in">
-                    <p className="text-sm text-emerald-700 font-bold mb-4">Escaneie para pagar</p>
-                    <img src={`data:image/png;base64,${pixData.encodedImage}`} alt="QR Code Pix" className="w-48 h-48 mx-auto border-4 border-white shadow-lg rounded-lg mb-4" />
-                    <div className="flex items-center gap-2 mb-6"><input type="text" readOnly value={pixData.payload} className="flex-1 p-2 text-xs bg-slate-100 rounded border border-slate-200 text-slate-500 truncate" /><button onClick={() => {navigator.clipboard.writeText(pixData.payload); alert("Código copiado!");}} className="p-2 bg-emerald-100 text-emerald-700 rounded hover:bg-emerald-200 font-bold text-xs flex items-center"><Copy size={14} className="mr-1"/> Copiar</button></div>
-                    
-                    <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
-                        <p className="text-xs text-blue-700 font-bold mb-2">Instruções:</p>
-                        <ol className="text-[10px] text-blue-600 text-left list-decimal list-inside space-y-1">
-                            <li>Abra o app do seu banco.</li>
-                            <li>Escolha a opção Pix &gt; Pagar com QR Code.</li>
-                            <li>Escaneie o código ou use o Copia e Cola.</li>
-                            <li>Após confirmar no banco, clique abaixo.</li>
-                        </ol>
-                    </div>
-                    
-                    {/* BOTÃO DE CONFIRMAÇÃO MANUAL DO PIX - GATILHO DE SUCESSO */}
-                    <button 
-                        onClick={finalizeSuccessFlow} 
-                        disabled={isProcessingAction}
-                        className="w-full mt-6 bg-emerald-600 text-white py-3 rounded-xl font-bold shadow-lg flex items-center justify-center hover:bg-emerald-700 transition-all"
-                    >
-                        {isProcessingAction ? <Loader2 className="animate-spin mr-2"/> : <CheckCircle2 className="mr-2"/>}
-                        Já realizei o pagamento
-                    </button>
-                </div>
-            )}
-            {selectedMethod && !pixData && (
-                <button onClick={handleProcessPayment} disabled={isProcessingAction} className={`w-full py-4 rounded-xl font-bold shadow-xl flex items-center justify-center transition-all transform active:scale-95 disabled:opacity-70 ${selectedMethod === 'PIX' ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-purple-600 hover:bg-purple-700 text-white'}`}>
-                    {isProcessingAction ? <Loader2 className="animate-spin mr-2"/> : (selectedMethod === 'PIX' ? <QrCode className="mr-2"/> : <CreditCard className="mr-2"/>)}
-                    {isProcessingAction ? 'Processando...' : (selectedMethod === 'PIX' ? 'Gerar QR Code Pix' : `Pagar R$ ${calculateTotal().toFixed(2)}`)}
-                </button>
-            )}
-            {error && <div className="mt-4 p-3 bg-red-50 text-red-600 text-sm rounded-lg flex items-center justify-center"><AlertCircle size={16} className="mr-2"/> {error}</div>}
-            <button onClick={() => setPaymentStage('selection')} className="mt-6 text-sm text-slate-500 hover:underline">Voltar</button>
+            
+            <style>{`
+                @keyframes scan {
+                    0% { top: 0; opacity: 0; }
+                    10% { opacity: 1; }
+                    90% { opacity: 1; }
+                    100% { top: 100%; opacity: 0; }
+                }
+                .animate-scan {
+                    animation: scan 2s linear infinite;
+                }
+            `}</style>
         </div>
       );
-      return null;
   };
 
   const visibleAreas = showAllAreas ? LAW_AREAS : LAW_AREAS.slice(0, 4);
 
-  const renderStepContent = () => {
-    switch(currentStep) {
-        // ... (Mantém outros casos sem alteração)
-        case 7:
-            return renderPaymentStep();
-        default:
-            return null;
-    }
-  };
-
-  // Mantém o resto do componente (renderStepContent cases 1-6 e return principal) igual
-  // Apenas a chamada de renderStepContent() é o que importa
-  // O código abaixo é apenas para manter a estrutura completa no XML, copiando a lógica de render existente
-  // mas garantindo que o switch case chame as funções novas.
-
   return (
     <div className="max-w-5xl mx-auto pb-24 relative">
+       {/* STEPPER HEADER */}
        <div className="mb-8 overflow-x-auto pb-2 scrollbar-none">
            <div className="flex justify-between min-w-[600px] px-2">
                {STEPS.map((step, idx) => (
@@ -1017,10 +1026,11 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                ))}
            </div>
        </div>
+
+       {/* MAIN CONTENT AREA */}
        <div className="bg-white p-4 md:p-8 rounded-2xl border shadow-sm min-h-[500px] relative">
            {isGenerating && <DraftingAnimation />}
            
-           {/* REPLICANDO LOGICA DE RENDERIZAÇÃO DAS ETAPAS PARA O CONTEXTO COMPLETO */}
            {(() => {
                 switch(currentStep) {
                     case 1:
@@ -1146,7 +1156,13 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                    <button onClick={() => { if (currentStep === 1) onBack?.(); else setCurrentStep(prev => prev - 1); }} className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition">Voltar</button>
                    {currentStep < 6 && (
                        <button 
-                            onClick={() => setCurrentStep(prev => prev + 1)} 
+                            onClick={async () => {
+                                // Auto-Save ao avançar a partir do passo 3 (onde temos destinatário)
+                                if (currentStep >= 3) {
+                                    await handleAutoSaveDraft();
+                                }
+                                setCurrentStep(prev => prev + 1);
+                            }} 
                             disabled={
                                 (currentStep === 1 && !formData.areaId) ||
                                 (currentStep === 2 && (!formData.species || !formData.facts)) ||
