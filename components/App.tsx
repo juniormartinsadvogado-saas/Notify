@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -15,6 +16,7 @@ import { ViewState, NotificationItem, NotificationStatus, Meeting, Transaction }
 import { Bell, Search, Menu, X, CheckCircle, FileText, ArrowLeft, LogOut, Loader2, Settings as SettingsIcon } from 'lucide-react';
 import { ensureUserProfile, getUserProfile } from './services/userService';
 import { getNotificationsByRecipientCpf } from './services/notificationService';
+import { saveTransaction, getUserTransactions, updateSubscriptionStatus } from './services/paymentService'; // Importação atualizada
 import { auth } from './services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 
@@ -50,12 +52,11 @@ const App: React.FC = () => {
   const [systemNotifications, setSystemNotifications] = useState<NotificationItem[]>([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
 
-  // Subscription State (Mock)
-  // Inicialmente inativo/vazio conforme solicitação
+  // Subscription State
   const [subscriptionData, setSubscriptionData] = useState({
       active: false,
-      planName: 'Plano Pro',
-      creditsTotal: 10,
+      planName: 'Plano Gratuito',
+      creditsTotal: 0,
       creditsUsed: 0,
       nextBillingDate: '',
       invoices: [] as Transaction[]
@@ -69,7 +70,6 @@ const App: React.FC = () => {
   
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]); 
-  // Inicia vazio para garantir "clean slate" até que o usuário gere algo
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   useEffect(() => {
@@ -86,14 +86,30 @@ const App: React.FC = () => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
         if (currentUser) {
             if (currentUser.emailVerified) {
-                // Usuário logado e verificado
                 setUser(currentUser);
-                localStorage.setItem('mock_session_user', JSON.stringify(currentUser)); // Mantido para compatibilidade com partes não migradas
-                await ensureUserProfile(currentUser);
+                const profile = await ensureUserProfile(currentUser);
+                
+                // --- SINCRONIZAÇÃO DE DADOS INICIAIS ---
                 checkSystemNotifications(currentUser.uid);
+                
+                // 1. Busca Transações Reais
+                const realTransactions = await getUserTransactions(currentUser.uid);
+                setTransactions(realTransactions);
+
+                // 2. Sincroniza Assinatura do Firestore
+                if (profile) {
+                    setSubscriptionData(prev => ({
+                        ...prev,
+                        active: profile.subscriptionActive || false,
+                        planName: profile.subscriptionPlan || 'Plano Gratuito',
+                        creditsTotal: profile.creditsTotal || 0,
+                        creditsUsed: profile.creditsUsed || 0,
+                        nextBillingDate: profile.nextBillingDate || '',
+                        invoices: realTransactions.filter(t => t.description.includes('Assinatura'))
+                    }));
+                }
+
             } else {
-                // Email não verificado, força logout se tentar persistir (segurança extra)
-                // A UI de Login lida com isso, aqui é apenas state sync
                 setUser(null);
             }
         } else {
@@ -103,7 +119,6 @@ const App: React.FC = () => {
         setLoadingAuth(false);
     });
 
-    // Carregar preferências salvas
     const savedTheme = localStorage.getItem('app_theme_pref');
     if (savedTheme) {
         const { dark, color } = JSON.parse(savedTheme);
@@ -133,7 +148,6 @@ const App: React.FC = () => {
       }
   };
 
-  // --- AUTOMATION: MEETING STATUS POR TEMPO ---
   useEffect(() => {
     const checkMeetingStatus = () => {
         const now = new Date();
@@ -161,40 +175,16 @@ const App: React.FC = () => {
       setTransactions(prev => prev.map(t => 
           t.id === transactionId ? { ...t, status: 'Reembolsado' } : t
       ));
-
-      setNotifications(prev => {
-          const newNotifs = [...prev];
-          const targetIndex = newNotifs.findIndex(n => n.status === NotificationStatus.SENT);
-          if (targetIndex >= 0) {
-              newNotifs[targetIndex] = { ...newNotifs[targetIndex], status: NotificationStatus.PENDING_PAYMENT };
-          }
-          return newNotifs;
-      });
-
-      setMeetings(prev => {
-          const newMeetings = [...prev];
-          const targetIndex = newMeetings.findIndex(m => m.status === 'scheduled');
-          if (targetIndex >= 0) {
-              newMeetings[targetIndex] = { ...newMeetings[targetIndex], status: 'canceled' };
-          }
-          return newMeetings;
-      });
-
-      alert("Reembolso processado com sucesso.\n- Pagamento estornado\n- Notificação movida para Pendentes\n- Conciliação Cancelada");
+      alert("Reembolso processado com sucesso (Simulação Local).");
   };
 
-  // Função chamada pelo Login component apenas para atualizar estado local se necessário
   const handleLogin = (firebaseUser: any) => {
       setUser(firebaseUser);
-      // Logic handled by onAuthStateChanged mostly
   };
 
   const handleLogout = async () => {
-    // 1. Inicia animação de saída
     setIsSidebarOpen(false); 
     setIsLoggingOut(true);
-
-    // 2. Aguarda 3.5 segundos e faz logout do Firebase
     setTimeout(async () => {
         await signOut(auth);
         localStorage.removeItem('mock_session_user');
@@ -204,51 +194,98 @@ const App: React.FC = () => {
     }, 3500); 
   };
 
-  const handleSaveNotification = (notification: NotificationItem, meeting?: Meeting, transaction?: Transaction) => {
+  const handleSaveNotification = async (notification: NotificationItem, meeting?: Meeting, transaction?: Transaction) => {
     setNotifications(prev => [notification, ...prev]);
     if (meeting) setMeetings(prev => [meeting, ...prev]);
-    if (transaction) setTransactions(prev => [transaction, ...prev]);
+    
+    if (user) {
+        // CASO 1: Compra de Nova Assinatura durante o fluxo
+        if (transaction && transaction.description.includes('Assinatura')) {
+            await saveTransaction(user.uid, transaction);
+            setTransactions(prev => [transaction, ...prev]);
 
-    // Se o pagamento for de Assinatura, ativa o plano
-    if (transaction && transaction.description.includes('Assinatura')) {
-        handleToggleSubscription(); // Ativa e adiciona fatura
+            const nextMonth = new Date();
+            nextMonth.setMonth(nextMonth.getMonth() + 1);
+            
+            const newSubState = {
+                active: true,
+                planName: 'Plano Pro',
+                creditsTotal: 10,
+                creditsUsed: 1, // Consome 1 imediatamente para a notificação atual (Regra de Negócio)
+                nextBillingDate: nextMonth.toLocaleDateString()
+            };
+
+            await updateSubscriptionStatus(user.uid, newSubState);
+            setSubscriptionData(prev => ({
+                ...prev,
+                ...newSubState,
+                invoices: [transaction, ...prev.invoices]
+            }));
+        } 
+        // CASO 2: Pagamento Avulso
+        else if (transaction) {
+            await saveTransaction(user.uid, transaction);
+            setTransactions(prev => [transaction, ...prev]);
+        }
+        // CASO 3: Uso de Crédito de Assinatura Existente (Sem transação financeira)
+        else if (subscriptionData.active && subscriptionData.creditsUsed < subscriptionData.creditsTotal) {
+            const newUsed = subscriptionData.creditsUsed + 1;
+            await updateSubscriptionStatus(user.uid, { 
+                active: true, 
+                planName: subscriptionData.planName, 
+                creditsTotal: subscriptionData.creditsTotal,
+                creditsUsed: newUsed, // Incrementa uso
+                nextBillingDate: subscriptionData.nextBillingDate
+            });
+            setSubscriptionData(prev => ({ ...prev, creditsUsed: newUsed }));
+        }
     }
 
     setCurrentView(ViewState.DASHBOARD);
     setBadgeCounts(prev => ({ ...prev, [ViewState.DASHBOARD]: (prev[ViewState.DASHBOARD] || 0) + 1 }));
   };
 
-  // Gerencia Ativação/Desativação de Assinatura (Simulação)
-  const handleToggleSubscription = () => {
-      setSubscriptionData(prev => {
-          if (!prev.active) {
-              // ATIVAR
-              const nextMonth = new Date();
-              nextMonth.setMonth(nextMonth.getMonth() + 1);
-              
-              const newInvoice: Transaction = {
-                  id: `SUB-${Date.now()}`,
-                  description: 'Assinatura Mensal Pro',
-                  amount: 259.97,
-                  date: new Date().toISOString(),
-                  status: 'Pago'
-              };
+  const handleToggleSubscription = async () => {
+      if (!user) return;
 
-              return {
-                  ...prev,
-                  active: true,
-                  nextBillingDate: nextMonth.toLocaleDateString(),
-                  creditsUsed: 0,
-                  invoices: [newInvoice, ...prev.invoices]
-              };
-          } else {
-              // DESATIVAR (Mantém histórico, mas desativa)
-              if (window.confirm("Deseja realmente cancelar a assinatura? Seus benefícios serão encerrados ao fim do ciclo.")) {
-                  return { ...prev, active: false, nextBillingDate: '' };
-              }
-              return prev;
+      const willActivate = !subscriptionData.active;
+      const nextMonth = new Date();
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
+      
+      const newState = {
+          active: willActivate,
+          planName: willActivate ? 'Plano Pro' : 'Plano Gratuito',
+          creditsTotal: willActivate ? 10 : 0,
+          nextBillingDate: willActivate ? nextMonth.toLocaleDateString() : ''
+      };
+
+      await updateSubscriptionStatus(user.uid, newState);
+
+      if (willActivate) {
+          const newInvoice: Transaction = {
+              id: `SUB-${Date.now()}`,
+              description: 'Assinatura Mensal Pro',
+              amount: 259.97,
+              date: new Date().toISOString(),
+              status: 'Pago'
+          };
+          await saveTransaction(user.uid, newInvoice);
+          setTransactions(prev => [newInvoice, ...prev]);
+      } else {
+          if (!window.confirm("Deseja realmente cancelar a assinatura? Seus benefícios serão encerrados ao fim do ciclo.")) {
+              return; 
           }
-      });
+      }
+
+      setSubscriptionData(prev => ({
+          ...prev,
+          ...newState,
+          creditsUsed: 0,
+          invoices: willActivate ? [
+              { id: `SUB-${Date.now()}`, description: 'Assinatura Mensal Pro', amount: 259.97, date: new Date().toISOString(), status: 'Pago' },
+              ...prev.invoices
+          ] : prev.invoices
+      }));
   };
 
   const handleThemeChange = (isDark: boolean, color: string) => {
@@ -271,7 +308,8 @@ const App: React.FC = () => {
       case ViewState.DASHBOARD:
         return <Dashboard notifications={notifications} meetings={meetings} transactions={transactions} onNavigate={setCurrentView} user={user} />;
       case ViewState.CREATE_NOTIFICATION:
-        return <NotificationCreator onSave={handleSaveNotification} user={user} onBack={() => setCurrentView(ViewState.DASHBOARD)} />;
+        // Passamos subscriptionData para controle de créditos
+        return <NotificationCreator onSave={handleSaveNotification} user={user} onBack={() => setCurrentView(ViewState.DASHBOARD)} subscriptionData={subscriptionData} />;
       case ViewState.RECEIVED_NOTIFICATIONS:
         return <ReceivedNotifications />;
       case ViewState.MONITORING:
@@ -298,7 +336,6 @@ const App: React.FC = () => {
       case ViewState.PAYMENTS_REFUNDED:
           return <Billing transactions={transactions} filterStatus={FILTER_PAYMENT_REFUNDED} onRefund={handleRefund} />;
 
-      // NOVAS ROTAS DE ASSINATURA
       case ViewState.SUBSCRIPTION_PLAN:
           return <SubscriptionManager subView="plan" subscriptionData={subscriptionData} onToggleSubscription={handleToggleSubscription} />;
       case ViewState.SUBSCRIPTION_HISTORY:
@@ -323,7 +360,6 @@ const App: React.FC = () => {
     return <SplashScreen onFinish={() => setShowSplash(false)} />;
   }
 
-  // Enquanto verifica o Auth status
   if (loadingAuth) {
       return (
           <div className="flex h-screen items-center justify-center bg-zinc-100">
@@ -332,7 +368,6 @@ const App: React.FC = () => {
       );
   }
 
-  // LOGOUT ANIMATION SCREEN
   if (isLoggingOut) {
       return (
           <div className="fixed inset-0 z-50 bg-slate-900 flex flex-col items-center justify-center text-white animate-fade-in">
@@ -340,19 +375,13 @@ const App: React.FC = () => {
                   <div className="absolute inset-0 bg-red-500/20 rounded-full animate-ping opacity-50"></div>
                   <LogOut size={48} className="text-slate-200 relative z-10" />
               </div>
-              
               <h2 className="text-3xl font-bold mb-2 tracking-tight animate-fade-in-up">Saindo da Conta</h2>
               <p className="text-slate-400 text-sm mb-8 font-light">Sincronizando dados e encerrando sessão segura...</p>
-              
               <div className="w-64 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                   <div className="h-full bg-gradient-to-r from-blue-500 to-purple-500 animate-[loading_3.5s_ease-in-out_forwards] w-full origin-left transform scale-x-0"></div>
               </div>
-
               <style>{`
-                @keyframes loading {
-                    0% { transform: scaleX(0); }
-                    100% { transform: scaleX(1); }
-                }
+                @keyframes loading { 0% { transform: scaleX(0); } 100% { transform: scaleX(1); } }
               `}</style>
           </div>
       );
@@ -362,7 +391,6 @@ const App: React.FC = () => {
     return <Login onLogin={handleLogin} />;
   }
 
-  // Dynamic Styles for Theme
   const getThemeStyles = () => {
       const colors: any = {
           blue: { bg: 'bg-blue-600', text: 'text-blue-600', border: 'border-blue-200', ring: 'focus-within:ring-blue-100' },
@@ -384,7 +412,6 @@ const App: React.FC = () => {
         onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
         badgeCounts={badgeCounts}
       />
-      
       <main className={`flex-1 transition-all duration-300 p-4 md:p-8 ${isSidebarOpen ? 'md:ml-72' : 'md:ml-20'} w-full`}>
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-10 pt-2 gap-4 relative">
           <div className="flex items-center w-full md:w-auto">
@@ -394,8 +421,6 @@ const App: React.FC = () => {
             >
                 <Menu size={24} />
             </button>
-
-            {/* Header Title Hidden on Dashboard to avoid duplication with Dashboard's welcome widget */}
             {currentView !== ViewState.DASHBOARD && (
                 <div>
                   <h1 className={`text-2xl md:text-3xl font-bold capitalize tracking-tight truncate max-w-[200px] md:max-w-none ${darkMode ? 'text-white' : 'text-slate-900'}`}>
@@ -447,7 +472,7 @@ const App: React.FC = () => {
                                              <div className="mt-1 text-blue-500"><CheckCircle size={16} /></div>
                                              <div>
                                                  <p className={`text-sm font-bold ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Nova Notificação Recebida</p>
-                                                 <p className="text-xs text-slate-500">Remetente: {notif.senderName}</p>
+                                                 <p className="text-xs text-slate-500">Remetente: {notif.recipientName}</p>
                                                  <p className="text-[10px] text-slate-400 mt-1">{new Date(notif.createdAt).toLocaleDateString()}</p>
                                              </div>
                                          </div>
@@ -472,7 +497,6 @@ const App: React.FC = () => {
         {renderContent()}
       </main>
 
-      {/* FLOATING BACK BUTTON FOR NAVIGATION */}
       {currentView !== ViewState.DASHBOARD && currentView !== ViewState.CREATE_NOTIFICATION && (
           <button
             onClick={() => setCurrentView(ViewState.DASHBOARD)}

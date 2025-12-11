@@ -9,7 +9,7 @@ import {
   Wand2, Scale, Users, 
   FileText, PenTool, CreditCard, Check, Loader2, 
   Briefcase, ShoppingBag, Home, Heart, FileSignature, Scroll, UploadCloud, X, User, Video, CheckCircle2, ArrowRight, Calendar, Lock, ChevronLeft, Sparkles,
-  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode, Copy, AlertCircle, Plane, Zap, Rocket, Monitor, Trophy, Anchor, Hash, ShieldCheck, ChevronDown, Lightbulb, MessageSquareQuote
+  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode, Copy, AlertCircle, Plane, Zap, Rocket, Monitor, Trophy, Anchor, Hash, ShieldCheck, ChevronDown, Lightbulb, MessageSquareQuote, Ticket
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
 
@@ -17,6 +17,11 @@ interface NotificationCreatorProps {
   onSave: (notification: NotificationItem, meeting?: Meeting, transaction?: Transaction) => void;
   user?: any;
   onBack?: () => void;
+  subscriptionData?: {
+      active: boolean;
+      creditsTotal: number;
+      creditsUsed: number;
+  };
 }
 
 const STEPS = [
@@ -192,7 +197,7 @@ const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputCh
                     <input type="text" placeholder="CEP" value={data.address.cep} onChange={e => onAddressChange(section, 'cep', MASKS.cep(e.target.value))} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-blue-400 outline-none" required />
                     <input type="text" placeholder="Rua" value={data.address.street} onChange={e => onAddressChange(section, 'street', e.target.value)} className="col-span-1 md:col-span-3 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-blue-400 outline-none" required />
                     <input type="text" placeholder="Número" value={data.address.number} onChange={e => onAddressChange(section, 'number', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-blue-400 outline-none" required />
-                    <input type="text" placeholder="Complemento" value={data.address.complement} onChange={e => onAddressChange(section, 'complement', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-blue-400 outline-none" required />
+                    <input type="text" placeholder="Complemento" value={data.address.complement} onChange={e => onAddressChange(section, 'complement', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-blue-400 outline-none" />
                     <input type="text" placeholder="Bairro" value={data.address.neighborhood} onChange={e => onAddressChange(section, 'neighborhood', e.target.value)} className="col-span-1 md:col-span-2 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-blue-400 outline-none" required />
                     <input type="text" placeholder="Cidade" value={data.address.city} onChange={e => onAddressChange(section, 'city', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-blue-400 outline-none" required />
                     <input type="text" placeholder="UF" value={data.address.state} maxLength={2} onChange={e => onAddressChange(section, 'state', e.target.value.toUpperCase())} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:border-blue-400 outline-none" required />
@@ -202,7 +207,7 @@ const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputCh
     );
 };
 
-const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user, onBack }) => {
+const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user, onBack, subscriptionData }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSavingData, setIsSavingData] = useState(false);
@@ -270,9 +275,11 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   };
 
   const validateAddresses = () => {
-      const validate = (addr: Address) => addr.cep && addr.street && addr.number && addr.complement && addr.neighborhood && addr.city && addr.state;
-      if (!validate(formData.sender.address)) return "Endereço do Remetente incompleto (inclua complemento).";
-      if (!validate(formData.recipient.address)) return "Endereço do Destinatário incompleto (inclua complemento).";
+      // Removemos a validação de complemento (addr.complement) para evitar bloqueio
+      const validate = (addr: Address) => addr.cep && addr.street && addr.number && addr.neighborhood && addr.city && addr.state;
+      
+      if (!validate(formData.sender.address)) return "Endereço do Remetente incompleto (Verifique CEP, Rua, Número, Bairro, Cidade, UF).";
+      if (!validate(formData.recipient.address)) return "Endereço do Destinatário incompleto (Verifique CEP, Rua, Número, Bairro, Cidade, UF).";
       if (role === 'representative' && !validate(formData.representative.address)) return "Seu endereço profissional incompleto.";
       return null;
   };
@@ -358,7 +365,12 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
         alert(addressError);
         return;
     }
-    if (!formData.species || !formData.facts) return;
+    
+    if (!formData.species || !formData.facts) {
+        alert("Por favor, preencha a 'Área Jurídica' e os 'Fatos' antes de gerar a minuta.");
+        return;
+    }
+
     setIsGenerating(true);
     
     try {
@@ -407,6 +419,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
         );
         
         setFormData(prev => ({ ...prev, generatedContent: text }));
+        
+        // Alerta de conclusão e transição
+        alert("Minuta gerada com sucesso! Prossiga para revisar e assinar o documento.");
         setCurrentStep(6); 
     } catch (err) {
         console.error(err);
@@ -576,6 +591,25 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   };
 
+  const handleUseCredit = async () => {
+      // Atalho para quem tem assinatura: não precisa pagar, apenas confirma o envio
+      if(!user || !createdData.notif) return;
+      setIsProcessingAction(true);
+      
+      try {
+          // Atualiza status para SENT diretamente, pois já foi "pago" pelo crédito
+          const updatedNotif = { ...createdData.notif, status: NotificationStatus.SENT };
+          
+          // Chama onSave sem transação, pois foi usado crédito
+          onSave(updatedNotif, createdData.meet, undefined);
+          
+      } catch (e) {
+          setError("Erro ao processar crédito.");
+      } finally {
+          setIsProcessingAction(false);
+      }
+  };
+
   const handleProcessPayment = async () => {
       setIsProcessingAction(true);
       setError('');
@@ -613,6 +647,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   };
 
   const renderPaymentStep = () => {
+      const hasCredits = subscriptionData?.active && (subscriptionData.creditsUsed < subscriptionData.creditsTotal);
+      
       if (paymentStage === 'selection') return (
          <div className="pb-12 space-y-6 animate-fade-in">
              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-6 mb-8 text-center shadow-sm">
@@ -629,38 +665,61 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
              <div className="text-center mb-8">
                  <h3 className="text-2xl font-bold text-slate-800">Escolha como prosseguir</h3>
-                 <p className="text-slate-500 text-sm">Selecione o plano ideal.</p>
+                 <p className="text-slate-500 text-sm">Selecione o plano ideal para o envio.</p>
              </div>
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-                <div onClick={() => setPaymentPlan('single')} className={`relative p-8 rounded-2xl cursor-pointer transition-all duration-300 group overflow-hidden ${paymentPlan==='single' ? 'bg-white ring-2 ring-blue-500 shadow-xl scale-[1.02]' : 'bg-white border border-slate-200 hover:border-blue-300 hover:shadow-lg'}`}>
-                     {paymentPlan === 'single' && <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl shadow-sm">SELECIONADO</div>}
-                     <div className="flex flex-col h-full">
-                         <h4 className="font-bold text-slate-900 text-xl">Envio Avulso</h4>
-                         <p className="text-4xl font-bold text-slate-900 mt-4">R$ 57,92</p>
-                         <p className="text-xs text-slate-400 font-medium uppercase mt-1">pagamento único</p>
-                         <ul className="mt-6 space-y-3 text-sm text-slate-600 text-left">
-                            <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5"/> <span>Minuta Jurídica via IA</span></li>
-                            <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5"/> <span>PDF com Assinatura</span></li>
-                        </ul>
+
+             {/* OPCÕES INTELIGENTES BASEADAS NA ASSINATURA */}
+             {hasCredits ? (
+                 <div className="max-w-md mx-auto">
+                     <div className="p-8 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-xl relative overflow-hidden group hover:scale-[1.02] transition-transform cursor-pointer" onClick={handleUseCredit}>
+                         <div className="absolute top-0 right-0 p-4 opacity-10"><Ticket size={100} /></div>
+                         <h4 className="font-bold text-xl mb-2">Usar Crédito de Assinatura</h4>
+                         <p className="text-slate-300 text-sm mb-6">Você possui uma assinatura ativa.</p>
+                         <div className="flex items-center justify-between mb-6 bg-white/10 p-3 rounded-lg">
+                             <span className="text-xs font-bold uppercase tracking-wider">Créditos Restantes</span>
+                             <span className="text-xl font-bold">{subscriptionData?.creditsTotal - subscriptionData?.creditsUsed}</span>
+                         </div>
+                         <button disabled={isProcessingAction} className="w-full bg-white text-slate-900 font-bold py-3 rounded-xl hover:bg-slate-100 transition flex items-center justify-center">
+                             {isProcessingAction ? <Loader2 className="animate-spin mr-2"/> : <CheckCircle2 className="mr-2"/>}
+                             Confirmar Envio (1 Crédito)
+                         </button>
                      </div>
-                </div>
-                <div onClick={() => setPaymentPlan('subscription')} className={`relative p-8 rounded-2xl cursor-pointer transition-all duration-300 group overflow-hidden ${paymentPlan==='subscription' ? 'bg-slate-900 ring-2 ring-purple-500 shadow-2xl scale-[1.02]' : 'bg-white border border-slate-200 hover:border-purple-300 hover:shadow-lg'}`}>
-                     {paymentPlan === 'subscription' && <div className="absolute top-0 right-0 bg-purple-600 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl shadow-sm">RECOMENDADO</div>}
-                     <div className="flex flex-col h-full">
-                         <h4 className={`font-bold text-xl ${paymentPlan==='subscription' ? 'text-white' : 'text-slate-900'}`}>Assinatura Pro</h4>
-                         <p className={`text-4xl font-bold mt-4 ${paymentPlan==='subscription' ? 'text-white' : 'text-slate-900'}`}>R$ 259,97 <span className="text-sm font-normal opacity-60">/mês</span></p>
-                         <ul className={`mt-6 space-y-3 text-sm text-left ${paymentPlan === 'subscription' ? 'text-slate-300' : 'text-slate-600'}`}>
-                            <li className="flex items-start"><Check size={16} className="mr-2 text-purple-400"/> <span><strong>10 Notificações</strong> / mês</span></li>
-                            <li className="flex items-start"><Check size={16} className="mr-2 text-purple-400"/> <span>Suporte Prioritário</span></li>
-                        </ul>
-                     </div>
-                </div>
-             </div>
-             <div className="max-w-md mx-auto pt-6">
-                 <button onClick={() => setPaymentStage('input')} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-xl flex items-center justify-center hover:bg-slate-800 transition transform hover:scale-105">
-                     Ir para Pagamento <ArrowRight className="ml-2" size={18} />
-                 </button>
-             </div>
+                 </div>
+             ) : (
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
+                    <div onClick={() => setPaymentPlan('single')} className={`relative p-8 rounded-2xl cursor-pointer transition-all duration-300 group overflow-hidden ${paymentPlan==='single' ? 'bg-white ring-2 ring-blue-500 shadow-xl scale-[1.02]' : 'bg-white border border-slate-200 hover:border-blue-300 hover:shadow-lg'}`}>
+                         {paymentPlan === 'single' && <div className="absolute top-0 right-0 bg-blue-500 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl shadow-sm">SELECIONADO</div>}
+                         <div className="flex flex-col h-full">
+                             <h4 className="font-bold text-slate-900 text-xl">Envio Avulso</h4>
+                             <p className="text-4xl font-bold text-slate-900 mt-4">R$ 57,92</p>
+                             <p className="text-xs text-slate-400 font-medium uppercase mt-1">pagamento único</p>
+                             <ul className="mt-6 space-y-3 text-sm text-slate-600 text-left">
+                                <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5"/> <span>Envio via WhatsApp/SMS/E-mail</span></li>
+                                <li className="flex items-start"><Check size={16} className="text-blue-500 mr-2 mt-0.5"/> <span>PDF com Assinatura</span></li>
+                            </ul>
+                         </div>
+                    </div>
+                    <div onClick={() => setPaymentPlan('subscription')} className={`relative p-8 rounded-2xl cursor-pointer transition-all duration-300 group overflow-hidden ${paymentPlan==='subscription' ? 'bg-slate-900 ring-2 ring-purple-500 shadow-2xl scale-[1.02]' : 'bg-white border border-slate-200 hover:border-purple-300 hover:shadow-lg'}`}>
+                         {paymentPlan === 'subscription' && <div className="absolute top-0 right-0 bg-purple-600 text-white text-[10px] font-bold px-4 py-1.5 rounded-bl-xl shadow-sm">RECOMENDADO</div>}
+                         <div className="flex flex-col h-full">
+                             <h4 className={`font-bold text-xl ${paymentPlan==='subscription' ? 'text-white' : 'text-slate-900'}`}>Assinatura Pro</h4>
+                             <p className={`text-4xl font-bold mt-4 ${paymentPlan==='subscription' ? 'text-white' : 'text-slate-900'}`}>R$ 259,97 <span className="text-sm font-normal opacity-60">/mês</span></p>
+                             <ul className={`mt-6 space-y-3 text-sm text-left ${paymentPlan === 'subscription' ? 'text-slate-300' : 'text-slate-600'}`}>
+                                <li className="flex items-start"><Check size={16} className="mr-2 text-purple-400"/> <span><strong>10 Envios</strong> (Até 30 dias)</span></li>
+                                <li className="flex items-start"><Check size={16} className="mr-2 text-purple-400"/> <span>Renovação Mensal</span></li>
+                            </ul>
+                         </div>
+                    </div>
+                 </div>
+             )}
+
+             {!hasCredits && (
+                 <div className="max-w-md mx-auto pt-6">
+                     <button onClick={() => setPaymentStage('input')} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-xl flex items-center justify-center hover:bg-slate-800 transition transform hover:scale-105">
+                         Ir para Pagamento <ArrowRight className="ml-2" size={18} />
+                     </button>
+                 </div>
+             )}
          </div>
       );
       if (paymentStage === 'input') return (
@@ -844,10 +903,10 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                                 colorClass="border-blue-500" 
                                 onInputChange={handleInputChange} 
                                 onAddressChange={handleAddressChange} 
-                                documentLabel={role === 'representative' ? "CPF ou CNPJ" : "CPF"}
+                                documentLabel="CPF"
                                 documentMask={role === 'representative' ? MASKS.cpfCnpj : MASKS.cpf}
                                 documentMaxLength={18}
-                                documentPlaceholder={role === 'representative' ? "CPF ou CNPJ" : "000.000.000-00"}
+                                documentPlaceholder={role === 'representative' ? "ou CNPJ" : "000.000.000-00"}
                             />
 
                             {/* FORMULÁRIO DESTINATÁRIO (Quem recebe) */}
@@ -858,10 +917,10 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                                 colorClass="border-red-500" 
                                 onInputChange={handleInputChange} 
                                 onAddressChange={handleAddressChange} 
-                                documentLabel="CPF ou CNPJ"
+                                documentLabel="CPF"
                                 documentMask={MASKS.cpfCnpj}
                                 documentMaxLength={18}
-                                documentPlaceholder="CPF ou CNPJ"
+                                documentPlaceholder="ou CNPJ"
                             />
                         </div>
                     )}
@@ -906,7 +965,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                     <p className="text-slate-500 text-center max-w-md mb-8">Nossa inteligência artificial analisou os fatos para gerar uma notificação jurídica fundamentada.</p>
                     <button onClick={handleGenerateContent} disabled={isGenerating} className="px-8 py-4 bg-slate-900 text-white rounded-xl font-bold shadow-xl hover:bg-slate-800 transition-transform active:scale-95 flex items-center disabled:opacity-70 disabled:cursor-not-allowed">
                         {isGenerating ? <Loader2 className="animate-spin mr-2" /> : <Sparkles className="mr-2 text-yellow-400" />}
-                        {isGenerating ? 'Gerando Documento...' : 'Gerar Minuta Jurídica'}
+                        {isGenerating ? 'Gerando Documento...' : 'Gerar Notificação'}
                     </button>
                 </div>
             );
@@ -944,7 +1003,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                         </div>
                         <div className="w-full lg:w-96 space-y-6">
                             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                                <h4 className="font-bold text-slate-800 mb-4 flex items-center"><PenTool size={16} className="mr-2"/> Assinatura Digital</h4>
+                                <h4 className="font-bold text-slate-800 mb-4 flex items-center"><PenTool size={16} className="mr-2"/> Revisar e Assinar Documento</h4>
                                 <div ref={containerRef} className="border-2 border-dashed border-slate-300 rounded-xl h-32 bg-slate-50 cursor-crosshair relative touch-none" onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={endDrawing} onMouseLeave={endDrawing} onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={endDrawing}>
                                     <canvas ref={canvasRef} className="absolute inset-0" />
                                     {!isDrawing && !signatureData && <div className="absolute inset-0 flex items-center justify-center text-slate-400 pointer-events-none"><span className="text-xs">Assine aqui</span></div>}
