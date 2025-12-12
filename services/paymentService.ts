@@ -8,6 +8,7 @@ export interface CheckoutResponse {
     success: boolean;
     checkoutUrl?: string;
     pixData?: { encodedImage: string, payload: string };
+    paymentId?: string; // Adicionado ID do pagamento para rastreio
     error?: string;
 }
 
@@ -64,6 +65,22 @@ export const updateSubscriptionStatus = async (userId: string, status: { active:
     }
 };
 
+// --- VALIDAÇÃO MANUAL (NOVO) ---
+export const checkPaymentStatus = async (paymentId: string): Promise<{ paid: boolean, status?: string }> => {
+    try {
+        const response = await fetch('/api/validate-payment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ paymentId })
+        });
+        const data = await response.json();
+        return data;
+    } catch (error) {
+        console.error("Erro ao validar pagamento manualmente:", error);
+        return { paid: false };
+    }
+};
+
 // --- ASAAS CHECKOUT (VIA API SERVERLESS) ---
 
 export const initiateCheckout = async (notification: NotificationItem, paymentPlan: 'single' | 'subscription', method: 'CREDIT_CARD' | 'PIX', cardData?: any): Promise<CheckoutResponse> => {
@@ -110,6 +127,7 @@ export const initiateCheckout = async (notification: NotificationItem, paymentPl
         return { 
             success: true, 
             checkoutUrl: data.url,
+            paymentId: data.id, // ID do Pagamento Asaas
             pixData: data.pixData // Retorna dados do QR Code se existir
         };
 
@@ -155,6 +173,7 @@ export const initiateSubscriptionUpgrade = async (method: 'CREDIT_CARD' | 'PIX')
         return { 
             success: true, 
             checkoutUrl: data.url,
+            paymentId: data.id,
             pixData: data.pixData
         };
     } catch (error: any) {
