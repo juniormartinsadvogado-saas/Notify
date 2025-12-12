@@ -76,29 +76,43 @@ export const deleteEvidence = async (storagePath: string) => {
 
 export const saveNotification = async (notification: NotificationItem) => {
     try {
-        const notificanteProfile = await getUserProfile(notification.notificante_uid);
+        if (!notification.notificante_uid) throw new Error("UID do notificante obrigatório.");
+
+        // Tenta buscar perfil, mas não bloqueia se falhar
+        let notificanteProfile = null;
+        try {
+            notificanteProfile = await getUserProfile(notification.notificante_uid);
+        } catch (e) {
+            console.warn("Não foi possível carregar perfil do notificante para merge:", e);
+        }
         
+        // Merge inteligente de dados
         const notificationData: NotificationItem = {
             ...notification,
             notificante_dados_expostos: {
-                nome: notificanteProfile?.name || notification.notificante_dados_expostos.nome,
-                email: notificanteProfile?.email || notification.notificante_dados_expostos.email,
-                telefone: notificanteProfile?.phone || notification.notificante_dados_expostos.telefone,
-                foto_url: notificanteProfile?.photoUrl || notification.notificante_dados_expostos.foto_url
+                nome: notificanteProfile?.name || notification.notificante_dados_expostos.nome || '',
+                email: notificanteProfile?.email || notification.notificante_dados_expostos.email || '',
+                telefone: notificanteProfile?.phone || notification.notificante_dados_expostos.telefone || '',
+                foto_url: notificanteProfile?.photoUrl || notification.notificante_dados_expostos.foto_url || ''
             },
-            notificante_cpf: notificanteProfile?.cpf || notification.notificante_cpf,
-            notificados_cpfs: notification.notificados_cpfs
+            notificante_cpf: notificanteProfile?.cpf || notification.notificante_cpf || '',
+            notificados_cpfs: notification.notificados_cpfs || []
         };
 
         const docRef = doc(db, NOTIFICATIONS_COLLECTION, notification.id);
+        
+        // Sanitização profunda para remover undefined e garantir compatibilidade com Firestore
         const dataToSave = JSON.parse(JSON.stringify(notificationData));
+        
         await setDoc(docRef, dataToSave, { merge: true });
+        console.log("Notificação salva/sincronizada com sucesso:", notification.id);
+        
     } catch (error: any) {
         console.error("Erro ao salvar notificação:", error);
         if (error.code === 'permission-denied') {
              throw new Error("Permissão negada. Verifique se você está logado.");
         }
-        throw error;
+        throw new Error(error.message || "Erro ao sincronizar com o banco de dados.");
     }
 };
 

@@ -287,6 +287,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   
   const handleConfirmSignature = async () => {
       if (!signatureData) return alert("Assine para validar o documento.");
+      if (!user) return alert("Sessão inválida. Por favor, faça login novamente.");
       
       setIsSigningProcess(true);
       try {
@@ -311,7 +312,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           setIsSigned(true);
       } catch (e: any) {
           console.error("Erro assinatura:", e);
-          alert(`Erro ao processar assinatura: ${e.message}`);
+          alert(`Erro ao processar assinatura e salvar: ${e.message}`);
       } finally {
           setIsSigningProcess(false);
       }
@@ -363,7 +364,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           doc.setFont("helvetica", "bold");
           // Rotacionar e centralizar
           const text = "DOCUMENTO ORIGINAL";
-          const textWidth = doc.getTextWidth(text);
           // Translada para o centro, rotaciona, desenha e restaura
           doc.text(text, pageWidth / 2, pageHeight / 2, { align: "center", angle: 45 });
           doc.restoreGraphicsState();
@@ -664,6 +664,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                             section="sender" data={formData.sender} colorClass="border-blue-500" 
                             onInputChange={handleInputChange} onAddressChange={handleAddressChange} 
                             documentLabel={role === 'representative' ? "CPF ou CNPJ" : "Seu CPF"} 
+                            nameLabel={role === 'representative' ? "Nome Completo / Razão Social" : "Nome Completo"} // LÓGICA DINÂMICA
                             documentMask={role === 'representative' ? MASKS.cpfCnpj : MASKS.cpf}
                             documentMaxLength={role === 'representative' ? 18 : 14}
                             isCompanyAllowed={role === 'representative'} 
