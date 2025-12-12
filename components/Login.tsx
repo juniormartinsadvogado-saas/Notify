@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Mail, Lock, Loader2, User, CheckCircle, AlertCircle, Phone, FileText, Camera, Eye, EyeOff, ArrowLeft, RefreshCw, LogIn } from 'lucide-react';
 import { auth } from '../services/firebase';
 import { 
@@ -71,6 +71,36 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // NOVO: Verifica se já existe um usuário logado mas não verificado ao montar o componente
+  // Isso resolve o problema de dar F5 e voltar para a tela de login E limpa sessões fantasmas
+  useEffect(() => {
+      const checkPendingAuth = async () => {
+          // Pequeno delay para garantir que o SDK do Firebase inicializou
+          await auth.authStateReady();
+          const currentUser = auth.currentUser;
+          
+          if (currentUser) {
+              try {
+                  // Tenta recarregar o usuário. Se ele foi deletado no console, isso vai lançar um erro.
+                  await currentUser.reload();
+                  
+                  if (!currentUser.emailVerified) {
+                      console.log("Sessão pendente detectada:", currentUser.email);
+                      setUnverifiedUser(currentUser);
+                      setView('VERIFY_EMAIL');
+                  }
+              } catch (e: any) {
+                  console.warn("Sessão inválida detectada (usuário deletado?). Fazendo logout...", e.code);
+                  // Se der erro (ex: auth/user-not-found), forçamos o logout para limpar o navegador
+                  await signOut(auth);
+                  setUnverifiedUser(null);
+                  setView('LOGIN');
+              }
+          }
+      };
+      checkPendingAuth();
+  }, []);
+
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -87,15 +117,15 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           case 'auth/wrong-password': 
             return 'Senha ou e-mail incorretos';
           case 'auth/email-already-in-use': 
-            return 'O usuário já existe. Entrar?';
+            return 'Este e-mail já está cadastrado.';
           case 'auth/weak-password': 
             return 'A senha deve ter pelo menos 6 caracteres.';
           case 'auth/invalid-email': 
             return 'E-mail inválido.';
           case 'auth/too-many-requests': 
-            return 'Muitas tentativas. Tente mais tarde.';
+            return 'Muitas tentativas. Aguarde alguns instantes.';
           default: 
-            return 'Senha ou e-mail incorretos';
+            return 'Ocorreu um erro. Tente novamente.';
       }
   };
 
@@ -113,8 +143,6 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             setUnverifiedUser(user);
             setView('VERIFY_EMAIL');
             // IMPORTANTE: Não chamamos onLogin(user) aqui.
-            // O usuário permanece "autenticado" no Firebase, mas bloqueado na UI
-            // até que verifique e clique em "Fazer Login" novamente (ou refresh).
             return;
         }
 
@@ -143,9 +171,11 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       setIsLoading(true);
 
       try {
+          console.log("Iniciando criação de usuário...");
           // 1. Criar usuário no Auth
           const userCredential = await createUserWithEmailAndPassword(auth, email, password);
           const user = userCredential.user;
+          console.log("Usuário criado:", user.uid);
 
           // 2. Upload da Foto (se houver)
           let photoUrl = '';
@@ -170,14 +200,22 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               photoUrl
           });
 
-          // 5. Enviar Email de Verificação
-          await sendEmailVerification(user);
+          // 5. Enviar Email de Verificação (COM TRATAMENTO ESPECÍFICO)
+          try {
+              console.log("Tentando enviar e-mail de verificação para:", user.email);
+              await sendEmailVerification(user);
+              console.log("E-mail de verificação enviado com sucesso!");
+          } catch (emailError: any) {
+              console.error("ERRO ao enviar e-mail de verificação:", emailError);
+              alert(`Conta criada, mas houve um erro ao enviar o e-mail: ${emailError.message}. Tente reenviar na próxima tela.`);
+          }
 
           // 6. Configurar UI para Verificação (Não loga automaticamente)
           setUnverifiedUser(user);
           setView('VERIFY_EMAIL');
 
       } catch (err: any) {
+          console.error("Erro no registro:", err);
           setError(getFirebaseErrorMessage(err.code));
       } finally {
           setIsLoading(false);
@@ -186,9 +224,14 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
   const handleResendVerification = async () => {
       if (unverifiedUser && resendCooldown === 0) {
+          setError('');
+          setSuccessMsg('');
           try {
+              // Tenta reload antes de reenviar para garantir que o usuário ainda existe
+              await unverifiedUser.reload();
+              console.log("Reenviando e-mail para:", unverifiedUser.email);
               await sendEmailVerification(unverifiedUser);
-              setSuccessMsg('E-mail reenviado com sucesso!');
+              setSuccessMsg('E-mail reenviado! Verifique a Caixa de Entrada e SPAM.');
               setResendCooldown(60);
               const interval = setInterval(() => {
                   setResendCooldown((prev) => {
@@ -196,8 +239,16 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                       return prev - 1;
                   });
               }, 1000);
-          } catch (error) {
-              setError('Erro ao reenviar. Tente novamente em instantes.');
+          } catch (error: any) {
+              console.error("Erro ao reenviar:", error);
+              // Se o erro for user-not-found, força logout
+              if (error.code === 'auth/user-not-found') {
+                  setError("Este usuário não existe mais. Faça um novo cadastro.");
+                  setTimeout(() => handleLogoutAndReturn(), 2000);
+                  return;
+              }
+              const msg = getFirebaseErrorMessage(error.code);
+              setError(msg === 'Ocorreu um erro. Tente novamente.' ? `Erro: ${error.message}` : msg);
           }
       }
   };
@@ -224,7 +275,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
       try {
           await sendPasswordResetEmail(auth, email);
-          setSuccessMsg(`Enviamos a você um link de alteração de senha para ${email}.`);
+          setSuccessMsg(`Enviamos a você um link de alteração de senha para ${email}. Verifique a caixa de Spam.`);
       } catch (err: any) {
           setError(getFirebaseErrorMessage(err.code));
       } finally {
@@ -253,12 +304,18 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 <h3 className="text-xl font-bold text-slate-900 mb-2">Verifique seu e-mail</h3>
                 <p className="text-slate-500 text-sm mb-6 leading-relaxed">
                     Enviamos a você um e-mail de verificação para <strong className="text-slate-800 break-all">{unverifiedUser?.email || email}</strong>. 
-                    <br/>Verifique e faça login.
+                    <br/>Verifique a <strong>Caixa de Entrada e Spam</strong> e faça login.
                 </p>
 
                 {successMsg && (
-                    <div className="mb-4 p-3 bg-green-50 text-green-700 text-xs rounded-lg flex items-center justify-center">
+                    <div className="mb-4 p-3 bg-green-50 text-green-700 text-xs rounded-lg flex items-center justify-center animate-fade-in">
                         <CheckCircle size={14} className="mr-2"/> {successMsg}
+                    </div>
+                )}
+                
+                {error && (
+                    <div className="mb-4 p-3 bg-red-50 text-red-700 text-xs rounded-lg flex items-center justify-center animate-fade-in">
+                        <AlertCircle size={14} className="mr-2"/> {error}
                     </div>
                 )}
                 
