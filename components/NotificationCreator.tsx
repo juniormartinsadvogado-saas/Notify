@@ -24,9 +24,9 @@ const STEPS = [
   { id: 4, label: 'Conciliação', icon: Video },
   { id: 5, label: 'Geração IA', icon: Wand2 },
   { id: 6, label: 'Assinatura', icon: PenTool },
-  { id: 7, label: 'Envio', icon: Package }, // Nova Etapa: Seleção de Pacote
-  { id: 8, label: 'Pagamento', icon: Banknote }, // Etapa Isolada de Pagamento
-  { id: 9, label: 'Protocolo', icon: ShieldCheck }, // Etapa Final
+  { id: 7, label: 'Envio', icon: Package },
+  { id: 8, label: 'Pagamento', icon: Banknote },
+  { id: 9, label: 'Protocolo', icon: ShieldCheck },
 ];
 
 const LAW_AREAS = [
@@ -229,7 +229,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const stepperRef = useRef<HTMLDivElement>(null); // REF PARA O STEPPER
+  const stepperRef = useRef<HTMLDivElement>(null);
 
   const [isDrawing, setIsDrawing] = useState(false);
   const [signatureData, setSignatureData] = useState<string | null>(null);
@@ -255,7 +255,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   
   // Payment States
   const [isProcessingAction, setIsProcessingAction] = useState(false);
-  const [isDispatching, setIsDispatching] = useState(false); // Visual de "Enviando..."
+  const [isDispatching, setIsDispatching] = useState(false); 
   const [pixData, setPixData] = useState<{ encodedImage: string, payload: string } | null>(null);
   const [asaasPaymentId, setAsaasPaymentId] = useState<string | null>(null); 
   const [createdData, setCreatedData] = useState<{notif?: NotificationItem, meet?: Meeting, trans?: Transaction}>({});
@@ -263,7 +263,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const currentArea = LAW_AREAS.find(a => a.id === formData.areaId);
   const availableSubtypes = currentArea ? (AREA_SUBTYPES[currentArea.id] || AREA_SUBTYPES['default']) : [];
 
-  // Efeito de Scroll Suave para o Stepper
   useEffect(() => {
     if (stepperRef.current) {
       const activeStepEl = document.getElementById(`step-${currentStep}`);
@@ -273,7 +272,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     }
   }, [currentStep]);
 
-  // Restaura rascunho
+  // RESTAURA RASCUNHO (SOMENTE LOCAL STORAGE)
   useEffect(() => {
       const STORAGE_KEY = `notify_draft_${user?.uid}`;
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -281,7 +280,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           try {
               const parsed = JSON.parse(saved);
               const diff = Date.now() - parsed.timestamp;
-              if (diff < 15 * 60 * 1000) { 
+              // Rascunho válido por 24h
+              if (diff < 24 * 60 * 60 * 1000) { 
                   setFormData(parsed.data);
                   setCurrentStep(parsed.step);
                   setNotificationId(parsed.id || notificationId);
@@ -295,6 +295,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   }, [user?.uid]);
 
+  // SALVA RASCUNHO AUTOMÁTICO (SOMENTE LOCAL STORAGE)
   useEffect(() => {
       const STORAGE_KEY = `notify_draft_${user?.uid}`;
       // Salva rascunho até a etapa 7 (antes do pagamento final)
@@ -310,45 +311,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   }, [formData, currentStep, signatureData, user?.uid, notificationId]);
 
-  const handleAutoSaveDraft = async () => {
-    if (!user) return;
-    const uniqueHash = documentHash || Array.from({length: 4}, () => Math.random().toString(36).substr(2, 4).toUpperCase()).join('-');
-    
-    const draftItem: NotificationItem = {
-        id: notificationId,
-        documentHash: uniqueHash,
-        notificante_uid: user.uid,
-        notificante_cpf: formData.sender.cpfCnpj.replace(/\D/g, ''),
-        notificante_dados_expostos: {
-            nome: formData.sender.name,
-            email: formData.sender.email,
-            telefone: formData.sender.phone,
-            foto_url: user.photoURL || undefined
-        },
-        notificados_cpfs: [formData.recipient.cpfCnpj.replace(/\D/g, '')],
-        recipientName: formData.recipient.name,
-        recipientEmail: formData.recipient.email,
-        recipientPhone: formData.recipient.phone,
-        recipientDocument: formData.recipient.cpfCnpj,
-        recipientAddress: formatAddressString(formData.recipient.address),
-        area: currentArea?.name || formData.areaId || 'Indefinida',
-        species: formData.species || 'Rascunho',
-        facts: formData.facts || 'Em preenchimento...',
-        subject: formData.subject || formData.species || 'Rascunho',
-        content: formData.generatedContent || '',
-        evidences: [],
-        signatureBase64: signatureData || undefined,
-        createdAt: new Date().toISOString(),
-        status: NotificationStatus.DRAFT,
-        paymentAmount: calculateTotal()
-    };
-
-    try {
-        await saveNotification(draftItem);
-    } catch (e) {
-        console.warn("Erro ao salvar rascunho automático:", e);
-    }
-  };
+  // NOTA: NÃO SALVAMOS NO FIRESTORE ATÉ O PASSO DA ASSINATURA (Step 6 -> handlePersistData)
+  // Isso atende o requisito: "se o usuário abandonar... descarte tudo".
+  // O localStorage persiste, mas não enviamos nada para o servidor até ele assinar.
 
   const clearDraft = () => {
       const STORAGE_KEY = `notify_draft_${user?.uid}`;
@@ -359,7 +324,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   useEffect(() => {
       if (currentStep === 8 && createdData.notif) {
           
-          // Se não tem Pix gerado ainda, gera automaticamente ao entrar na tela 8
           if (!pixData && !isProcessingAction) {
               generatePix();
           }
@@ -380,7 +344,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               }
           }, 3500); 
 
-          // Fallback: Listener do Firestore
           const unsub = onSnapshot(doc(db, 'notificacoes', createdData.notif.id), (docSnapshot) => {
              const data = docSnapshot.data();
              if (data && (data.status === 'SENT' || data.status === 'Enviada')) {
@@ -424,7 +387,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   };
 
-  // Botão manual de verificação (Fall-back)
   const manualVerifyPayment = async () => {
       if(!asaasPaymentId) return;
       setIsProcessingAction(true);
@@ -445,10 +407,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const handlePaymentConfirmed = async () => {
       if (!user || !createdData.notif || !createdData.trans) return;
       
-      // Muda para tela de PROTOCOLO (Etapa 9)
       setCurrentStep(9);
-      
-      // Ativa estado visual de "Enviando..."
       setIsDispatching(true);
 
       const updatedNotif = { ...createdData.notif, status: NotificationStatus.SENT };
@@ -456,7 +415,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       
       await saveTransaction(user.uid, updatedTrans);
       
-      // DISPARO NO FRONTEND (Redundância)
       try {
           await dispatchCommunications(updatedNotif);
       } catch (err) {
@@ -464,7 +422,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
 
       setCreatedData({ notif: updatedNotif, meet: createdData.meet, trans: updatedTrans });
-      setIsDispatching(false); // Terminou o envio, mostra o protocolo final
+      setIsDispatching(false); 
       clearDraft();
   };
 
@@ -472,7 +430,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     return 57.92;
   };
 
-  // ... (Validations and Helpers kept same) ...
   const validateAddresses = () => {
       const validate = (addr: Address) => addr.cep && addr.street && addr.number && addr.neighborhood && addr.city && addr.state;
       if (!validate(formData.sender.address)) return "Endereço do Remetente incompleto.";
@@ -616,7 +573,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
         
         setFormData(prev => ({ ...prev, generatedContent: text }));
         alert("Minuta jurídica gerada com sucesso!");
-        await handleAutoSaveDraft();
+        // Apenas avança, não salva no Firestore ainda
         setCurrentStep(6); 
     } catch (err: any) {
         console.error("Erro Generation:", err);
@@ -692,6 +649,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               paymentAmount: totalAmount
           };
 
+          // AQUI SALVAMOS NO FIRESTORE PELA PRIMEIRA VEZ
           await saveNotification(finalNotif);
 
           newTrans = {
@@ -715,7 +673,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                       guestCpf: formData.recipient.cpfCnpj,
                       meetLink: `https://meet.google.com/xyz-abc`,
                       createdAt: new Date().toISOString(),
-                      status: 'scheduled'
+                      status: 'scheduled' // A gente cria como scheduled, mas se não pagar, fica lá sem uso. O Webhook ativa se necessário.
                   };
                   await createMeeting(newMeet);
               } catch (meetErr) {
@@ -725,7 +683,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
           setCreatedData({ notif: finalNotif, meet: newMeet, trans: newTrans });
           
-          // CRÍTICO: Avança para etapa 7 (Seleção de Pacote), não Pagamento direto
           setTimeout(() => setCurrentStep(7), 100); 
 
       } catch (e: any) {
@@ -803,9 +760,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       return await uploadSignedPdf(notificationId, pdfBlob);
   };
 
-  // STEP 9: PROTOCOLO (SEPARADO)
   const renderProtocolScreen = () => {
-      // Estado de loading enquanto envia
       if (isDispatching) {
         return (
             <div className="flex flex-col items-center justify-center h-96 animate-fade-in">
@@ -887,7 +842,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       );
   };
 
-  // STEP 7: SELEÇÃO DE PACOTE (NOVA TELA - ESTILO COMERCIAL)
   const renderPackageScreen = () => {
       return (
         <div className="pb-12 max-w-4xl mx-auto animate-fade-in flex flex-col items-center">
@@ -956,7 +910,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       );
   };
 
-  // STEP 8: PAGAMENTO (REDUZIDO, APENAS QR CODE)
   const renderPaymentScreen = () => {
       if (!createdData.notif) {
           return (
@@ -980,9 +933,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                 </div>
             </div>
 
-            {/* QR Code Pix Card */}
             <div className="bg-slate-900 text-white p-6 md:p-8 rounded-2xl shadow-xl relative overflow-hidden flex flex-col items-center text-center w-full">
-                {/* Background decorativo */}
                 <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-900 z-0"></div>
                 <div className="absolute -top-12 -right-12 w-40 h-40 bg-emerald-500/20 rounded-full blur-2xl"></div>
 
@@ -1010,7 +961,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                                     alt="QR Code Pix" 
                                     className="w-full h-auto rounded border border-slate-100" 
                                 />
-                                {/* Scan Line Animation */}
                                 <div className="absolute inset-0 border-b-2 border-emerald-500 opacity-50 animate-scan pointer-events-none"></div>
                             </div>
                         </div>
@@ -1082,7 +1032,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
   return (
     <div className="max-w-5xl mx-auto pb-24 relative">
-       {/* STEPPER HEADER SCROLLABLE */}
        <div className="mb-8 overflow-x-auto pb-2 scrollbar-none" ref={stepperRef}>
            <div className="flex justify-between min-w-[600px] px-2">
                {STEPS.map((step, idx) => (
@@ -1103,7 +1052,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
            </div>
        </div>
 
-       {/* MAIN CONTENT AREA */}
        <div className="bg-white p-4 md:p-8 rounded-2xl border shadow-sm min-h-[500px] relative">
            {isGenerating && <DraftingAnimation />}
            
@@ -1221,11 +1169,11 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                             </div>
                         );
                     case 7:
-                        return renderPackageScreen(); // TELA DE PACOTE (NOVO)
+                        return renderPackageScreen();
                     case 8:
-                        return renderPaymentScreen(); // TELA DE PAGAMENTO (REDUZIDA)
+                        return renderPaymentScreen();
                     case 9:
-                        return renderProtocolScreen(); // TELA DE PROTOCOLO
+                        return renderProtocolScreen();
                     default:
                         return null;
                 }
@@ -1238,7 +1186,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                        <button 
                             onClick={async () => {
                                 if (currentStep >= 3) {
-                                    await handleAutoSaveDraft();
+                                    // Apenas para efeito de UX, não persiste no Firestore
                                 }
                                 setCurrentStep(prev => prev + 1);
                             }} 
