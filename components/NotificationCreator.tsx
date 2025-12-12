@@ -17,13 +17,14 @@ import { db } from '../services/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 
 // --- CONSTANTES ---
+// Ajuste de rótulos solicitado
 const STEPS = [
-  { id: 1, label: 'Área', icon: Scale },
+  { id: 1, label: 'Áreas', icon: Scale },
   { id: 2, label: 'Fatos', icon: FileText },
   { id: 3, label: 'Partes', icon: Users },
   { id: 4, label: 'Conciliação', icon: Video },
   { id: 5, label: 'Geração', icon: Wand2 },
-  { id: 6, label: 'Revisão & Assinatura', icon: FileSignature },
+  { id: 6, label: 'Assinatura', icon: FileSignature },
   { id: 7, label: 'Envio', icon: Send }, 
   { id: 8, label: 'Pagamento', icon: Banknote },
   { id: 9, label: 'Protocolo', icon: ShieldCheck },
@@ -94,12 +95,13 @@ const formatAddressString = (addr: Address) => {
 
 // --- COMPONENTES AUXILIARES ---
 
-const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputChange, onAddressChange, documentLabel = "CPF", documentMask = MASKS.cpf, documentMaxLength = 14, isCompanyAllowed = false }) => (
+// Adicionado prop nameLabel para customização
+const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputChange, onAddressChange, documentLabel = "CPF", nameLabel = "Nome Completo / Razão Social", documentMask = MASKS.cpf, documentMaxLength = 14, isCompanyAllowed = false }) => (
     <div className={`bg-white p-6 rounded-2xl border-l-4 ${colorClass} shadow-sm border border-slate-200 mb-6`}>
          <h3 className="font-bold text-slate-800 mb-6 flex items-center text-lg">{title}</h3>
          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
              <div className="md:col-span-2">
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome Completo / Razão Social</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{nameLabel}</label>
                 <input type="text" value={data.name} onChange={e => onInputChange(section, 'name', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm focus:border-blue-400 transition" placeholder="Nome completo" />
              </div>
              <div>
@@ -122,7 +124,6 @@ const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputCh
                 <input type="text" placeholder="CEP" value={data.address.cep} onChange={e => onAddressChange(section, 'cep', MASKS.cep(e.target.value))} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
                 <input type="text" placeholder="Rua / Logradouro" value={data.address.street} onChange={e => onAddressChange(section, 'street', e.target.value)} className="col-span-1 md:col-span-3 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
                 <input type="text" placeholder="Número" value={data.address.number} onChange={e => onAddressChange(section, 'number', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
-                {/* CAMPO COMPLEMENTO ADICIONADO */}
                 <input type="text" placeholder="Complemento (Apt, Bloco)" value={data.address.complement} onChange={e => onAddressChange(section, 'complement', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
                 <input type="text" placeholder="Bairro" value={data.address.neighborhood} onChange={e => onAddressChange(section, 'neighborhood', e.target.value)} className="col-span-1 md:col-span-2 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
                 <input type="text" placeholder="Cidade" value={data.address.city} onChange={e => onAddressChange(section, 'city', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
@@ -139,7 +140,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const [showAllAreas, setShowAllAreas] = useState(false);
   // ID do documento para Hash
   const [notificationId] = useState(`NOT-${Math.random().toString(36).substr(2, 9).toUpperCase()}`);
-  const [docHash] = useState(Array.from({length: 4}, () => Math.random().toString(36).substr(2, 4).toUpperCase()).join('-'));
+  const [docHash] = useState(`${Math.random().toString(36).substr(2, 4).toUpperCase()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`);
   
   // Estado Lógica de Papéis
   const [role, setRole] = useState<'self' | 'representative' | null>(null);
@@ -158,6 +159,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const [isGenerating, setIsGenerating] = useState(false);
   const [signatureData, setSignatureData] = useState<string | null>(null);
   const [isSigned, setIsSigned] = useState(false); // Controle visual se foi assinado
+  const [isSigningProcess, setIsSigningProcess] = useState(false); // Loading durante processo de assinatura
   
   // Pagamento & Polling
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
@@ -191,6 +193,30 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const handleInputChange = (s: any, f: any, v: any) => setFormData(p => ({ ...p, [s]: { ...p[s], [f]: v } }));
   const handleAddressChange = (s: any, f: any, v: any) => setFormData(p => ({ ...p, [s]: { ...p[s], address: { ...p[s].address, [f]: v } } }));
 
+  // --- VALIDAÇÃO DATA/HORA CONCILIAÇÃO ---
+  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const selectedDate = new Date(e.target.value);
+      const day = selectedDate.getUTCDay();
+      // 0 = Domingo, 6 = Sábado
+      if (day === 0 || day === 6) {
+          alert("Agendamentos disponíveis apenas de Segunda a Sexta-feira.");
+          setFormData(prev => ({ ...prev, meetingDate: '' }));
+          return;
+      }
+      setFormData(prev => ({ ...prev, meetingDate: e.target.value }));
+  };
+
+  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const time = e.target.value;
+      const [hour] = time.split(':').map(Number);
+      if (hour < 8 || hour >= 16) {
+          alert("Horário de atendimento: 08:00 às 16:00.");
+          setFormData(prev => ({ ...prev, meetingTime: '' }));
+          return;
+      }
+      setFormData(prev => ({ ...prev, meetingTime: time }));
+  };
+
   // --- 1. SELEÇÃO DE ÁREA ---
   const handleAreaSelect = (id: string) => {
       setFormData(prev => ({ ...prev, areaId: id }));
@@ -211,14 +237,12 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       try {
           const attachments: Attachment[] = localFiles.map(lf => ({ file: lf.file, preview: lf.previewUrl, type: lf.type }));
           
-          let details = `Fatos: ${formData.facts}\n\n`;
+          let details = `DADOS DO REMETENTE (NOTIFICANTE):\nNome: ${formData.sender.name}\nDocumento: ${formData.sender.cpfCnpj}\nEndereço: ${formatAddressString(formData.sender.address)}\n\nDADOS DO DESTINATÁRIO (NOTIFICADO):\nNome: ${formData.recipient.name}\nDocumento: ${formData.recipient.cpfCnpj}\nEndereço: ${formatAddressString(formData.recipient.address)}\n\nFATOS RELATADOS:\n${formData.facts}\n\n`;
           
-          // Lógica de Meeting (O link deve existir na string enviada para a IA)
           if (formData.scheduleMeeting) {
-              // LINK FIXO UNIVERSAL
               const link = "https://meet.google.com/yjg-zhrg-rez";
-              setFormData(prev => ({...prev, meetLink: link})); // Salva no state para uso posterior
-              details += `[DADO CRÍTICO] Foi agendada uma conciliação via Google Meet para ${new Date(formData.meetingDate).toLocaleDateString()} às ${formData.meetingTime}. O Link da sala é: ${link}. INSERIR ESTE LINK NO TEXTO.`;
+              setFormData(prev => ({...prev, meetLink: link}));
+              details += `[DADO CRÍTICO] Agendamento de conciliação: Data ${new Date(formData.meetingDate).toLocaleDateString()} às ${formData.meetingTime}. Link: ${link}. Inserir cláusula de conciliação com estes dados.`;
           }
 
           const text = await generateNotificationText(
@@ -231,9 +255,10 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           );
           
           setFormData(prev => ({ ...prev, generatedContent: text }));
-          setCurrentStep(6); // Vai para Revisão e Assinatura
+          setCurrentStep(6); 
       } catch (e: any) {
-          alert("Erro na IA: " + e.message);
+          console.error(e);
+          alert("Houve uma instabilidade na IA. Por favor, tente clicar em gerar novamente.");
       } finally {
           setIsGenerating(false);
       }
@@ -263,10 +288,11 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const handleConfirmSignature = async () => {
       if (!signatureData) return alert("Assine para validar o documento.");
       
-      // SALVAR COMO PENDENTE IMEDIATAMENTE APÓS ASSINATURA (Backup se sair)
+      setIsSigningProcess(true);
       try {
           const uniqueHash = docHash;
-          const pdfUrl = await generateAndUploadPdf(true); // Gera PDF preliminar com assinatura
+          // Geração de PDF Sofisticado
+          const pdfUrl = await generateAndUploadPdf(true); 
 
           const notif: NotificationItem = {
               id: notificationId, documentHash: uniqueHash, notificante_uid: user.uid,
@@ -283,9 +309,11 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           await saveNotification(notif);
           setCreatedData(prev => ({ ...prev, notif }));
           setIsSigned(true);
-      } catch (e) {
-          console.error("Erro ao salvar rascunho assinado", e);
-          alert("Erro ao salvar assinatura. Tente novamente.");
+      } catch (e: any) {
+          console.error("Erro assinatura:", e);
+          alert(`Erro ao processar assinatura: ${e.message}`);
+      } finally {
+          setIsSigningProcess(false);
       }
   };
 
@@ -298,20 +326,124 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       setIsSigned(false);
   };
 
+  // --- NOVO GERADOR DE PDF PROFISSIONAL ---
   const generateAndUploadPdf = async (isDraft: boolean): Promise<string> => {
-      const doc = new jsPDF();
-      doc.setFontSize(10);
-      const splitText = doc.splitTextToSize(formData.generatedContent, 170);
-      doc.text(splitText, 20, 20);
+      const doc = new jsPDF({
+          orientation: 'p',
+          unit: 'mm',
+          format: 'a4'
+      });
+
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const margin = 25;
+      const contentWidth = pageWidth - (margin * 2);
+      let cursorY = 40; // Início do texto (abaixo do cabeçalho)
+
+      // Configurações de Fonte
+      doc.setFont("times", "normal");
+      doc.setFontSize(11);
+
+      // Função de Cabeçalho
+      const drawHeader = () => {
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(14);
+          doc.text("NOTIFY - Plataforma Jurídica", pageWidth / 2, 15, { align: "center" });
+          doc.setLineWidth(0.5);
+          doc.line(margin, 20, pageWidth - margin, 20);
+          doc.setFont("times", "normal");
+          doc.setFontSize(11);
+      };
+
+      // Função de Marca D'água (Fundo)
+      const drawWatermark = () => {
+          doc.saveGraphicsState();
+          doc.setTextColor(230, 230, 230);
+          doc.setFontSize(50);
+          doc.setFont("helvetica", "bold");
+          // Rotacionar e centralizar
+          const text = "DOCUMENTO ORIGINAL";
+          const textWidth = doc.getTextWidth(text);
+          // Translada para o centro, rotaciona, desenha e restaura
+          doc.text(text, pageWidth / 2, pageHeight / 2, { align: "center", angle: 45 });
+          doc.restoreGraphicsState();
+      };
+
+      // Função de Rodapé
+      const drawFooter = (pageNumber: number) => {
+          doc.setFontSize(9);
+          doc.setTextColor(100);
+          doc.setLineWidth(0.2);
+          doc.line(margin, pageHeight - 15, pageWidth - margin, pageHeight - 15);
+          doc.text(`Hash de Controle: ${docHash}`, margin, pageHeight - 10);
+          doc.text(`Página ${pageNumber}`, pageWidth - margin, pageHeight - 10, { align: "right" });
+          doc.setTextColor(0);
+          doc.setFontSize(11);
+      };
+
+      // --- RENDERIZAÇÃO DO CONTEÚDO COM PAGINAÇÃO ---
+      
+      // Primeira Página
+      drawWatermark();
+      drawHeader();
+      
+      const fullText = formData.generatedContent;
+      // Quebra o texto em linhas que cabem na largura
+      const textLines = doc.splitTextToSize(fullText, contentWidth);
+      
+      let pageNumber = 1;
+
+      for (let i = 0; i < textLines.length; i++) {
+          if (cursorY > pageHeight - margin - 30) { // -30 para espaço do rodapé/assinatura
+              drawFooter(pageNumber);
+              doc.addPage();
+              pageNumber++;
+              cursorY = 40;
+              drawWatermark();
+              drawHeader();
+          }
+          doc.text(textLines[i], margin, cursorY);
+          cursorY += 6; // Espaçamento entre linhas
+      }
+
+      // --- ASSINATURA ---
+      // Verifica se cabe na página atual
+      if (cursorY > pageHeight - margin - 60) {
+          drawFooter(pageNumber);
+          doc.addPage();
+          pageNumber++;
+          cursorY = 40;
+          drawWatermark();
+          drawHeader();
+      }
+
+      cursorY += 10;
       
       if (signatureData) {
-          const pageCount = doc.getNumberOfPages();
-          doc.setPage(pageCount);
-          doc.addImage(signatureData, 'PNG', 80, 250, 50, 20);
-          doc.text(`Assinado Digitalmente por ${formData.sender.name}`, 105, 275, { align: 'center' });
-          doc.text(`Hash: ${docHash}`, 105, 280, { align: 'center' });
+          // Centraliza imagem da assinatura
+          const imgWidth = 50;
+          const imgHeight = 20;
+          const xPos = (pageWidth - imgWidth) / 2;
+          
+          doc.addImage(signatureData, 'PNG', xPos, cursorY, imgWidth, imgHeight);
+          cursorY += imgHeight + 2;
+          
+          doc.setFontSize(10);
+          doc.text("Assinado Digitalmente", pageWidth / 2, cursorY, { align: "center" });
+          cursorY += 5;
+          doc.setFont("helvetica", "bold");
+          doc.text(formData.sender.name, pageWidth / 2, cursorY, { align: "center" });
+          doc.setFont("times", "normal");
+          cursorY += 5;
+          doc.text(`CPF: ${formData.sender.cpfCnpj}`, pageWidth / 2, cursorY, { align: "center" });
+          cursorY += 5;
+          doc.setFontSize(8);
+          doc.setTextColor(100);
+          doc.text(`Hash da Assinatura: ${docHash}`, pageWidth / 2, cursorY, { align: "center" });
       }
-      
+
+      drawFooter(pageNumber);
+
       const pdfBlob = doc.output('blob');
       return await uploadSignedPdf(notificationId, pdfBlob);
   };
@@ -413,7 +545,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               ))}
           </div>
 
-          {/* --- STEP 1: ÁREA --- */}
+          {/* --- STEP 1: ÁREAS --- */}
           {currentStep === 1 && (
               <div>
                   <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center"><Scale size={24} className="mr-2 text-blue-600"/> Selecione a Área Jurídica</h2>
@@ -521,7 +653,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                               <PersonForm 
                                 title="Seus Dados (Representante)" section="representative" data={formData.representative} colorClass="border-purple-500" 
                                 onInputChange={handleInputChange} onAddressChange={handleAddressChange} 
-                                documentLabel="Seu CPF" isCompanyAllowed={false}
+                                documentLabel="Seu CPF" 
+                                nameLabel="Nome Completo" // Alteração Solicitada
+                                isCompanyAllowed={false}
                               />
                           )}
 
@@ -563,12 +697,23 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                       </div>
 
                       {formData.scheduleMeeting && (
-                          <div className="text-left bg-slate-50 p-4 rounded-xl">
-                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data</label>
-                              <input type="date" value={formData.meetingDate} onChange={e => setFormData({...formData, meetingDate: e.target.value})} className="w-full p-2 bg-white border rounded-lg mb-3"/>
-                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hora</label>
-                              <input type="time" value={formData.meetingTime} onChange={e => setFormData({...formData, meetingTime: e.target.value})} className="w-full p-2 bg-white border rounded-lg"/>
-                              <p className="text-[10px] text-green-600 mt-2 flex items-center font-bold"><CheckCircle2 size={10} className="mr-1"/> Link do Meet será gerado e inserido no documento.</p>
+                          <div className="text-left bg-slate-50 p-4 rounded-xl animate-fade-in">
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data (Seg-Sex)</label>
+                              <input 
+                                type="date" 
+                                value={formData.meetingDate} 
+                                onChange={handleDateChange} 
+                                className="w-full p-2 bg-white border rounded-lg mb-3"
+                              />
+                              
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hora (08:00 - 16:00)</label>
+                              <input 
+                                type="time" 
+                                value={formData.meetingTime} 
+                                onChange={handleTimeChange} 
+                                className="w-full p-2 bg-white border rounded-lg"
+                              />
+                              <p className="text-[10px] text-green-600 mt-2 flex items-center font-bold"><CheckCircle2 size={10} className="mr-1"/> Link oficial do Meet será gerado.</p>
                           </div>
                       )}
                   </div>
@@ -600,12 +745,12 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               </div>
           )}
 
-          {/* --- STEP 6: REVISÃO E ASSINATURA --- */}
+          {/* --- STEP 6: ASSINATURA --- */}
           {currentStep === 6 && (
               <div className="max-w-4xl mx-auto space-y-8">
                   <div className="bg-white shadow-lg border border-slate-200 rounded-none w-full min-h-[800px] p-12 md:p-20 relative mx-auto font-serif text-slate-900">
                       
-                      {/* Papel A4 Mockup */}
+                      {/* Papel A4 Mockup (Visualização Rápida) */}
                       <div className="text-center mb-12">
                           <h2 className="text-xl font-bold uppercase tracking-widest border-b-2 border-slate-900 pb-2 inline-block">Notificação Extrajudicial</h2>
                           <p className="text-xs text-slate-500 mt-2">Documento Oficial | Hash: {docHash}</p>
@@ -644,7 +789,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                               {!isSigned ? (
                                   <>
                                     <button onClick={handleClearSignature} className="text-red-500 text-xs font-bold hover:bg-red-50 px-3 py-1 rounded">Limpar</button>
-                                    <button onClick={handleConfirmSignature} className="bg-slate-900 text-white px-6 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-slate-800">Validar e Anexar Assinatura</button>
+                                    <button onClick={handleConfirmSignature} disabled={isSigningProcess} className="bg-slate-900 text-white px-6 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-slate-800 flex items-center disabled:opacity-50">
+                                        {isSigningProcess ? <Loader2 size={16} className="animate-spin mr-2"/> : "Validar e Anexar Assinatura"}
+                                    </button>
                                   </>
                               ) : (
                                   <button onClick={() => { setIsSigned(false); setSignatureData(null); }} className="text-slate-400 text-xs hover:text-slate-600 underline">Refazer assinatura</button>
