@@ -6,62 +6,56 @@ service cloud.firestore {
 
     // --- FUNÇÕES AUXILIARES ---
 
-    // Verifica se o usuário está logado
+    function isRobot() {
+      return request.auth != null && request.auth.token.robot_access == true;
+    }
+
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Verifica se o UID do usuário bate com o solicitado
-    function isOwner(uid) {
-      return isAuthenticated() && request.auth.uid == uid;
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Busca o CPF do usuário logado na coleção 'usuarios'
-    // Isso é usado para saber se o usuário pode ler uma notificação recebida
-    function getUserCpf() {
-       return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.cpf;
+    // LÓGICA DE OURO: Verifica se o CPF do usuário logado está na lista de notificados
+    function isNotificationRecipient() {
+      let userDoc = get(/databases/$(database)/documents/usuarios/$(request.auth.uid));
+      return isAuthenticated() && 
+             userDoc != null && 
+             (userDoc.data.cpf in resource.data.notificados_cpfs);
     }
 
-    // --- REGRAS DAS COLEÇÕES ---
+    // --- REGRAS ---
 
-    // 1. USUÁRIOS
     match /usuarios/{userId} {
-      allow read, write: if isOwner(userId);
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId) || isRobot();
     }
 
-    // 2. NOTIFICAÇÕES
     match /notificacoes/{notificationId} {
-      // CRIAÇÃO: Permitido se o campo 'notificante_uid' for igual ao ID do usuário
-      allow create: if isAuthenticated() && request.resource.data.notificante_uid == request.auth.uid;
+      allow create: if isAuthenticated();
       
-      // ATUALIZAÇÃO/DELEÇÃO: Apenas o dono (quem criou) pode alterar ou apagar
-      allow update, delete: if isAuthenticated() && resource.data.notificante_uid == request.auth.uid;
-      
-      // LEITURA (Lógica Híbrida):
-      // Permite ler se:
-      // A) O usuário é o dono (Remetente)
-      // OU
-      // B) O CPF do usuário está na lista de destinatários (notificados_cpfs)
-      allow read: if isAuthenticated() && (
-        resource.data.notificante_uid == request.auth.uid ||
-        (getUserCpf() in resource.data.notificados_cpfs)
-      );
+      // Leitura: Dono, Robô ou Destinatário (via CPF)
+      allow read: if isRobot() || 
+                  (isAuthenticated() && resource.data.notificante_uid == request.auth.uid) || 
+                  isNotificationRecipient();
+
+      // Escrita/Deleção: APENAS Dono ou Robô. Destinatário NÃO pode.
+      allow update, delete: if isRobot() || 
+                            (isAuthenticated() && resource.data.notificante_uid == request.auth.uid);
     }
 
-    // 3. REUNIÕES
     match /reunioes/{meetingId} {
-      // Leitura e escrita permitida para usuários autenticados
-      allow read, write: if isAuthenticated();
+      allow read, write: if isRobot() || isAuthenticated();
     }
 
-    // 4. TRANSAÇÕES
     match /transactions/{transactionId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isRobot() || isAuthenticated();
     }
 
-    // 5. ARQUIVOS PESSOAIS (File Manager)
     match /files/{fileId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if isRobot() || isAuthenticated();
     }
   }
 }

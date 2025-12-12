@@ -9,7 +9,7 @@ interface SidebarProps {
   onLogout: () => void;
   isOpen: boolean;
   onToggle: () => void;
-  badgeCounts?: Record<string, number>; // Mantido na interface para compatibilidade, mas ignorado no render
+  badgeCounts?: Record<string, number>;
 }
 
 const LogoYSidebar = () => (
@@ -20,7 +20,7 @@ const LogoYSidebar = () => (
   </svg>
 );
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, isOpen, onToggle }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, isOpen, onToggle, badgeCounts }) => {
   
   const menuItems = [
     { 
@@ -36,7 +36,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
     {
         id: ViewState.RECEIVED_NOTIFICATIONS, 
         label: 'Recebidas',
-        icon: <Inbox size={20} />
+        icon: <Inbox size={20} />,
+        hasBadge: true
     },
     {
         id: ViewState.MEETINGS, 
@@ -49,7 +50,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
         icon: <CreditCard size={20} />
     },
     { 
-        id: ViewState.SETTINGS,
+        id: ViewState.SETTINGS, 
         label: 'Configurações', 
         icon: <Settings size={20} />
     },
@@ -61,7 +62,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
         fixed inset-y-0 left-0 z-[60] bg-[#0F172A] text-slate-300 h-screen flex flex-col shadow-2xl transition-all duration-300
         ${isOpen ? 'translate-x-0 w-72' : '-translate-x-full md:translate-x-0 md:w-20'}
       `}
-      onClick={(e) => e.stopPropagation()} // Impede que cliques dentro da sidebar fechem ela
+      onClick={(e) => e.stopPropagation()} 
     >
       <button 
         onClick={onToggle}
@@ -83,7 +84,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
         </span>
       </div>
 
-      {/* Navigation - Scrollable Area */}
       <nav className="flex-1 px-4 space-y-2 overflow-y-auto overflow-x-hidden scrollbar-none py-4">
         {isOpen && (
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-2 mb-2 animate-fade-in">
@@ -93,13 +93,13 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
         
         {menuItems.map((item) => {
           const isActive = item.id === currentView;
+          const count = item.hasBadge && badgeCounts ? badgeCounts[item.id] || 0 : 0;
           
           return (
             <button
                 key={item.id}
                 onClick={() => {
                     onChangeView(item.id);
-                    // No mobile, fecha ao clicar. No desktop, mantem.
                     if (window.innerWidth < 768) onToggle();
                 }}
                 title={!isOpen ? item.label : ''}
@@ -113,17 +113,28 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
                     <span className={`transition-colors duration-300 ${isActive ? 'text-white' : 'group-hover:text-blue-400'}`}>
                     {item.icon}
                     </span>
+                    {!isOpen && count > 0 && (
+                        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2 border-[#0F172A]">
+                            {count > 9 ? '9+' : count}
+                        </span>
+                    )}
                 </div>
 
-                <span className={`tracking-wide text-sm whitespace-nowrap flex-1 text-left transition-all duration-300 ${isOpen ? 'opacity-100 ml-1' : 'opacity-0 w-0 hidden'}`}>
-                    {item.label}
-                </span>
+                <div className={`flex items-center justify-between flex-1 overflow-hidden transition-all duration-300 ${isOpen ? 'opacity-100 w-auto' : 'opacity-0 w-0 hidden'}`}>
+                    <span className="tracking-wide text-sm whitespace-nowrap ml-1">
+                        {item.label}
+                    </span>
+                    {count > 0 && (
+                        <span className="bg-blue-500/20 text-blue-200 text-xs font-bold px-2 py-0.5 rounded-full ml-2">
+                            {count}
+                        </span>
+                    )}
+                </div>
             </button>
           );
         })}
       </nav>
 
-      {/* Footer Fixed - Sem bugs de hover */}
       <div className="p-4 shrink-0 border-t border-slate-800/50 flex flex-col gap-2 bg-[#0F172A] z-10">
          <a 
             href="https://wa.me/558391559429" 

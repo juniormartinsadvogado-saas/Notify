@@ -4,37 +4,29 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    // --- FUNÇÕES AUXILIARES ---
+    function isRobot() {
+      return request.auth != null && request.auth.token.robot_access == true;
+    }
 
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // --- REGRAS ---
+    match /{allPaths=**} {
+      allow read, write: if isRobot();
+    }
 
-    // 1. FOTO DE PERFIL
     match /fotos_perfil/{userId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isAuthenticated() && request.auth.uid == userId;
     }
 
-    // 2. PASTA DE NOTIFICAÇÕES (CRÍTICO: Correção de Permissão)
-    // Permite que qualquer arquivo PDF na raiz da pasta da notificação seja lido publicamente (para links de envio)
-    // Permite escrita se autenticado (para salvar PDF com Hash e evidências)
-    
-    match /notificacoes/{notificationId}/{fileName} {
-      // Leitura pública se for PDF (para o destinatário acessar via link) ou se usuário logado
-      allow read: if (fileName.matches('.*\\.pdf')) || isAuthenticated();
-      // Escrita permitida para usuários autenticados
+    match /notificacoes/{notificationId}/{allPaths=**} {
+      // PDF Público para links externos funcionarem
+      allow read: if (allPaths.matches('.*\\.pdf')) || isAuthenticated();
       allow write: if isAuthenticated();
     }
 
-    // 3. SUBPASTAS DE EVIDÊNCIAS (fotos/videos/documentos) dentro da notificação
-    match /notificacoes/{notificationId}/{subFolder}/{fileName} {
-      allow read, write: if isAuthenticated();
-    }
-    
-    // 4. ARQUIVOS PESSOAIS (File Manager)
     match /user_files/{userId}/{allPaths=**} {
       allow read, write: if isAuthenticated() && request.auth.uid == userId;
     }

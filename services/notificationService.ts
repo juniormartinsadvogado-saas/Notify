@@ -22,16 +22,17 @@ const getMediaType = (mimeType: string): 'fotos' | 'videos' | 'documentos' => {
 
 // --- FASE 2: UPLOAD PDF ---
 
+// Alterado para receber documentHash e usá-lo no nome do arquivo
 export const uploadSignedPdf = async (notificationId: string, pdfBlob: Blob, documentHash: string): Promise<string> => {
     try {
         if (!auth.currentUser) throw new Error("Usuário não autenticado para upload.");
 
-        // ALTERAÇÃO CRÍTICA: Nome do arquivo agora é o HASH
+        // ALTERAÇÃO: Nome do arquivo agora é o HASH.pdf
         const fileName = `${documentHash}.pdf`;
         const storagePath = `notificacoes/${notificationId}/${fileName}`;
         const storageRef = ref(storage, storagePath);
 
-        // Adiciona metadados explícitos para garantir que o Storage aceite como PDF
+        // Adiciona metadados
         const metadata = {
             contentType: 'application/pdf',
             customMetadata: {
@@ -58,10 +59,11 @@ export const uploadEvidence = async (notificationId: string, file: File): Promis
         if (!auth.currentUser) throw new Error("Usuário offline.");
 
         const mediaType = getMediaType(file.type);
-        // Sanitiza nome do arquivo
+        // Sanitiza nome do arquivo para evitar caracteres inválidos
         const sanitizedName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
         const fileName = `${Date.now()}_${sanitizedName}`;
         
+        // Caminho aninhado: notificacoes/ID/fotos/arquivo.jpg
         const storagePath = `notificacoes/${notificationId}/${mediaType}/${fileName}`;
         const storageRef = ref(storage, storagePath);
 
@@ -98,13 +100,12 @@ export const deleteEvidence = async (storagePath: string) => {
 
 export const saveNotification = async (notification: NotificationItem) => {
     try {
-        // GARANTIA DE SEGURANÇA: Usa o UID da sessão atual
         const currentUser = auth.currentUser;
         if (!currentUser) throw new Error("Sessão expirada. Faça login novamente.");
 
         const uid = currentUser.uid;
 
-        // Tenta buscar perfil para preencher dados faltantes, mas não bloqueia
+        // Tenta buscar perfil para preencher dados faltantes
         let notificanteProfile = null;
         try {
             notificanteProfile = await getUserProfile(uid);
@@ -112,10 +113,9 @@ export const saveNotification = async (notification: NotificationItem) => {
             console.warn("Warn: Perfil não carregado no save:", e);
         }
         
-        // Merge inteligente de dados
         const notificationData: NotificationItem = {
             ...notification,
-            notificante_uid: uid, // Força o UID correto
+            notificante_uid: uid,
             notificante_dados_expostos: {
                 nome: notificanteProfile?.name || notification.notificante_dados_expostos.nome || '',
                 email: notificanteProfile?.email || notification.notificante_dados_expostos.email || '',
@@ -128,7 +128,7 @@ export const saveNotification = async (notification: NotificationItem) => {
 
         const docRef = doc(db, NOTIFICATIONS_COLLECTION, notification.id);
         
-        // Sanitização profunda para remover undefined
+        // Remove campos undefined para o Firestore não reclamar
         const dataToSave = JSON.parse(JSON.stringify(notificationData));
         
         console.log(`[FIRESTORE] Salvando notificação ${notification.id}...`);
@@ -149,14 +149,12 @@ export const deleteNotification = async (notification: NotificationItem) => {
         if (notification.evidences && notification.evidences.length > 0) {
             await Promise.all(notification.evidences.map(ev => deleteEvidence(ev.storagePath)));
         }
-        // Tenta deletar PDF. Nota: Precisamos adivinhar o nome se for hash, 
-        // ou confiar que notification.pdf_url ajuda a extrair o ref, mas o ideal é ter o path.
-        // Aqui usamos um catch generico pois o nome mudou para hash.
+        
+        // Tenta deletar PDF. Usa o hash se disponível
         if (notification.documentHash) {
              const pdfRef = ref(storage, `notificacoes/${notification.id}/${notification.documentHash}.pdf`);
              await deleteObject(pdfRef).catch(() => {});
         } else {
-             // Fallback legado
              const pdfRef = ref(storage, `notificacoes/${notification.id}/documento_assinado.pdf`);
              await deleteObject(pdfRef).catch(() => {});
         }

@@ -17,7 +17,6 @@ import { db } from '../services/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 
 // --- CONSTANTES ---
-// Ajuste de rótulos solicitado
 const STEPS = [
   { id: 1, label: 'Áreas', icon: Scale },
   { id: 2, label: 'Fatos', icon: FileText },
@@ -95,7 +94,6 @@ const formatAddressString = (addr: Address) => {
 
 // --- COMPONENTES AUXILIARES ---
 
-// Adicionado prop nameLabel para customização
 const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputChange, onAddressChange, documentLabel = "CPF", nameLabel = "Nome Completo / Razão Social", documentMask = MASKS.cpf, documentMaxLength = 14, isCompanyAllowed = false }) => (
     <div className={`bg-white p-6 rounded-2xl border-l-4 ${colorClass} shadow-sm border border-slate-200 mb-6`}>
          <h3 className="font-bold text-slate-800 mb-6 flex items-center text-lg">{title}</h3>
@@ -158,8 +156,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const [localFiles, setLocalFiles] = useState<LocalAttachment[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [signatureData, setSignatureData] = useState<string | null>(null);
-  const [isSigned, setIsSigned] = useState(false); // Controle visual se foi assinado
-  const [isSigningProcess, setIsSigningProcess] = useState(false); // Loading durante processo de assinatura
+  const [isSigned, setIsSigned] = useState(false);
+  const [isSigningProcess, setIsSigningProcess] = useState(false);
   
   // Pagamento & Polling
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
@@ -197,7 +195,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const selectedDate = new Date(e.target.value);
       const day = selectedDate.getUTCDay();
-      // 0 = Domingo, 6 = Sábado
       if (day === 0 || day === 6) {
           alert("Agendamentos disponíveis apenas de Segunda a Sexta-feira.");
           setFormData(prev => ({ ...prev, meetingDate: '' }));
@@ -217,13 +214,11 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       setFormData(prev => ({ ...prev, meetingTime: time }));
   };
 
-  // --- 1. SELEÇÃO DE ÁREA ---
   const handleAreaSelect = (id: string) => {
       setFormData(prev => ({ ...prev, areaId: id }));
       setCurrentStep(2);
   };
 
-  // --- 2. FATOS E EVIDÊNCIAS ---
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files?.[0]) {
           const file = e.target.files[0];
@@ -231,7 +226,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   };
 
-  // --- 5. GERAÇÃO IA ---
   const handleGenerateContent = async () => {
       setIsGenerating(true);
       try {
@@ -367,7 +361,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   };
 
   // --- NOVO GERADOR DE PDF PROFISSIONAL ---
-  // Atualizado para receber o docHash como parametro opcional para o nome do arquivo
   const generateAndUploadPdf = async (isDraft: boolean, hashForFilename?: string): Promise<string> => {
       const doc = new jsPDF({
           orientation: 'p',
@@ -379,13 +372,11 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       const pageHeight = doc.internal.pageSize.getHeight();
       const margin = 25;
       const contentWidth = pageWidth - (margin * 2);
-      let cursorY = 40; // Início do texto (abaixo do cabeçalho)
+      let cursorY = 40; 
 
-      // Configurações de Fonte
       doc.setFont("times", "normal");
       doc.setFontSize(11);
 
-      // Função de Cabeçalho
       const drawHeader = () => {
           doc.setFont("helvetica", "bold");
           doc.setFontSize(14);
@@ -396,20 +387,16 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           doc.setFontSize(11);
       };
 
-      // Função de Marca D'água (Fundo)
       const drawWatermark = () => {
           doc.saveGraphicsState();
           doc.setTextColor(230, 230, 230);
           doc.setFontSize(50);
           doc.setFont("helvetica", "bold");
-          // Rotacionar e centralizar
           const text = "DOCUMENTO ORIGINAL";
-          // Translada para o centro, rotaciona, desenha e restaura
           doc.text(text, pageWidth / 2, pageHeight / 2, { align: "center", angle: 45 });
           doc.restoreGraphicsState();
       };
 
-      // Função de Rodapé
       const drawFooter = (pageNumber: number) => {
           doc.setFontSize(9);
           doc.setTextColor(100);
@@ -421,18 +408,14 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           doc.setFontSize(11);
       };
 
-      // --- 1. RENDERIZAÇÃO DO CABEÇALHO E MARCA D'ÁGUA INICIAL ---
       drawWatermark();
       drawHeader();
 
-      // --- 2. PREÂMBULO ESTRUTURADO (DADOS COMPLETOS DAS PARTES) ---
-      // Força a inclusão de todos os dados, independente da IA
-      
       const drawPartiesBlock = () => {
           doc.setFont("helvetica", "bold");
           doc.setFontSize(10);
-          doc.setFillColor(245, 245, 245); // Fundo cinza claro
-          doc.rect(margin, cursorY, contentWidth, 7, 'F'); // Barra título
+          doc.setFillColor(245, 245, 245); 
+          doc.rect(margin, cursorY, contentWidth, 7, 'F'); 
           doc.text("QUALIFICAÇÃO DAS PARTES", margin + 2, cursorY + 5);
           cursorY += 12;
 
@@ -456,17 +439,14 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           const notificadoText = `${formData.recipient.name.toUpperCase()}, inscrito(a) no CPF/CNPJ nº ${formData.recipient.cpfCnpj}, com endereço em ${formatAddressString(formData.recipient.address)}. Contatos: ${formData.recipient.email} | ${formData.recipient.phone}`;
           const recipLines = doc.splitTextToSize(notificadoText, contentWidth);
           doc.text(recipLines, margin, cursorY);
-          cursorY += (recipLines.length * 5) + 8; // Espaço extra antes do texto
+          cursorY += (recipLines.length * 5) + 8; 
           
-          // Linha divisória
           doc.setDrawColor(200);
           doc.line(margin, cursorY - 4, pageWidth - margin, cursorY - 4);
       };
 
       drawPartiesBlock();
 
-      // --- 3. TEXTO DA NOTIFICAÇÃO (IA) ---
-      
       const fullText = formData.generatedContent;
       const textLines = doc.splitTextToSize(fullText, contentWidth);
       
@@ -485,9 +465,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           cursorY += 6; 
       }
 
-      // --- 4. CARIMBO DE ASSINATURA SOFISTICADO ---
-      
-      // Verifica espaço
       if (cursorY > pageHeight - margin - 50) {
           drawFooter(pageNumber);
           doc.addPage();
@@ -501,19 +478,16 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       
       if (signatureData) {
           const stampHeight = 35;
-          const stampWidth = 140; // Largura do carimbo
-          const stampX = (pageWidth - stampWidth) / 2; // Centralizado
+          const stampWidth = 140; 
+          const stampX = (pageWidth - stampWidth) / 2; 
           
-          // Fundo do Carimbo
-          doc.setFillColor(250, 250, 252); // Cinza muito suave
-          doc.setDrawColor(180, 180, 190); // Borda cinza
+          doc.setFillColor(250, 250, 252);
+          doc.setDrawColor(180, 180, 190);
           doc.setLineWidth(0.5);
           doc.roundedRect(stampX, cursorY, stampWidth, stampHeight, 2, 2, 'FD');
 
-          // Assinatura (Imagem)
           doc.addImage(signatureData, 'PNG', stampX + 10, cursorY + 5, 40, 15);
 
-          // Texto do Carimbo (Lado Direito)
           const textX = stampX + 60;
           let textY = cursorY + 8;
 
@@ -540,10 +514,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
           textY += 5;
           doc.setFont("helvetica", "bold");
-          doc.setTextColor(37, 99, 235); // Azul Notify
+          doc.setTextColor(37, 99, 235);
           doc.text("Validador: Plataforma Notify Jurídica", textX, textY);
 
-          // Reset cores
           doc.setTextColor(0); 
       }
 
@@ -554,17 +527,15 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       return await uploadSignedPdf(notificationId, pdfBlob, hashForFilename || "documento_assinado");
   };
 
-  // --- 8. INICIAR PAGAMENTO ---
   const handleStartPayment = async () => {
       setIsProcessingPayment(true);
       try {
           if (!createdData.notif) {
-              await handleConfirmSignature(); // Garante salvamento se algo falhou
+              await handleConfirmSignature(); 
           }
 
           const notif = createdData.notif!;
 
-          // 3. Salva Meeting se houver
           let meet: Meeting | undefined;
           if (formData.scheduleMeeting) {
               meet = {
@@ -576,13 +547,11 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               await createMeeting(meet);
           }
 
-          // 4. Inicia Checkout Asaas
           const checkout = await initiateCheckout(notif, 'single', 'PIX');
           if (checkout.success && checkout.pixData) {
               setPixData(checkout.pixData);
               setAsaasPaymentId(checkout.paymentId || null);
               
-              // Salva transação local
               const trans: Transaction = {
                   id: checkout.paymentId || `TX-${Date.now()}`, description: `Notificação - ${formData.species}`,
                   amount: 57.92, date: new Date().toISOString(), status: 'Pendente', notificationId: notif.id, recipientName: formData.recipient.name
@@ -590,7 +559,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               await saveTransaction(user.uid, trans);
               setCreatedData({ notif, meet, trans });
               
-              setCurrentStep(8); // Vai para tela de Pagamento
+              setCurrentStep(8); 
           } else {
               alert("Erro ao gerar Pix: " + checkout.error);
           }
@@ -606,17 +575,14 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const handlePaymentSuccess = async () => {
       if (!createdData.notif) return;
       
-      // CONFIRMAÇÃO E AUTOMAÇÃO
       try {
-          // 1. Atualiza Status
           await confirmPayment(createdData.notif.id);
           const updatedNotif = { ...createdData.notif, status: NotificationStatus.SENT };
           
-          // 2. Dispara Automações (Email + Zap)
           await dispatchCommunications(updatedNotif);
           
           setCreatedData(prev => ({...prev, notif: updatedNotif}));
-          setCurrentStep(9); // Protocolo
+          setCurrentStep(9); 
       } catch (e) { 
           console.error("Erro disparo pós-pagamento:", e);
           alert("Pagamento confirmado, mas houve um erro no disparo automático. O sistema tentará novamente.");
