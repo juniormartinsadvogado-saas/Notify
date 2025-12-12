@@ -293,11 +293,26 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       try {
           const uniqueHash = docHash;
           
-          // Geração de PDF Sofisticado com log para debug
+          // 1. Upload de Evidências (Se houver)
+          const uploadedEvidences: EvidenceItem[] = [];
+          if (localFiles.length > 0) {
+              console.log(`[UPLOAD] Iniciando upload de ${localFiles.length} evidências...`);
+              for (const fileItem of localFiles) {
+                  try {
+                      const evidence = await uploadEvidence(notificationId, fileItem.file);
+                      uploadedEvidences.push(evidence);
+                  } catch (err) {
+                      console.error(`Erro ao subir arquivo ${fileItem.name}:`, err);
+                  }
+              }
+          }
+
+          // 2. Geração e Upload do PDF
           console.log("Iniciando geração e upload do PDF...");
           const pdfUrl = await generateAndUploadPdf(true); 
           console.log("PDF Gerado e salvo em:", pdfUrl);
 
+          // 3. Montar Objeto da Notificação
           const notif: NotificationItem = {
               id: notificationId, 
               documentHash: uniqueHash, 
@@ -315,7 +330,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               facts: formData.facts, 
               subject: formData.species,
               content: formData.generatedContent, 
-              evidences: [], 
+              evidences: uploadedEvidences, // Anexa evidências subidas
               pdf_url: pdfUrl, 
               signatureBase64: signatureData,
               createdAt: new Date().toISOString(), 
@@ -397,20 +412,59 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           doc.setFontSize(11);
       };
 
-      // --- RENDERIZAÇÃO DO CONTEÚDO COM PAGINAÇÃO ---
-      
-      // Primeira Página
+      // --- 1. RENDERIZAÇÃO DO CABEÇALHO E MARCA D'ÁGUA INICIAL ---
       drawWatermark();
       drawHeader();
+
+      // --- 2. PREÂMBULO ESTRUTURADO (DADOS COMPLETOS DAS PARTES) ---
+      // Força a inclusão de todos os dados, independente da IA
+      
+      const drawPartiesBlock = () => {
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(10);
+          doc.setFillColor(245, 245, 245); // Fundo cinza claro
+          doc.rect(margin, cursorY, contentWidth, 7, 'F'); // Barra título
+          doc.text("QUALIFICAÇÃO DAS PARTES", margin + 2, cursorY + 5);
+          cursorY += 12;
+
+          doc.setFontSize(10);
+          
+          // Notificante
+          doc.setFont("helvetica", "bold");
+          doc.text("NOTIFICANTE (REMETENTE):", margin, cursorY);
+          cursorY += 5;
+          doc.setFont("times", "normal");
+          const notificanteText = `${formData.sender.name.toUpperCase()}, portador(a) do CPF/CNPJ nº ${formData.sender.cpfCnpj}, residente e domiciliado(a) em ${formatAddressString(formData.sender.address)}. Contatos: ${formData.sender.email} | ${formData.sender.phone}`;
+          const notifLines = doc.splitTextToSize(notificanteText, contentWidth);
+          doc.text(notifLines, margin, cursorY);
+          cursorY += (notifLines.length * 5) + 3;
+
+          // Notificado
+          doc.setFont("helvetica", "bold");
+          doc.text("NOTIFICADO (DESTINATÁRIO):", margin, cursorY);
+          cursorY += 5;
+          doc.setFont("times", "normal");
+          const notificadoText = `${formData.recipient.name.toUpperCase()}, inscrito(a) no CPF/CNPJ nº ${formData.recipient.cpfCnpj}, com endereço em ${formatAddressString(formData.recipient.address)}. Contatos: ${formData.recipient.email} | ${formData.recipient.phone}`;
+          const recipLines = doc.splitTextToSize(notificadoText, contentWidth);
+          doc.text(recipLines, margin, cursorY);
+          cursorY += (recipLines.length * 5) + 8; // Espaço extra antes do texto
+          
+          // Linha divisória
+          doc.setDrawColor(200);
+          doc.line(margin, cursorY - 4, pageWidth - margin, cursorY - 4);
+      };
+
+      drawPartiesBlock();
+
+      // --- 3. TEXTO DA NOTIFICAÇÃO (IA) ---
       
       const fullText = formData.generatedContent;
-      // Quebra o texto em linhas que cabem na largura
       const textLines = doc.splitTextToSize(fullText, contentWidth);
       
       let pageNumber = 1;
 
       for (let i = 0; i < textLines.length; i++) {
-          if (cursorY > pageHeight - margin - 30) { // -30 para espaço do rodapé/assinatura
+          if (cursorY > pageHeight - margin - 30) { 
               drawFooter(pageNumber);
               doc.addPage();
               pageNumber++;
@@ -419,12 +473,13 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               drawHeader();
           }
           doc.text(textLines[i], margin, cursorY);
-          cursorY += 6; // Espaçamento entre linhas
+          cursorY += 6; 
       }
 
-      // --- ASSINATURA ---
-      // Verifica se cabe na página atual
-      if (cursorY > pageHeight - margin - 60) {
+      // --- 4. CARIMBO DE ASSINATURA SOFISTICADO ---
+      
+      // Verifica espaço
+      if (cursorY > pageHeight - margin - 50) {
           drawFooter(pageNumber);
           doc.addPage();
           pageNumber++;
@@ -436,26 +491,51 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       cursorY += 10;
       
       if (signatureData) {
-          // Centraliza imagem da assinatura
-          const imgWidth = 50;
-          const imgHeight = 20;
-          const xPos = (pageWidth - imgWidth) / 2;
+          const stampHeight = 35;
+          const stampWidth = 140; // Largura do carimbo
+          const stampX = (pageWidth - stampWidth) / 2; // Centralizado
           
-          doc.addImage(signatureData, 'PNG', xPos, cursorY, imgWidth, imgHeight);
-          cursorY += imgHeight + 2;
-          
-          doc.setFontSize(10);
-          doc.text("Assinado Digitalmente", pageWidth / 2, cursorY, { align: "center" });
-          cursorY += 5;
+          // Fundo do Carimbo
+          doc.setFillColor(250, 250, 252); // Cinza muito suave
+          doc.setDrawColor(180, 180, 190); // Borda cinza
+          doc.setLineWidth(0.5);
+          doc.roundedRect(stampX, cursorY, stampWidth, stampHeight, 2, 2, 'FD');
+
+          // Assinatura (Imagem)
+          doc.addImage(signatureData, 'PNG', stampX + 10, cursorY + 5, 40, 15);
+
+          // Texto do Carimbo (Lado Direito)
+          const textX = stampX + 60;
+          let textY = cursorY + 8;
+
           doc.setFont("helvetica", "bold");
-          doc.text(formData.sender.name, pageWidth / 2, cursorY, { align: "center" });
-          doc.setFont("times", "normal");
-          cursorY += 5;
-          doc.text(`CPF: ${formData.sender.cpfCnpj}`, pageWidth / 2, cursorY, { align: "center" });
-          cursorY += 5;
-          doc.setFontSize(8);
-          doc.setTextColor(100);
-          doc.text(`Hash da Assinatura: ${docHash}`, pageWidth / 2, cursorY, { align: "center" });
+          doc.setFontSize(9);
+          doc.setTextColor(50, 50, 60);
+          doc.text("DOCUMENTO ASSINADO DIGITALMENTE", textX, textY);
+          
+          textY += 5;
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7);
+          doc.setTextColor(80, 80, 80);
+          doc.text(`Assinado por: ${formData.sender.name.toUpperCase()}`, textX, textY);
+          
+          textY += 4;
+          doc.text(`CPF: ${formData.sender.cpfCnpj}`, textX, textY);
+          
+          textY += 4;
+          const now = new Date();
+          doc.text(`Data/Hora: ${now.toLocaleString('pt-BR')}`, textX, textY);
+          
+          textY += 4;
+          doc.text(`Hash: ${docHash}`, textX, textY);
+
+          textY += 5;
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(37, 99, 235); // Azul Notify
+          doc.text("Validador: Plataforma Notify Jurídica", textX, textY);
+
+          // Reset cores
+          doc.setTextColor(0); 
       }
 
       drawFooter(pageNumber);
