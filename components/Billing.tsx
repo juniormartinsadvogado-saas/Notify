@@ -262,14 +262,26 @@ const Billing: React.FC<BillingProps> = ({ transactions, filterStatus, onRefund 
                                 </button>
                             )}
                             
-                            {t.status === 'Pago' && (
-                                <button 
-                                    className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" 
-                                    title="Baixar Recibo (PDF)"
-                                    onClick={() => generateReceipt(t)}
-                                >
-                                    <Download size={16} />
-                                </button>
+                            {(t.status === 'Pago' || t.status === 'Reembolsado') && (
+                                <>
+                                    <button 
+                                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" 
+                                        title="Baixar Recibo (PDF)"
+                                        onClick={() => generateReceipt(t)}
+                                    >
+                                        <Download size={16} />
+                                    </button>
+                                    
+                                    <a 
+                                        href={`https://wa.me/558391559429?text=Ol%C3%A1%2C%20gostaria%20de%20ajuda%20ou%20reembolso%20referente%20%C3%A0%20transa%C3%A7%C3%A3o%20${t.id}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+                                        title="Suporte / Reembolso (WhatsApp)"
+                                    >
+                                        <MessageCircle size={16} />
+                                    </a>
+                                </>
                             )}
                         </td>
                         </tr>

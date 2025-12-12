@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { generateNotificationText } from '../services/geminiService';
-import { saveNotification, uploadEvidence, uploadSignedPdf } from '../services/notificationService';
+import { saveNotification, uploadEvidence, uploadSignedPdf, confirmPayment } from '../services/notificationService';
 import { initiateCheckout, saveTransaction, checkPaymentStatus } from '../services/paymentService';
 import { createMeeting } from '../services/meetingService';
 import { dispatchCommunications } from '../services/communicationService';
@@ -10,7 +10,7 @@ import {
   Wand2, Scale, Users, 
   FileText, PenTool, Check, Loader2, 
   Briefcase, ShoppingBag, Home, Heart, FileSignature, Scroll, UploadCloud, X, User, Video, CheckCircle2, ArrowRight, Calendar, ChevronLeft, Sparkles,
-  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode, Copy, AlertCircle, Plane, Zap, Rocket, Monitor, Trophy, Anchor, ShieldCheck, ChevronDown, Lightbulb, Printer, Lock, Send, RefreshCw, Package, ArrowDown
+  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode, Copy, AlertCircle, Plane, Zap, Rocket, Monitor, Trophy, Anchor, ShieldCheck, ChevronDown, Lightbulb, Printer, Lock, Send, RefreshCw, Package, ArrowDown, MapPin
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import { db } from '../services/firebase';
@@ -23,8 +23,8 @@ const STEPS = [
   { id: 3, label: 'Partes', icon: Users },
   { id: 4, label: 'Conciliação', icon: Video },
   { id: 5, label: 'Geração', icon: Wand2 },
-  { id: 6, label: 'Assinatura', icon: PenTool },
-  { id: 7, label: 'Envio', icon: Send }, // Full Time Notificação
+  { id: 6, label: 'Revisão & Assinatura', icon: FileSignature },
+  { id: 7, label: 'Envio', icon: Send }, 
   { id: 8, label: 'Pagamento', icon: Banknote },
   { id: 9, label: 'Protocolo', icon: ShieldCheck },
 ];
@@ -89,7 +89,7 @@ const MASKS = {
 };
 
 const formatAddressString = (addr: Address) => {
-    return `${addr.street}, ${addr.number} ${addr.complement ? '- ' + addr.complement : ''}, ${addr.neighborhood}, ${addr.city}/${addr.state}, CEP: ${addr.cep}`;
+    return `${addr.street}, ${addr.number}${addr.complement ? ' - ' + addr.complement : ''}, ${addr.neighborhood}, ${addr.city}/${addr.state}, CEP: ${addr.cep}`;
 };
 
 // --- COMPONENTES AUXILIARES ---
@@ -100,29 +100,31 @@ const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputCh
          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
              <div className="md:col-span-2">
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome Completo / Razão Social</label>
-                <input type="text" value={data.name} onChange={e => onInputChange(section, 'name', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm focus:border-blue-400 transition" />
+                <input type="text" value={data.name} onChange={e => onInputChange(section, 'name', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm focus:border-blue-400 transition" placeholder="Nome completo" />
              </div>
              <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{documentLabel}</label>
-                <input type="text" value={data.cpfCnpj} maxLength={documentMaxLength} onChange={e => onInputChange(section, 'cpfCnpj', documentMask(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm focus:border-blue-400 transition" />
+                <input type="text" value={data.cpfCnpj} maxLength={documentMaxLength} onChange={e => onInputChange(section, 'cpfCnpj', documentMask(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm focus:border-blue-400 transition" placeholder="000.000.000-00" />
                 {!isCompanyAllowed && <span className="text-[10px] text-red-400">Apenas Pessoa Física (CPF) permitido neste campo.</span>}
              </div>
              <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
-                <input type="email" value={data.email} onChange={e => onInputChange(section, 'email', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm focus:border-blue-400 transition" />
+                <input type="email" value={data.email} onChange={e => onInputChange(section, 'email', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm focus:border-blue-400 transition" placeholder="email@exemplo.com" />
              </div>
              <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Telefone</label>
-                <input type="text" value={data.phone} maxLength={15} onChange={e => onInputChange(section, 'phone', MASKS.phone(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm focus:border-blue-400 transition" />
+                <input type="text" value={data.phone} maxLength={15} onChange={e => onInputChange(section, 'phone', MASKS.phone(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm focus:border-blue-400 transition" placeholder="(00) 00000-0000" />
              </div>
          </div>
          <div className="mt-4 pt-4 border-t border-slate-100">
-             <span className="text-xs font-bold text-slate-400 uppercase block mb-3">Endereço</span>
+             <span className="text-xs font-bold text-slate-400 uppercase block mb-3 flex items-center"><MapPin size={12} className="mr-1"/> Endereço</span>
              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <input type="text" placeholder="CEP" value={data.address.cep} onChange={e => onAddressChange(section, 'cep', MASKS.cep(e.target.value))} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
-                <input type="text" placeholder="Rua" value={data.address.street} onChange={e => onAddressChange(section, 'street', e.target.value)} className="col-span-1 md:col-span-3 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
-                <input type="text" placeholder="Nº" value={data.address.number} onChange={e => onAddressChange(section, 'number', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
-                <input type="text" placeholder="Bairro" value={data.address.neighborhood} onChange={e => onAddressChange(section, 'neighborhood', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
+                <input type="text" placeholder="Rua / Logradouro" value={data.address.street} onChange={e => onAddressChange(section, 'street', e.target.value)} className="col-span-1 md:col-span-3 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
+                <input type="text" placeholder="Número" value={data.address.number} onChange={e => onAddressChange(section, 'number', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
+                {/* CAMPO COMPLEMENTO ADICIONADO */}
+                <input type="text" placeholder="Complemento (Apt, Bloco)" value={data.address.complement} onChange={e => onAddressChange(section, 'complement', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
+                <input type="text" placeholder="Bairro" value={data.address.neighborhood} onChange={e => onAddressChange(section, 'neighborhood', e.target.value)} className="col-span-1 md:col-span-2 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
                 <input type="text" placeholder="Cidade" value={data.address.city} onChange={e => onAddressChange(section, 'city', e.target.value)} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
                 <input type="text" placeholder="UF" value={data.address.state} maxLength={2} onChange={e => onAddressChange(section, 'state', e.target.value.toUpperCase())} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
              </div>
@@ -135,7 +137,9 @@ const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputCh
 const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user, onBack }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [showAllAreas, setShowAllAreas] = useState(false);
+  // ID do documento para Hash
   const [notificationId] = useState(`NOT-${Math.random().toString(36).substr(2, 9).toUpperCase()}`);
+  const [docHash] = useState(Array.from({length: 4}, () => Math.random().toString(36).substr(2, 4).toUpperCase()).join('-'));
   
   // Estado Lógica de Papéis
   const [role, setRole] = useState<'self' | 'representative' | null>(null);
@@ -147,13 +151,13 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     representative: { name: '', cpfCnpj: '', email: '', phone: '', address: { ...initialAddress } },
     sender: { name: user?.displayName || '', cpfCnpj: '', email: user?.email || '', phone: '', address: { ...initialAddress } },
     recipient: { name: '', cpfCnpj: '', email: '', phone: '', address: { ...initialAddress } },
-    scheduleMeeting: false, meetingDate: '', meetingTime: '', subject: '', generatedContent: ''
+    scheduleMeeting: false, meetingDate: '', meetingTime: '', meetLink: '', subject: '', generatedContent: ''
   });
 
   const [localFiles, setLocalFiles] = useState<LocalAttachment[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [signatureData, setSignatureData] = useState<string | null>(null);
-  const [documentHash, setDocumentHash] = useState<string | null>(null);
+  const [isSigned, setIsSigned] = useState(false); // Controle visual se foi assinado
   
   // Pagamento & Polling
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
@@ -208,10 +212,13 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           const attachments: Attachment[] = localFiles.map(lf => ({ file: lf.file, preview: lf.previewUrl, type: lf.type }));
           
           let details = `Fatos: ${formData.facts}\n\n`;
+          
+          // Lógica de Meeting (O link deve existir na string enviada para a IA)
           if (formData.scheduleMeeting) {
-              // GERA O LINK DO MEET PARA A IA INSERIR
-              const meetCode = Math.random().toString(36).substr(2, 9);
-              details += `[DADO CRÍTICO] Foi agendada uma conciliação via Google Meet para ${new Date(formData.meetingDate).toLocaleDateString()} às ${formData.meetingTime}. O Link da sala é: https://meet.google.com/${meetCode}. INSERIR ESTE LINK NO TEXTO.`;
+              // LINK FIXO UNIVERSAL
+              const link = "https://meet.google.com/yjg-zhrg-rez";
+              setFormData(prev => ({...prev, meetLink: link})); // Salva no state para uso posterior
+              details += `[DADO CRÍTICO] Foi agendada uma conciliação via Google Meet para ${new Date(formData.meetingDate).toLocaleDateString()} às ${formData.meetingTime}. O Link da sala é: ${link}. INSERIR ESTE LINK NO TEXTO.`;
           }
 
           const text = await generateNotificationText(
@@ -224,7 +231,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           );
           
           setFormData(prev => ({ ...prev, generatedContent: text }));
-          setCurrentStep(6); // Vai para Assinatura
+          setCurrentStep(6); // Vai para Revisão e Assinatura
       } catch (e: any) {
           alert("Erro na IA: " + e.message);
       } finally {
@@ -252,41 +259,80 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       setIsDrawing(false);
       if (canvasRef.current) setSignatureData(canvasRef.current.toDataURL());
   };
-
-  // --- 8. INICIAR PAGAMENTO ---
-  const handleStartPayment = async () => {
-      setIsProcessingPayment(true);
+  
+  const handleConfirmSignature = async () => {
+      if (!signatureData) return alert("Assine para validar o documento.");
+      
+      // SALVAR COMO PENDENTE IMEDIATAMENTE APÓS ASSINATURA (Backup se sair)
       try {
-          const uniqueHash = Array.from({length: 4}, () => Math.random().toString(36).substr(2, 4).toUpperCase()).join('-');
-          setDocumentHash(uniqueHash);
+          const uniqueHash = docHash;
+          const pdfUrl = await generateAndUploadPdf(true); // Gera PDF preliminar com assinatura
 
-          // 1. Gera e Upload do PDF
-          const doc = new jsPDF();
-          doc.setFontSize(10);
-          doc.text(formData.generatedContent, 20, 20, { maxWidth: 170 });
-          if (signatureData) doc.addImage(signatureData, 'PNG', 80, 250, 50, 20);
-          const pdfBlob = doc.output('blob');
-          const pdfUrl = await uploadSignedPdf(notificationId, pdfBlob);
-
-          // 2. Salva no Banco (Pendente)
           const notif: NotificationItem = {
               id: notificationId, documentHash: uniqueHash, notificante_uid: user.uid,
               notificante_cpf: formData.sender.cpfCnpj.replace(/\D/g, ''),
               notificante_dados_expostos: { nome: formData.sender.name, email: formData.sender.email, telefone: formData.sender.phone },
               notificados_cpfs: [formData.recipient.cpfCnpj.replace(/\D/g, '')],
               recipientName: formData.recipient.name, recipientEmail: formData.recipient.email, recipientPhone: formData.recipient.phone,
+              recipientDocument: formData.recipient.cpfCnpj, recipientAddress: formatAddressString(formData.recipient.address),
               area: currentArea?.name || '', species: formData.species, facts: formData.facts, subject: formData.species,
-              content: formData.generatedContent, evidences: [], pdf_url: pdfUrl, signatureBase64: signatureData || undefined,
+              content: formData.generatedContent, evidences: [], pdf_url: pdfUrl, signatureBase64: signatureData,
               createdAt: new Date().toISOString(), status: NotificationStatus.PENDING_PAYMENT, paymentAmount: 57.92
           };
+          
           await saveNotification(notif);
+          setCreatedData(prev => ({ ...prev, notif }));
+          setIsSigned(true);
+      } catch (e) {
+          console.error("Erro ao salvar rascunho assinado", e);
+          alert("Erro ao salvar assinatura. Tente novamente.");
+      }
+  };
+
+  const handleClearSignature = () => {
+      const ctx = canvasRef.current?.getContext('2d');
+      if (ctx && canvasRef.current) {
+          ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      }
+      setSignatureData(null);
+      setIsSigned(false);
+  };
+
+  const generateAndUploadPdf = async (isDraft: boolean): Promise<string> => {
+      const doc = new jsPDF();
+      doc.setFontSize(10);
+      const splitText = doc.splitTextToSize(formData.generatedContent, 170);
+      doc.text(splitText, 20, 20);
+      
+      if (signatureData) {
+          const pageCount = doc.getNumberOfPages();
+          doc.setPage(pageCount);
+          doc.addImage(signatureData, 'PNG', 80, 250, 50, 20);
+          doc.text(`Assinado Digitalmente por ${formData.sender.name}`, 105, 275, { align: 'center' });
+          doc.text(`Hash: ${docHash}`, 105, 280, { align: 'center' });
+      }
+      
+      const pdfBlob = doc.output('blob');
+      return await uploadSignedPdf(notificationId, pdfBlob);
+  };
+
+  // --- 8. INICIAR PAGAMENTO ---
+  const handleStartPayment = async () => {
+      setIsProcessingPayment(true);
+      try {
+          if (!createdData.notif) {
+              await handleConfirmSignature(); // Garante salvamento se algo falhou
+          }
+
+          const notif = createdData.notif!;
 
           // 3. Salva Meeting se houver
           let meet: Meeting | undefined;
           if (formData.scheduleMeeting) {
               meet = {
                   id: `MEET-${Date.now()}`, hostUid: user.uid, hostName: user.displayName, title: `Conciliação: ${formData.species}`,
-                  date: formData.meetingDate, time: formData.meetingTime, guestEmail: formData.recipient.email, meetLink: `https://meet.google.com/${Math.random().toString(36).substr(2,9)}`,
+                  date: formData.meetingDate, time: formData.meetingTime, guestEmail: formData.recipient.email, 
+                  meetLink: formData.meetLink || "https://meet.google.com/yjg-zhrg-rez",
                   createdAt: new Date().toISOString(), status: 'scheduled'
               };
               await createMeeting(meet);
@@ -301,7 +347,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               // Salva transação local
               const trans: Transaction = {
                   id: checkout.paymentId || `TX-${Date.now()}`, description: `Notificação - ${formData.species}`,
-                  amount: 57.92, date: new Date().toISOString(), status: 'Pendente', notificationId, recipientName: formData.recipient.name
+                  amount: 57.92, date: new Date().toISOString(), status: 'Pendente', notificationId: notif.id, recipientName: formData.recipient.name
               };
               await saveTransaction(user.uid, trans);
               setCreatedData({ notif, meet, trans });
@@ -313,7 +359,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
       } catch (e: any) {
           console.error(e);
-          alert("Erro no processo de salvamento: " + e.message);
+          alert("Erro no processo de pagamento: " + e.message);
       } finally {
           setIsProcessingPayment(false);
       }
@@ -321,10 +367,23 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
   const handlePaymentSuccess = async () => {
       if (!createdData.notif) return;
-      setCurrentStep(9); // Protocolo
+      
+      // CONFIRMAÇÃO E AUTOMAÇÃO
       try {
-          await dispatchCommunications(createdData.notif);
-      } catch (e) { console.error("Erro disparo:", e); }
+          // 1. Atualiza Status
+          await confirmPayment(createdData.notif.id);
+          const updatedNotif = { ...createdData.notif, status: NotificationStatus.SENT };
+          
+          // 2. Dispara Automações (Email + Zap)
+          await dispatchCommunications(updatedNotif);
+          
+          setCreatedData(prev => ({...prev, notif: updatedNotif}));
+          setCurrentStep(9); // Protocolo
+      } catch (e) { 
+          console.error("Erro disparo pós-pagamento:", e);
+          alert("Pagamento confirmado, mas houve um erro no disparo automático. O sistema tentará novamente.");
+          setCurrentStep(9);
+      }
   };
 
   return (
@@ -509,7 +568,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                               <input type="date" value={formData.meetingDate} onChange={e => setFormData({...formData, meetingDate: e.target.value})} className="w-full p-2 bg-white border rounded-lg mb-3"/>
                               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hora</label>
                               <input type="time" value={formData.meetingTime} onChange={e => setFormData({...formData, meetingTime: e.target.value})} className="w-full p-2 bg-white border rounded-lg"/>
-                              <p className="text-[10px] text-green-600 mt-2 flex items-center font-bold"><CheckCircle2 size={10} className="mr-1"/> Link do Meet será gerado automaticamente.</p>
+                              <p className="text-[10px] text-green-600 mt-2 flex items-center font-bold"><CheckCircle2 size={10} className="mr-1"/> Link do Meet será gerado e inserido no documento.</p>
                           </div>
                       )}
                   </div>
@@ -534,56 +593,122 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                   ) : (
                       <div className="flex flex-col items-center">
                           <Loader2 size={64} className="text-blue-600 animate-spin mb-6"/>
-                          <h3 className="text-xl font-bold text-slate-800">Redigindo Documento...</h3>
-                          <p className="text-slate-400 text-sm mt-2">Aplicando jurisprudência e norma culta.</p>
+                          <h3 className="text-xl font-bold text-slate-800">Processando estratégia jurídica...</h3>
+                          <p className="text-slate-400 text-sm mt-2">Otimizando a narrativa para melhor resultado.</p>
                       </div>
                   )}
               </div>
           )}
 
-          {/* --- STEP 6: ASSINATURA --- */}
+          {/* --- STEP 6: REVISÃO E ASSINATURA --- */}
           {currentStep === 6 && (
-              <div className="max-w-3xl mx-auto">
-                  <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-lg">
-                      <h2 className="text-2xl font-bold text-slate-800 mb-6 flex items-center"><PenTool size={24} className="mr-2 text-blue-600"/> Assinatura Digital</h2>
-                      <div className="h-64 bg-slate-50 border-2 border-dashed border-slate-300 rounded-xl relative overflow-hidden cursor-crosshair">
-                          <canvas 
-                              ref={canvasRef}
-                              width={700} height={256}
-                              className="w-full h-full"
-                              onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={endDrawing} onMouseLeave={endDrawing}
-                          />
-                          {!isDrawing && !signatureData && <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-300 font-bold text-3xl opacity-30">ASSINE AQUI</div>}
+              <div className="max-w-4xl mx-auto space-y-8">
+                  <div className="bg-white shadow-lg border border-slate-200 rounded-none w-full min-h-[800px] p-12 md:p-20 relative mx-auto font-serif text-slate-900">
+                      
+                      {/* Papel A4 Mockup */}
+                      <div className="text-center mb-12">
+                          <h2 className="text-xl font-bold uppercase tracking-widest border-b-2 border-slate-900 pb-2 inline-block">Notificação Extrajudicial</h2>
+                          <p className="text-xs text-slate-500 mt-2">Documento Oficial | Hash: {docHash}</p>
                       </div>
-                      <div className="flex justify-between mt-4">
-                          <button onClick={() => { const ctx = canvasRef.current?.getContext('2d'); ctx?.clearRect(0,0,1000,1000); setSignatureData(null); }} className="text-red-500 text-sm font-bold hover:text-red-600">Limpar Assinatura</button>
-                          <button onClick={() => { if(!signatureData) return alert("Assine para continuar."); setCurrentStep(7); }} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold">Confirmar Assinatura</button>
+
+                      <div className="text-justify text-sm leading-relaxed whitespace-pre-wrap mb-16">
+                          {formData.generatedContent}
                       </div>
+
+                      {/* Área de Assinatura */}
+                      <div className="mt-12 pt-8 border-t border-slate-100">
+                          <h4 className="text-sm font-bold text-slate-400 uppercase mb-4">Assinatura do Notificante</h4>
+                          
+                          {isSigned && signatureData ? (
+                              <div className="relative inline-block border-b border-slate-900 pb-2 px-10">
+                                  <img src={signatureData} alt="Assinatura" className="h-16 object-contain" />
+                                  <p className="text-center text-xs mt-1 font-bold">{formData.sender.name}</p>
+                                  <div className="absolute -top-3 -right-3">
+                                      <CheckCircle2 size={20} className="text-green-500 bg-white rounded-full"/>
+                                  </div>
+                              </div>
+                          ) : (
+                              <div className="border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 relative h-48 touch-none cursor-crosshair overflow-hidden w-full max-w-md">
+                                  <canvas 
+                                      ref={canvasRef}
+                                      width={500} height={192}
+                                      className="w-full h-full"
+                                      onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={endDrawing} onMouseLeave={endDrawing}
+                                      onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={endDrawing}
+                                  />
+                                  {!isDrawing && !signatureData && <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-300 font-bold text-xl opacity-50">ASSINE AQUI</div>}
+                              </div>
+                          )}
+                          
+                          <div className="flex gap-4 mt-4">
+                              {!isSigned ? (
+                                  <>
+                                    <button onClick={handleClearSignature} className="text-red-500 text-xs font-bold hover:bg-red-50 px-3 py-1 rounded">Limpar</button>
+                                    <button onClick={handleConfirmSignature} className="bg-slate-900 text-white px-6 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-slate-800">Validar e Anexar Assinatura</button>
+                                  </>
+                              ) : (
+                                  <button onClick={() => { setIsSigned(false); setSignatureData(null); }} className="text-slate-400 text-xs hover:text-slate-600 underline">Refazer assinatura</button>
+                              )}
+                          </div>
+                      </div>
+                  </div>
+
+                  <div className="flex justify-end p-4 sticky bottom-0 bg-white/80 backdrop-blur-md border-t border-slate-200">
+                      <button 
+                        onClick={() => { if(!isSigned) return alert("Assine o documento antes de continuar."); setCurrentStep(7); }} 
+                        className={`px-8 py-3 rounded-xl font-bold shadow-lg flex items-center transition-all ${isSigned ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                      >
+                          Ir para Envio <ArrowRight size={18} className="ml-2"/>
+                      </button>
                   </div>
               </div>
           )}
 
-          {/* --- STEP 7: SELEÇÃO DE ENVIO --- */}
+          {/* --- STEP 7: SELEÇÃO DE ENVIO (Full Time) --- */}
           {currentStep === 7 && (
-              <div className="max-w-2xl mx-auto">
-                  <h2 className="text-2xl font-bold text-slate-800 mb-6 text-center">Selecione o Método de Envio</h2>
-                  <button onClick={handleStartPayment} className="w-full bg-white p-8 rounded-2xl border-2 border-blue-600 shadow-xl relative overflow-hidden group hover:scale-[1.02] transition-transform">
-                      <div className="absolute top-0 right-0 bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-bl-xl">RECOMENDADO</div>
-                      <div className="flex items-center mb-4">
-                          <div className="p-3 bg-blue-100 text-blue-600 rounded-xl mr-4"><Rocket size={32}/></div>
-                          <div className="text-left">
-                              <h3 className="text-xl font-bold text-slate-900">Full Time Notificação</h3>
-                              <p className="text-slate-500 text-sm">Envio imediato e rastreamento total.</p>
+              <div className="max-w-3xl mx-auto">
+                  <h2 className="text-2xl font-bold text-slate-800 mb-8 text-center">Configuração de Envio</h2>
+                  
+                  <button onClick={handleStartPayment} className="w-full bg-white p-8 rounded-3xl border-2 border-blue-600 shadow-2xl relative overflow-hidden group hover:scale-[1.01] transition-transform">
+                      <div className="absolute top-0 right-0 bg-blue-600 text-white text-xs font-bold px-4 py-1.5 rounded-bl-2xl uppercase tracking-wider">Recomendado</div>
+                      
+                      <div className="flex flex-col md:flex-row items-center gap-6 mb-8">
+                          <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center shrink-0">
+                              <Rocket size={32}/>
+                          </div>
+                          <div className="text-center md:text-left">
+                              <h3 className="text-2xl font-bold text-slate-900">Full Time Notificação</h3>
+                              <p className="text-slate-500">Envio imediato, certificado e com rastreamento total.</p>
                           </div>
                       </div>
-                      <div className="space-y-2 text-left mb-6">
-                          <div className="flex items-center text-sm text-slate-600"><CheckCircle2 size={16} className="text-green-500 mr-2"/> Envio via E-mail Certificado (SendGrid)</div>
-                          <div className="flex items-center text-sm text-slate-600"><CheckCircle2 size={16} className="text-green-500 mr-2"/> Envio via WhatsApp Oficial (Z-API)</div>
-                          <div className="flex items-center text-sm text-slate-600"><CheckCircle2 size={16} className="text-green-500 mr-2"/> Registro em Blockchain (Hash)</div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                          <div className="flex items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+                              <div className="bg-green-100 p-2 rounded-full mr-3"><CheckCircle2 size={16} className="text-green-600"/></div>
+                              <span className="text-sm font-medium text-slate-700">E-mail Certificado (SendGrid)</span>
+                          </div>
+                          <div className="flex items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+                              <div className="bg-green-100 p-2 rounded-full mr-3"><CheckCircle2 size={16} className="text-green-600"/></div>
+                              <span className="text-sm font-medium text-slate-700">WhatsApp Oficial (Z-API)</span>
+                          </div>
+                          <div className="flex items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+                              <div className="bg-green-100 p-2 rounded-full mr-3"><CheckCircle2 size={16} className="text-green-600"/></div>
+                              <span className="text-sm font-medium text-slate-700">Monitoramento em Tempo Real</span>
+                          </div>
+                          <div className="flex items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
+                              <div className="bg-green-100 p-2 rounded-full mr-3"><CheckCircle2 size={16} className="text-green-600"/></div>
+                              <span className="text-sm font-medium text-slate-700">Registro em Blockchain (Hash)</span>
+                          </div>
                       </div>
-                      <div className="flex justify-between items-center border-t border-slate-100 pt-4">
-                          <span className="text-2xl font-bold text-slate-800">R$ 57,92</span>
-                          <span className="bg-slate-900 text-white px-6 py-2 rounded-lg font-bold text-sm">Contratar Agora</span>
+
+                      <div className="flex justify-between items-center border-t border-slate-100 pt-6">
+                          <div>
+                              <p className="text-xs text-slate-400 uppercase font-bold">Valor Total</p>
+                              <span className="text-3xl font-bold text-slate-800">R$ 57,92</span>
+                          </div>
+                          <span className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold text-sm shadow-lg group-hover:bg-blue-600 transition-colors">
+                              Contratar e Enviar Agora
+                          </span>
                       </div>
                   </button>
               </div>
@@ -596,16 +721,19 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                   <p className="text-slate-500 text-sm mb-6">Escaneie para liberar o envio imediato.</p>
                   
                   {isProcessingPayment && !pixData ? (
-                      <div className="py-12"><Loader2 size={48} className="animate-spin text-blue-600 mx-auto"/></div>
+                      <div className="py-12 flex flex-col items-center">
+                          <Loader2 size={48} className="animate-spin text-blue-600 mb-4"/>
+                          <span className="text-slate-400 text-sm">Gerando cobrança segura...</span>
+                      </div>
                   ) : pixData ? (
                       <div className="animate-fade-in">
                           <div className="bg-white p-2 border rounded-xl mb-4 inline-block shadow-inner"><img src={`data:image/png;base64,${pixData.encodedImage}`} className="w-48 h-48"/></div>
                           <div className="bg-slate-50 p-3 rounded-lg flex items-center justify-between gap-2 mb-4 border border-slate-200">
                               <span className="text-xs font-mono truncate text-slate-500">{pixData.payload}</span>
-                              <button onClick={() => {navigator.clipboard.writeText(pixData.payload); alert("Copiado!");}} className="text-blue-600 font-bold text-xs">COPIAR</button>
+                              <button onClick={() => {navigator.clipboard.writeText(pixData.payload); alert("Copiado!");}} className="text-blue-600 font-bold text-xs bg-blue-50 p-2 rounded hover:bg-blue-100">COPIAR</button>
                           </div>
-                          <div className="flex items-center justify-center text-emerald-600 font-bold text-sm animate-pulse">
-                              <RefreshCw size={16} className="animate-spin mr-2"/> Aguardando pagamento...
+                          <div className="flex items-center justify-center text-emerald-600 font-bold text-sm animate-pulse bg-emerald-50 p-3 rounded-xl">
+                              <RefreshCw size={16} className="animate-spin mr-2"/> Aguardando confirmação do banco...
                           </div>
                       </div>
                   ) : <p className="text-red-500">Erro ao carregar Pix.</p>}
@@ -615,12 +743,24 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           {/* --- STEP 9: PROTOCOLO --- */}
           {currentStep === 9 && (
               <div className="text-center py-12 animate-fade-in">
-                  <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-100">
                       <CheckCircle2 size={48} className="text-green-600"/>
                   </div>
                   <h2 className="text-3xl font-bold text-slate-800 mb-2">Sucesso!</h2>
-                  <p className="text-slate-600 mb-8">Sua notificação foi registrada e está sendo enviada.</p>
-                  <button onClick={() => onSave(createdData.notif!, createdData.meet, createdData.trans)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold shadow-lg">Voltar ao Painel</button>
+                  <p className="text-slate-600 mb-8 max-w-md mx-auto">Sua notificação foi paga, enviada para e-mail/WhatsApp e registrada. Acompanhe o status no painel.</p>
+                  
+                  <div className="bg-white p-4 rounded-xl border border-slate-200 max-w-sm mx-auto mb-8 text-left">
+                      <div className="flex justify-between mb-2">
+                          <span className="text-xs text-slate-500">Protocolo</span>
+                          <span className="text-xs font-mono font-bold">{notificationId}</span>
+                      </div>
+                      <div className="flex justify-between">
+                          <span className="text-xs text-slate-500">Hash</span>
+                          <span className="text-xs font-mono text-slate-400 truncate w-32">{docHash}</span>
+                      </div>
+                  </div>
+
+                  <button onClick={() => onSave(createdData.notif!, createdData.meet, createdData.trans)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold shadow-lg hover:bg-slate-800 transition transform hover:-translate-y-1">Voltar ao Painel</button>
               </div>
           )}
       </div>

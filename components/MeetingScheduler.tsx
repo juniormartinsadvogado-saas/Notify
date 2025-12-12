@@ -31,7 +31,6 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCamOn, setIsCamOn] = useState(true);
-  const [isScreenSharing, setIsScreenSharing] = useState(false);
 
   useEffect(() => {
     if (meetingsProp) {
@@ -73,8 +72,8 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
       if (!user) return;
 
       try {
-          const code = `${Math.random().toString(36).substr(2, 3)}-${Math.random().toString(36).substr(2, 4)}-${Math.random().toString(36).substr(2, 3)}`;
-          const meetLink = `https://meet.google.com/${code}`;
+          // Link Fixo
+          const meetLink = "https://meet.google.com/yjg-zhrg-rez";
 
           const newMeeting: Meeting = {
               id: `MEET-${Date.now()}`,
@@ -154,60 +153,8 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
 
   const toggleCam = () => {
       if (stream) {
-          if (isScreenSharing) {
-             handleStopScreenShare();
-             return;
-          }
           stream.getVideoTracks().forEach(track => track.enabled = !isCamOn);
           setIsCamOn(!isCamOn);
-      }
-  };
-
-  const handleScreenShare = async () => {
-      try {
-          if (isScreenSharing) {
-              handleStopScreenShare();
-              return;
-          }
-          const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-          const screenTrack = screenStream.getVideoTracks()[0];
-          
-          if (stream && videoRef.current) {
-              const currentVideoTrack = stream.getVideoTracks()[0];
-              stream.removeTrack(currentVideoTrack);
-              stream.addTrack(screenTrack);
-              
-              screenTrack.onended = () => {
-                  handleStopScreenShare();
-              };
-
-              setIsScreenSharing(true);
-              videoRef.current.srcObject = stream; 
-          }
-      } catch (error) {
-          console.error("Erro ao compartilhar tela:", error);
-      }
-  };
-
-  const handleStopScreenShare = async () => {
-      if (!isScreenSharing) return;
-      
-      if(stream) {
-          stream.getVideoTracks().forEach(track => track.stop());
-          stream.removeTrack(stream.getVideoTracks()[0]);
-      }
-
-      try {
-          const camStream = await navigator.mediaDevices.getUserMedia({ video: true });
-          const camTrack = camStream.getVideoTracks()[0];
-          if(stream) {
-             stream.addTrack(camTrack);
-             if(videoRef.current) videoRef.current.srcObject = stream;
-          }
-          setIsScreenSharing(false);
-          setIsCamOn(true);
-      } catch(e) {
-          console.error("Erro ao reiniciar camera", e);
       }
   };
 
@@ -439,10 +386,10 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
                             autoPlay 
                             muted 
                             playsInline 
-                            className={`w-full h-full object-cover transform scale-x-[-1] transition-opacity duration-500 ${isCamOn || isScreenSharing ? 'opacity-100' : 'opacity-0'}`}
+                            className={`w-full h-full object-cover transform scale-x-[-1] transition-opacity duration-500 ${isCamOn ? 'opacity-100' : 'opacity-0'}`}
                           />
                           
-                          {(!isCamOn && !isScreenSharing) && (
+                          {(!isCamOn) && (
                               <div className="absolute inset-0 flex items-center justify-center">
                                   <div className="w-32 h-32 rounded-full bg-slate-800 flex items-center justify-center animate-pulse border-4 border-slate-700">
                                       <span className="text-4xl font-bold text-slate-500">{user?.displayName?.charAt(0)}</span>
@@ -454,16 +401,8 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
                               <button onClick={toggleMic} className={`p-4 rounded-full transition ${isMicOn ? 'bg-slate-700 hover:bg-slate-600' : 'bg-red-500 hover:bg-red-600'}`}>
                                   {isMicOn ? <Mic size={20} /> : <MicOff size={20} />}
                               </button>
-                              <button onClick={toggleCam} className={`p-4 rounded-full transition ${isCamOn && !isScreenSharing ? 'bg-slate-700 hover:bg-slate-600' : 'bg-red-500 hover:bg-red-600'}`}>
-                                  {isCamOn && !isScreenSharing ? <Camera size={20} /> : <CameraOff size={20} />}
-                              </button>
-                              <div className="w-px h-8 bg-slate-600 mx-2"></div>
-                              <button 
-                                onClick={handleScreenShare}
-                                className={`p-4 rounded-full transition ${isScreenSharing ? 'bg-blue-600 text-white' : 'bg-slate-700 hover:bg-slate-600 text-slate-400'}`}
-                                title={isScreenSharing ? "Parar Compartilhamento" : "Compartilhar Tela"}
-                              >
-                                  <MonitorUp size={20} />
+                              <button onClick={toggleCam} className={`p-4 rounded-full transition ${isCamOn ? 'bg-slate-700 hover:bg-slate-600' : 'bg-red-500 hover:bg-red-600'}`}>
+                                  {isCamOn ? <Camera size={20} /> : <CameraOff size={20} />}
                               </button>
                           </div>
                       </div>
@@ -479,10 +418,10 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
                           
                           <button 
                             onClick={joinGoogleMeet}
-                            className="px-8 py-4 rounded-xl font-bold shadow-lg flex items-center transition transform hover:scale-105 bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/50"
+                            className="px-8 py-4 rounded-xl font-bold shadow-lg flex items-center transition transform hover:scale-105 bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/50"
                           >
                               <ExternalLink size={20} className="mr-2" />
-                              Entrar na Sala (Google Meet)
+                              Pedir Entrada
                           </button>
                       </div>
                   </div>
