@@ -433,7 +433,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           if (result.paid) {
               handlePaymentConfirmed();
           } else {
-              alert("Pagamento ainda não confirmado pelo banco. Tente novamente em alguns segundos.");
+              alert("O sistema bancário ainda não confirmou o Pix. Aguarde mais alguns segundos e tente novamente.");
           }
       } catch(e) {
           alert("Erro ao verificar. Tente novamente.");
@@ -1046,13 +1046,17 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                                     Aguardando confirmação automática...
                                 </div>
                                 
-                                <button 
-                                    onClick={manualVerifyPayment}
-                                    disabled={isProcessingAction}
-                                    className="w-full text-xs text-slate-400 hover:text-white underline decoration-slate-600 hover:decoration-white transition-all disabled:opacity-50"
-                                >
-                                    Já realizei o pagamento, verificar agora
-                                </button>
+                                <div className="mt-4 pt-4 border-t border-slate-700 w-full">
+                                    <p className="text-[10px] text-slate-500 mb-2">Se a confirmação automática demorar:</p>
+                                    <button
+                                        onClick={manualVerifyPayment}
+                                        disabled={isProcessingAction}
+                                        className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center border border-slate-700 disabled:opacity-50"
+                                    >
+                                        {isProcessingAction ? <Loader2 size={14} className="animate-spin mr-2"/> : <CheckCircle2 size={14} className="mr-2"/>}
+                                        Já paguei, validar agora
+                                    </button>
+                                </div>
                             </div>
                         </>
                     )}

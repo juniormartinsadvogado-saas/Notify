@@ -4,7 +4,12 @@ import sgMail from '@sendgrid/mail';
 
 // Função auxiliar para inicializar o DB de forma segura
 function getFirebaseDB() {
-    if (!admin.apps.length) {
+    // CORREÇÃO CRÍTICA: Suporte a ESM/CJS na Vercel para evitar "undefined reading length"
+    // Alguns ambientes carregam o firebase-admin dentro de .default
+    const firebasePkg = admin.default || admin;
+
+    // Usa ?. (optional chaining) para não quebrar se .apps for undefined
+    if (!firebasePkg.apps?.length) {
         try {
             const privateKey = process.env.FIREBASE_PRIVATE_KEY 
                 ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') // Corrige quebras de linha escapadas
@@ -21,17 +26,20 @@ function getFirebaseDB() {
                 return null;
             }
 
-            admin.initializeApp({
-                credential: admin.credential.cert(serviceAccount),
+            firebasePkg.initializeApp({
+                credential: firebasePkg.credential.cert(serviceAccount),
                 storageBucket: "notify-jma.firebasestorage.app"
             });
             console.log("[WEBHOOK INIT] Firebase Admin inicializado com sucesso.");
         } catch (error) {
-            console.error('[WEBHOOK INIT] Erro fatal ao inicializar Firebase Admin:', error);
-            return null;
+            // Se der erro de "já existe app padrão", apenas ignoramos e seguimos
+            if (error.code !== 'app/duplicate-app') {
+                console.error('[WEBHOOK INIT] Erro fatal ao inicializar Firebase Admin:', error);
+                return null;
+            }
         }
     }
-    return admin.firestore();
+    return firebasePkg.firestore();
 }
 
 export default async function handler(req, res) {
@@ -48,12 +56,12 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-      // 1. Validação de Token
+      // 1. Validação de Token (Opcional, mas recomendado)
       const asaasToken = req.headers['asaas-access-token'];
       if (process.env.ASAAS_WEBHOOK_TOKEN && asaasToken !== process.env.ASAAS_WEBHOOK_TOKEN) {
-          console.warn(`[WEBHOOK] Token inválido ou não fornecido: ${asaasToken}`);
-          // Não retornamos 401 para não expor a existência do endpoint, apenas logamos.
-          return res.status(401).json({ error: 'Acesso Negado' });
+          console.warn(`[WEBHOOK] Token inválido ou não fornecido.`);
+          // Não retornamos 401 para não expor a existência do endpoint para scanners, apenas logamos e rejeitamos
+          return res.status(200).json({ error: 'Acesso Negado (Token)' });
       }
 
       const event = req.body;
@@ -98,7 +106,8 @@ export default async function handler(req, res) {
 
       if (!docSnap.exists) {
         console.error(`[WEBHOOK] Notificação não encontrada no Firestore: ${notificationId}`);
-        return res.status(200).json({ error: 'Notificação não encontrada' });
+        // Retornamos 200 para o Asaas parar de tentar enviar, pois o ID não existe no nosso banco
+        return res.status(200).json({ error: 'Notificação não encontrada no sistema' });
       }
 
       const notification = docSnap.data();
@@ -181,6 +190,8 @@ export default async function handler(req, res) {
 
   } catch (error) {
       console.error('[WEBHOOK] Erro geral:', error);
+      // Retorna 200 com detalhes do erro para o Asaas ver que recebemos a requisição,
+      // mesmo que tenha dado erro lógico, para evitar loops infinitos de retentativa se o erro for no nosso código.
       return res.status(200).json({ error: 'Erro interno processado', details: error.message });
   }
 }
