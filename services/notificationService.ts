@@ -24,8 +24,6 @@ const getMediaType = (mimeType: string): 'fotos' | 'videos' | 'documentos' => {
 
 export const uploadSignedPdf = async (notificationId: string, pdfBlob: Blob): Promise<string> => {
     try {
-        // MUDANÇA: O PDF agora fica dentro da pasta da notificação para herdar as regras de segurança da pasta
-        // Caminho seguro: notificacoes/{id}/documento_assinado.pdf
         const storagePath = `notificacoes/${notificationId}/documento_assinado.pdf`;
         const storageRef = ref(storage, storagePath);
 
@@ -93,11 +91,7 @@ export const saveNotification = async (notification: NotificationItem) => {
         };
 
         const docRef = doc(db, NOTIFICATIONS_COLLECTION, notification.id);
-        
-        // Remove campos undefined para evitar erros no Firestore
         const dataToSave = JSON.parse(JSON.stringify(notificationData));
-        
-        // Use merge: true para permitir atualizações de rascunho sem sobrescrever tudo
         await setDoc(docRef, dataToSave, { merge: true });
     } catch (error: any) {
         console.error("Erro ao salvar notificação:", error);
@@ -113,7 +107,6 @@ export const deleteNotification = async (notification: NotificationItem) => {
         if (notification.evidences && notification.evidences.length > 0) {
             await Promise.all(notification.evidences.map(ev => deleteEvidence(ev.storagePath)));
         }
-        // Deleta o PDF principal no novo caminho
         const pdfRef = ref(storage, `notificacoes/${notification.id}/documento_assinado.pdf`);
         await deleteObject(pdfRef).catch(() => {});
 
@@ -128,6 +121,7 @@ export const deleteNotification = async (notification: NotificationItem) => {
 
 export const getNotificationsBySender = async (senderUid: string): Promise<NotificationItem[]> => {
     try {
+        // REMOVIDO orderBy("createdAt", "desc") para evitar erro de índice
         const q = query(
             collection(db, NOTIFICATIONS_COLLECTION),
             where("notificante_uid", "==", senderUid)
@@ -139,6 +133,7 @@ export const getNotificationsBySender = async (senderUid: string): Promise<Notif
             items.push(doc.data() as NotificationItem);
         });
         
+        // Ordenação feita em memória
         return items.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     } catch (error) {
         console.error("Erro ao buscar notificações enviadas:", error);
@@ -150,6 +145,7 @@ export const getNotificationsByRecipientCpf = async (cpf: string): Promise<Notif
     try {
         const cleanCpf = cpf.replace(/\D/g, '');
         
+        // REMOVIDO orderBy("createdAt", "desc") para evitar erro de índice
         const q = query(
             collection(db, NOTIFICATIONS_COLLECTION),
             where("notificados_cpfs", "array-contains", cleanCpf)
@@ -159,12 +155,12 @@ export const getNotificationsByRecipientCpf = async (cpf: string): Promise<Notif
         const items: NotificationItem[] = [];
         querySnapshot.forEach((doc) => {
             const data = doc.data() as NotificationItem;
-            // Filtra rascunhos para o destinatário (eles não devem ver rascunhos)
             if (data.status !== NotificationStatus.DRAFT && data.status !== NotificationStatus.PENDING_PAYMENT) {
                 items.push(data);
             }
         });
 
+        // Ordenação feita em memória
         return items.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     } catch (error) {
         console.error("Erro ao buscar notificações recebidas:", error);

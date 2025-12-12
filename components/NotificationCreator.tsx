@@ -1,20 +1,26 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { generateNotificationText } from '../services/geminiService';
-import { saveNotification, uploadEvidence, uploadSignedPdf, confirmPayment } from '../services/notificationService';
+import { saveNotification, uploadEvidence, uploadSignedPdf } from '../services/notificationService';
 import { initiateCheckout, saveTransaction } from '../services/paymentService';
 import { createMeeting } from '../services/meetingService';
-import { dispatchCommunications } from '../services/communicationService'; 
 import { NotificationItem, NotificationStatus, EvidenceItem, Meeting, Transaction, Attachment } from '../types';
 import { 
   Wand2, Scale, Users, 
   FileText, PenTool, Check, Loader2, 
   Briefcase, ShoppingBag, Home, Heart, FileSignature, Scroll, UploadCloud, X, User, Video, CheckCircle2, ArrowRight, Calendar, ChevronLeft, Sparkles,
-  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode, Copy, AlertCircle, Plane, Zap, Rocket, Monitor, Trophy, Anchor, ShieldCheck, ChevronDown, Lightbulb, Printer, Lock, Send, Smartphone, Mail, MessageCircle, Save
+  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode, Copy, AlertCircle, Plane, Zap, Rocket, Monitor, Trophy, Anchor, ShieldCheck, ChevronDown, Lightbulb, Printer, Lock, Send, Smartphone, Mail, MessageCircle, Save, LogIn
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import { db } from '../services/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
+
+// ... (Resto das importações e constantes mantidas igual ao original para brevidade) ...
+
+// MANTENDO O CÓDIGO ORIGINAL ATÉ A PARTE DO PAGAMENTO PARA GARANTIR INTEGRIDADE
+// ... (Assumindo que o código anterior está aqui. Vou focar na substituição do renderPaymentStep e lógica relacionada)
+
+// -> REPLICANDO A ESTRUTURA PARA INSERÇÃO CORRETA
 
 interface NotificationCreatorProps {
   onSave: (notification: NotificationItem, meeting?: Meeting, transaction?: Transaction) => void;
@@ -27,7 +33,6 @@ interface NotificationCreatorProps {
   };
 }
 
-// ATUALIZAÇÃO DOS NOMES DAS ETAPAS - Etapa 7 agora é PAGAMENTO PIX
 const STEPS = [
   { id: 1, label: 'Áreas', icon: Scale },
   { id: 2, label: 'Fatos', icon: FileText },
@@ -125,6 +130,7 @@ const formatAddressString = (addr: Address) => {
     return parts.join(', ') || 'Endereço não informado';
 };
 
+// ... MANTENDO COMPONENTES AUXILIARES IGUAIS ...
 const DraftingAnimation = () => (
     <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-20 overflow-hidden">
          <div className="relative">
@@ -214,6 +220,7 @@ const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputCh
 };
 
 const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user, onBack, subscriptionData }) => {
+  // ... (State hooks unchanged) ...
   const [currentStep, setCurrentStep] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSavingData, setIsSavingData] = useState(false);
@@ -258,7 +265,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const currentArea = LAW_AREAS.find(a => a.id === formData.areaId);
   const availableSubtypes = currentArea ? (AREA_SUBTYPES[currentArea.id] || AREA_SUBTYPES['default']) : [];
 
-  // --- PERSISTENCE LOGIC (15 MINUTES) ---
+  // ... (Persistence Logic and AutoSave Logic unchanged) ...
   useEffect(() => {
       const STORAGE_KEY = `notify_draft_${user?.uid}`;
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -294,12 +301,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   }, [formData, currentStep, signatureData, user?.uid, notificationId]);
 
-  // --- NOVO: AUTO-SAVE TO FIRESTORE AS DRAFT ---
   const handleAutoSaveDraft = async () => {
     if (!user) return;
-    
-    // Mapeia os dados atuais do formulário para o formato NotificationItem
-    // Preenchendo campos obrigatórios com valores provisórios se necessário
     const uniqueHash = documentHash || Array.from({length: 4}, () => Math.random().toString(36).substr(2, 4).toUpperCase()).join('-');
     
     const draftItem: NotificationItem = {
@@ -313,7 +316,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
             telefone: formData.sender.phone,
             foto_url: user.photoURL || undefined
         },
-        // O destinatário é crucial para o rascunho ser útil
         notificados_cpfs: [formData.recipient.cpfCnpj.replace(/\D/g, '')],
         recipientName: formData.recipient.name,
         recipientEmail: formData.recipient.email,
@@ -325,7 +327,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
         facts: formData.facts || 'Em preenchimento...',
         subject: formData.subject || formData.species || 'Rascunho',
         content: formData.generatedContent || '',
-        evidences: [], // Evidências não salvas no auto-save simples para não fazer upload repetido
+        evidences: [],
         signatureBase64: signatureData || undefined,
         createdAt: new Date().toISOString(),
         status: NotificationStatus.DRAFT,
@@ -333,11 +335,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     };
 
     try {
-        console.log("Auto-salvando rascunho no Firestore...");
         await saveNotification(draftItem);
     } catch (e) {
         console.warn("Erro ao salvar rascunho automático:", e);
-        // Não bloqueia o fluxo, apenas loga
     }
   };
 
@@ -407,17 +407,12 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   };
 
+  // Callback usado apenas pelo Listener do Webhook (Sem disparar API de novo, pois o webhook já faz)
   const handleWebhookSuccess = async () => {
       if (!user || !createdData.notif || !createdData.trans) return;
-      
-      // Atualiza estados locais
       const updatedNotif = { ...createdData.notif, status: NotificationStatus.SENT };
       const updatedTrans: Transaction = { ...createdData.trans, status: 'Pago' };
-      
-      // Salva transação no histórico do usuário
-      // (A notificação já foi atualizada pelo Webhook, então não chamamos saveNotification de novo, apenas atualizamos local)
       await saveTransaction(user.uid, updatedTrans);
-
       setCreatedData({ notif: updatedNotif, meet: createdData.meet, trans: updatedTrans });
       setProtocolSuccess(true);
       clearDraft();
@@ -427,6 +422,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     return 57.92;
   };
 
+  // ... (Funções auxiliares mantidas) ...
   const validateAddresses = () => {
       const validate = (addr: Address) => addr.cep && addr.street && addr.number && addr.neighborhood && addr.city && addr.state;
       if (!validate(formData.sender.address)) return "Endereço do Remetente incompleto.";
@@ -468,6 +464,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     setLocalFiles(prev => prev.filter(f => f.id !== id));
   };
 
+  // ... (Drawing Logic unchanged) ...
   const startDrawing = (e: any) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -570,10 +567,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
         
         setFormData(prev => ({ ...prev, generatedContent: text }));
         alert("Minuta jurídica gerada com sucesso!");
-        
-        // Save draft after generation
         await handleAutoSaveDraft();
-        
         setCurrentStep(6); 
     } catch (err: any) {
         console.error("Erro Generation:", err);
@@ -633,7 +627,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               recipientName: formData.recipient.name,
               recipientEmail: formData.recipient.email,
               recipientPhone: formData.recipient.phone,
-              // SALVANDO DADOS EXTRAS DO DESTINATÁRIO
               recipientDocument: formData.recipient.cpfCnpj,
               recipientAddress: formatAddressString(formData.recipient.address),
 
@@ -698,6 +691,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   };
 
   const generateAndUploadPdf = async (docHash: string): Promise<string> => {
+      // ... (PDF Gen Logic same as before) ...
       const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pageWidth = doc.internal.pageSize.width;
       const pageHeight = doc.internal.pageSize.height;
@@ -844,7 +838,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
         <div className="pb-12 max-w-6xl mx-auto animate-fade-in">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
                 
-                {/* COLUNA ESQUERDA: Valor e Persuasão */}
+                {/* COLUNA ESQUERDA: Valor */}
                 <div className="space-y-8">
                     <div>
                         <h3 className="text-3xl font-bold text-slate-900 mb-2">Finalizar Envio Oficial</h3>
@@ -894,23 +888,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                                     </div>
                                 </div>
                             </div>
-
-                            <ul className="space-y-3 border-t border-slate-100 pt-6">
-                                <li className="flex items-center text-sm text-slate-600">
-                                    <CheckCircle2 size={16} className="text-emerald-500 mr-3 shrink-0" />
-                                    <span>Validade Jurídica (Assinatura Digital)</span>
-                                </li>
-                                <li className="flex items-center text-sm text-slate-600">
-                                    <CheckCircle2 size={16} className="text-emerald-500 mr-3 shrink-0" />
-                                    <span>Backup Vitalício e Link Público</span>
-                                </li>
-                            </ul>
                         </div>
-                    </div>
-
-                    <div className="flex items-center justify-center text-slate-400 text-xs gap-4">
-                         <span className="flex items-center"><Lock size={12} className="mr-1"/> Pagamento Seguro</span>
-                         <span className="flex items-center"><Zap size={12} className="mr-1"/> Processamento Instantâneo</span>
                     </div>
                 </div>
 
@@ -977,14 +955,25 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                         {pixData && (
                             <div className="mt-8 flex items-center justify-center text-emerald-400 text-sm animate-pulse font-medium">
                                 <Loader2 size={16} className="animate-spin mr-2" />
-                                Aguardando confirmação do banco...
+                                Aguardando confirmação bancária...
                             </div>
                         )}
                         
-                        {/* Fallback Manual */}
-                        <div className="mt-4">
-                             <button onClick={handleWebhookSuccess} className="text-xs text-slate-500 hover:text-white transition-colors underline decoration-slate-600 hover:decoration-white">
-                                 Simular Confirmação (Teste)
+                        {/* BOTÃO ÚNICO DE SAÍDA - SEM SIMULAÇÃO */}
+                        <div className="mt-6 flex flex-col gap-3">
+                             <button 
+                                onClick={() => {
+                                    // Salva como pendente e sai
+                                    if (createdData.notif && createdData.trans) {
+                                        onSave(createdData.notif, createdData.meet, createdData.trans);
+                                    } else {
+                                        onBack?.();
+                                    }
+                                }} 
+                                className="flex items-center justify-center text-sm font-bold text-white bg-white/10 hover:bg-white/20 px-4 py-3 rounded-xl transition-all"
+                             >
+                                 <LogIn size={16} className="mr-2" />
+                                 Pagar Depois / Ir para Painel
                              </button>
                         </div>
                     </div>
@@ -1006,6 +995,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       );
   };
 
+  // ... (Renderização principal mantida) ...
   const visibleAreas = showAllAreas ? LAW_AREAS : LAW_AREAS.slice(0, 4);
 
   return (
@@ -1157,7 +1147,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                    {currentStep < 6 && (
                        <button 
                             onClick={async () => {
-                                // Auto-Save ao avançar a partir do passo 3 (onde temos destinatário)
                                 if (currentStep >= 3) {
                                     await handleAutoSaveDraft();
                                 }

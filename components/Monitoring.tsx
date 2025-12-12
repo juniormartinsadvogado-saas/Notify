@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { NotificationItem, NotificationStatus } from '../types';
 import { getNotificationsBySender, getNotificationsByRecipientCpf, deleteNotification, confirmPayment } from '../services/notificationService';
 import { restoreLatestCanceledMeeting } from '../services/meetingService';
@@ -35,6 +35,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
   
   const [senderProfile, setSenderProfile] = useState<any>(null);
 
+  // Evita re-fetch baseado em props, usa apenas para initial state ou merge manual
   useEffect(() => {
       if (defaultTab) {
           setActiveTab(defaultTab);
@@ -43,8 +44,23 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
 
   useEffect(() => {
     fetchData();
+    // Remover propNotifications da dependência para evitar loop infinito
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.uid, activeTab, propNotifications]); 
+  }, [user?.uid, activeTab]); 
+
+  // Efeito separado para mesclar notificações novas (tempo real) sem recarregar tudo do banco
+  useEffect(() => {
+      if (propNotifications.length > 0 && activeTab === 'sent') {
+          setItems(prev => {
+              const currentIds = new Set(prev.map(i => i.id));
+              const newItems = propNotifications.filter(pn => !currentIds.has(pn.id));
+              if (newItems.length > 0) {
+                  return [...newItems, ...prev].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+              }
+              return prev;
+          });
+      }
+  }, [propNotifications, activeTab]);
 
   useEffect(() => {
     let result = items;
@@ -68,29 +84,21 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
   }, [items, filterStatus, activeTab, searchQuery]);
 
   const fetchData = async () => {
-    if (!user) return;
+    if (!user) {
+        setLoading(false);
+        return;
+    }
     setLoading(true);
+    
+    // Timeout de segurança para evitar loading infinito em caso de falha de rede silenciosa
+    const safetyTimeout = setTimeout(() => {
+        setLoading(false);
+    }, 8000);
+
     try {
         if (activeTab === 'sent') {
             const data = await getNotificationsBySender(user.uid);
-            // Sincroniza com as props vindas do App (que podem ser mais novas devido ao fluxo de criação)
-            const combinedMap = new Map();
-            data.forEach(item => combinedMap.set(item.id, item));
-            propNotifications.forEach(item => {
-                // Prioriza o que veio do banco, a não ser que a prop seja mais nova?
-                // Vamos dar merge garantindo que se o ID existe, pegamos o status mais avançado
-                if(item.notificante_uid === user.uid) {
-                    const existing = combinedMap.get(item.id);
-                    if (existing && existing.status === NotificationStatus.SENT) {
-                        // Mantém SENT do banco
-                    } else {
-                        combinedMap.set(item.id, item);
-                    }
-                }
-            });
-            
-            const uniqueItems = Array.from(combinedMap.values()).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-            setItems(uniqueItems);
+            setItems(data);
         } else {
             const profile = await getUserProfile(user.uid);
             if (profile && profile.cpf) {
@@ -104,6 +112,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
     } catch (error) {
         console.error("Erro ao buscar dados:", error);
     } finally {
+        clearTimeout(safetyTimeout);
         setLoading(false);
     }
   };
@@ -391,7 +400,6 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                                         </div>
                                     </div>
                                     
-                                    {/* DADOS DO DESTINATÁRIO - AGORA VISÍVEIS SE FOR ENVIADO */}
                                     {activeTab === 'sent' && (
                                         <div className="bg-white p-4 rounded-xl border border-slate-200 mt-4 shadow-sm">
                                             <h6 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center"><User size={12} className="mr-1"/> Dados do Destinatário</h6>
@@ -467,7 +475,6 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                                             </a>
                                         )}
 
-                                        {/* AÇÃO DE PAGAMENTO OU REENVIO */}
                                         {activeTab === 'sent' && (
                                             notif.status === NotificationStatus.PENDING_PAYMENT ? (
                                                 <div className="grid grid-cols-2 gap-3">
@@ -484,7 +491,6 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                                                     </button>
                                                 </div>
                                             ) : (
-                                                // Opção de Reenvio se já estiver pago/enviado (para garantir)
                                                 <button 
                                                     onClick={() => handleRetrySend(notif)}
                                                     disabled={processingId === notif.id}
