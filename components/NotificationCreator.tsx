@@ -292,27 +292,43 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       setIsSigningProcess(true);
       try {
           const uniqueHash = docHash;
-          // Geração de PDF Sofisticado
+          
+          // Geração de PDF Sofisticado com log para debug
+          console.log("Iniciando geração e upload do PDF...");
           const pdfUrl = await generateAndUploadPdf(true); 
+          console.log("PDF Gerado e salvo em:", pdfUrl);
 
           const notif: NotificationItem = {
-              id: notificationId, documentHash: uniqueHash, notificante_uid: user.uid,
+              id: notificationId, 
+              documentHash: uniqueHash, 
+              notificante_uid: user.uid,
               notificante_cpf: formData.sender.cpfCnpj.replace(/\D/g, ''),
               notificante_dados_expostos: { nome: formData.sender.name, email: formData.sender.email, telefone: formData.sender.phone },
               notificados_cpfs: [formData.recipient.cpfCnpj.replace(/\D/g, '')],
-              recipientName: formData.recipient.name, recipientEmail: formData.recipient.email, recipientPhone: formData.recipient.phone,
-              recipientDocument: formData.recipient.cpfCnpj, recipientAddress: formatAddressString(formData.recipient.address),
-              area: currentArea?.name || '', species: formData.species, facts: formData.facts, subject: formData.species,
-              content: formData.generatedContent, evidences: [], pdf_url: pdfUrl, signatureBase64: signatureData,
-              createdAt: new Date().toISOString(), status: NotificationStatus.PENDING_PAYMENT, paymentAmount: 57.92
+              recipientName: formData.recipient.name, 
+              recipientEmail: formData.recipient.email, 
+              recipientPhone: formData.recipient.phone,
+              recipientDocument: formData.recipient.cpfCnpj, 
+              recipientAddress: formatAddressString(formData.recipient.address),
+              area: currentArea?.name || '', 
+              species: formData.species, 
+              facts: formData.facts, 
+              subject: formData.species,
+              content: formData.generatedContent, 
+              evidences: [], 
+              pdf_url: pdfUrl, 
+              signatureBase64: signatureData,
+              createdAt: new Date().toISOString(), 
+              status: NotificationStatus.PENDING_PAYMENT, 
+              paymentAmount: 57.92
           };
           
           await saveNotification(notif);
           setCreatedData(prev => ({ ...prev, notif }));
           setIsSigned(true);
       } catch (e: any) {
-          console.error("Erro assinatura:", e);
-          alert(`Erro ao processar assinatura e salvar: ${e.message}`);
+          console.error("Erro no processo de assinatura:", e);
+          alert(`Erro ao salvar: ${e.message}. Verifique sua conexão e tente novamente.`);
       } finally {
           setIsSigningProcess(false);
       }

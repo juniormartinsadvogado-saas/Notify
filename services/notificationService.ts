@@ -1,5 +1,5 @@
 
-import { db, storage } from './firebase';
+import { db, storage, auth } from './firebase'; // Adicionado auth
 import { 
   collection, doc, setDoc, deleteDoc, getDoc,
   query, where, getDocs 
@@ -24,15 +24,29 @@ const getMediaType = (mimeType: string): 'fotos' | 'videos' | 'documentos' => {
 
 export const uploadSignedPdf = async (notificationId: string, pdfBlob: Blob): Promise<string> => {
     try {
+        if (!auth.currentUser) throw new Error("Usuário não autenticado para upload.");
+
         const storagePath = `notificacoes/${notificationId}/documento_assinado.pdf`;
         const storageRef = ref(storage, storagePath);
 
-        await uploadBytes(storageRef, pdfBlob);
-        const downloadUrl = await getDownloadURL(storageRef);
+        // Adiciona metadados explícitos para garantir que o Storage aceite como PDF
+        const metadata = {
+            contentType: 'application/pdf',
+            customMetadata: {
+                'uid': auth.currentUser.uid,
+                'notificationId': notificationId
+            }
+        };
+
+        console.log(`[STORAGE] Iniciando upload PDF para: ${storagePath}`);
+        const snapshot = await uploadBytes(storageRef, pdfBlob, metadata);
+        console.log('[STORAGE] Upload concluído, obtendo URL...');
+        
+        const downloadUrl = await getDownloadURL(snapshot.ref);
         return downloadUrl;
     } catch (error: any) {
         console.error("Erro crítico no upload do PDF:", error);
-        throw new Error("Falha ao salvar o documento assinado. Tente novamente.");
+        throw new Error(`Falha no upload do documento: ${error.message}`);
     }
 };
 
@@ -76,19 +90,24 @@ export const deleteEvidence = async (storagePath: string) => {
 
 export const saveNotification = async (notification: NotificationItem) => {
     try {
-        if (!notification.notificante_uid) throw new Error("UID do notificante obrigatório.");
+        // GARANTIA DE SEGURANÇA: Usa o UID da sessão atual, não o que veio do objeto (que pode estar obsoleto)
+        const currentUser = auth.currentUser;
+        if (!currentUser) throw new Error("Sessão expirada. Faça login novamente.");
 
-        // Tenta buscar perfil, mas não bloqueia se falhar
+        const uid = currentUser.uid;
+
+        // Tenta buscar perfil para preencher dados faltantes, mas não bloqueia
         let notificanteProfile = null;
         try {
-            notificanteProfile = await getUserProfile(notification.notificante_uid);
+            notificanteProfile = await getUserProfile(uid);
         } catch (e) {
-            console.warn("Não foi possível carregar perfil do notificante para merge:", e);
+            console.warn("Warn: Perfil não carregado no save:", e);
         }
         
         // Merge inteligente de dados
         const notificationData: NotificationItem = {
             ...notification,
+            notificante_uid: uid, // Força o UID correto
             notificante_dados_expostos: {
                 nome: notificanteProfile?.name || notification.notificante_dados_expostos.nome || '',
                 email: notificanteProfile?.email || notification.notificante_dados_expostos.email || '',
@@ -101,16 +120,17 @@ export const saveNotification = async (notification: NotificationItem) => {
 
         const docRef = doc(db, NOTIFICATIONS_COLLECTION, notification.id);
         
-        // Sanitização profunda para remover undefined e garantir compatibilidade com Firestore
+        // Sanitização profunda para remover undefined
         const dataToSave = JSON.parse(JSON.stringify(notificationData));
         
+        console.log(`[FIRESTORE] Salvando notificação ${notification.id}...`);
         await setDoc(docRef, dataToSave, { merge: true });
-        console.log("Notificação salva/sincronizada com sucesso:", notification.id);
+        console.log("[FIRESTORE] Salvo com sucesso.");
         
     } catch (error: any) {
         console.error("Erro ao salvar notificação:", error);
         if (error.code === 'permission-denied') {
-             throw new Error("Permissão negada. Verifique se você está logado.");
+             throw new Error("Permissão negada pelo banco de dados. Verifique se você está logado.");
         }
         throw new Error(error.message || "Erro ao sincronizar com o banco de dados.");
     }
@@ -149,7 +169,6 @@ export const getNotificationById = async (notificationId: string): Promise<Notif
 
 export const getNotificationsBySender = async (senderUid: string): Promise<NotificationItem[]> => {
     try {
-        // REMOVIDO orderBy("createdAt", "desc") para evitar erro de índice
         const q = query(
             collection(db, NOTIFICATIONS_COLLECTION),
             where("notificante_uid", "==", senderUid)
@@ -161,7 +180,6 @@ export const getNotificationsBySender = async (senderUid: string): Promise<Notif
             items.push(doc.data() as NotificationItem);
         });
         
-        // Ordenação feita em memória
         return items.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     } catch (error) {
         console.error("Erro ao buscar notificações enviadas:", error);
@@ -173,7 +191,6 @@ export const getNotificationsByRecipientCpf = async (cpf: string): Promise<Notif
     try {
         const cleanCpf = cpf.replace(/\D/g, '');
         
-        // REMOVIDO orderBy("createdAt", "desc") para evitar erro de índice
         const q = query(
             collection(db, NOTIFICATIONS_COLLECTION),
             where("notificados_cpfs", "array-contains", cleanCpf)
@@ -188,7 +205,6 @@ export const getNotificationsByRecipientCpf = async (cpf: string): Promise<Notif
             }
         });
 
-        // Ordenação feita em memória
         return items.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     } catch (error) {
         console.error("Erro ao buscar notificações recebidas:", error);
