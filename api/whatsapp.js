@@ -18,59 +18,66 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Configuração de API WhatsApp incompleta." });
   }
 
-  // Validação e Formatação rigorosa do telefone
   if (!phone) return res.status(400).json({ error: "Telefone é obrigatório." });
 
+  // Limpeza agressiva do telefone
   let cleanPhone = phone.replace(/\D/g, '');
-  // Se tiver 10 ou 11 dígitos (DDD + Numero), adiciona 55.
-  // Se tiver 12 ou 13, assume que já tem DDI.
   if (cleanPhone.length < 12) {
       cleanPhone = '55' + cleanPhone;
   }
 
-  try {
-    const ZAPI_BASE = `https://api.z-api.io/instances/${instanceId}/token/${token}`;
-    
-    // Tenta enviar PDF se disponível
-    if (pdfUrl) {
-        const docResponse = await fetch(`${ZAPI_BASE}/send-document-pdf`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                phone: cleanPhone,
-                document: pdfUrl,
-                fileName: fileName || "Notificacao.pdf",
-                caption: message
-            })
-        });
+  const ZAPI_BASE = `https://api.z-api.io/instances/${instanceId}/token/${token}`;
 
-        const docData = await docResponse.json();
-        
-        // Se sucesso, retorna. Se falha, não retorna erro, deixa cair no fallback de texto.
-        if (docResponse.ok) {
-             return res.status(200).json({ success: true, data: docData });
-        } else {
-             console.warn("[API/WHATSAPP] Erro no envio de PDF, tentando texto.", docData);
+  try {
+    let sent = false;
+
+    // TENTA ENVIAR PDF SE EXISTIR URL
+    if (pdfUrl) {
+        console.log(`[Z-API] Tentando enviar PDF para ${cleanPhone}`);
+        try {
+            const docResponse = await fetch(`${ZAPI_BASE}/send-document-pdf`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    phone: cleanPhone,
+                    document: pdfUrl,
+                    fileName: fileName || "Notificacao_Extrajudicial.pdf",
+                    caption: message
+                })
+            });
+
+            const docData = await docResponse.json();
+            if (docResponse.ok && !docData.error) {
+                sent = true;
+                console.log("[Z-API] PDF enviado com sucesso.");
+            } else {
+                console.warn("[Z-API] Erro ao enviar PDF, falha na API:", docData);
+            }
+        } catch (pdfErr) {
+            console.error("[Z-API] Exceção no envio de PDF:", pdfErr.message);
         }
     }
 
-    // Fallback: Envio de Texto Simples
-    const textResponse = await fetch(`${ZAPI_BASE}/send-text`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+    // FALLBACK: SE O PDF FALHOU (OU NÃO EXISTE), ENVIA TEXTO COM O LINK
+    if (!sent) {
+        console.log(`[Z-API] Usando Fallback Texto para ${cleanPhone}`);
+        const textPayload = {
             phone: cleanPhone,
-            message: pdfUrl ? `${message}\n\nLink do Documento: ${pdfUrl}` : message
-        })
-    });
+            message: pdfUrl ? `${message}\n\n📄 *ACESSE O DOCUMENTO AQUI:* ${pdfUrl}` : message
+        };
 
-    const textData = await textResponse.json();
-
-    if (!textResponse.ok) {
-        throw new Error(textData.message || "Erro ao enviar mensagem");
+        const textResponse = await fetch(`${ZAPI_BASE}/send-text`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(textPayload)
+        });
+        
+        if (!textResponse.ok) {
+            throw new Error("Falha total no envio Z-API (PDF e Texto).");
+        }
     }
 
-    return res.status(200).json({ success: true, data: textData });
+    return res.status(200).json({ success: true });
 
   } catch (error) {
     console.error("[API/WHATSAPP] Handler Error:", error);

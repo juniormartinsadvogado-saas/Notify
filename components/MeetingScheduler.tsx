@@ -1,12 +1,13 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Meeting } from '../types';
-import { Calendar, Video, Plus, Users, Trash2, Mic, MicOff, Camera, CameraOff, MonitorUp, ShieldCheck, CheckCircle2, XCircle, Clock, AlertTriangle, History, CalendarDays } from 'lucide-react';
+import { Calendar, Video, Plus, Users, Trash2, Mic, MicOff, Camera, CameraOff, MonitorUp, ShieldCheck, CheckCircle2, XCircle, Clock, AlertTriangle, History, CalendarDays, ExternalLink } from 'lucide-react';
 import { createMeeting, getMeetingsForUser, deleteMeeting } from '../services/meetingService';
 import { getUserProfile } from '../services/userService';
 
 interface MeetingSchedulerProps {
     filterStatus?: string[];
-    meetingsProp?: Meeting[]; // Prop para receber estado centralizado do App.tsx
+    meetingsProp?: Meeting[]; 
 }
 
 const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meetingsProp }) => {
@@ -32,7 +33,6 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
   const [isCamOn, setIsCamOn] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
 
-  // Sincroniza com meetingsProp (Estado central do App.tsx) se fornecido
   useEffect(() => {
     if (meetingsProp) {
         setMeetings(meetingsProp);
@@ -42,7 +42,6 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
     }
   }, [user, meetingsProp]);
 
-  // Limpeza da câmera ao desmontar
   useEffect(() => {
     return () => stopCamera(); 
   }, []);
@@ -93,7 +92,6 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
 
           await createMeeting(newMeeting);
           
-          // Se estiver em modo standalone (sem prop), atualiza localmente
           if (!meetingsProp) {
             setMeetings(prev => [...prev, newMeeting].sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
           }
@@ -120,13 +118,11 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
 
   const startLobby = async (meeting: Meeting) => {
       setSelectedMeeting(meeting);
-      // Só inicia câmera se a reunião estiver agendada. Se cancelada ou concluída, mostra resumo.
       if (meeting.status === 'scheduled') {
           setViewMode('lobby');
           startCamera();
       } else {
           setViewMode('lobby'); 
-          // Não inicia câmera, UI vai tratar
       }
   };
 
@@ -139,7 +135,6 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
           }
       } catch (e) {
           console.error("Camera error:", e);
-          // alert("Não foi possível acessar a câmera. Verifique as permissões.");
       }
   };
 
@@ -159,7 +154,6 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
 
   const toggleCam = () => {
       if (stream) {
-          // Se estiver compartilhando tela, não mexe na cam, ou desativa share
           if (isScreenSharing) {
              handleStopScreenShare();
              return;
@@ -179,18 +173,15 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
           const screenTrack = screenStream.getVideoTracks()[0];
           
           if (stream && videoRef.current) {
-              // Remove video tracks atuais e adiciona a da tela
               const currentVideoTrack = stream.getVideoTracks()[0];
               stream.removeTrack(currentVideoTrack);
               stream.addTrack(screenTrack);
               
-              // Listener para quando o usuário clicar em "Parar compartilhamento" no navegador
               screenTrack.onended = () => {
                   handleStopScreenShare();
               };
 
               setIsScreenSharing(true);
-              // Força update visual
               videoRef.current.srcObject = stream; 
           }
       } catch (error) {
@@ -201,13 +192,11 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
   const handleStopScreenShare = async () => {
       if (!isScreenSharing) return;
       
-      // Stop screen tracks
       if(stream) {
           stream.getVideoTracks().forEach(track => track.stop());
           stream.removeTrack(stream.getVideoTracks()[0]);
       }
 
-      // Restart webcam
       try {
           const camStream = await navigator.mediaDevices.getUserMedia({ video: true });
           const camTrack = camStream.getVideoTracks()[0];
@@ -234,7 +223,6 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
       setViewMode('list');
   };
 
-  // Helper para configuração visual da Pasta
   const getFolderConfig = () => {
       if (!filterStatus || filterStatus.length === 0) return null;
       
@@ -273,10 +261,9 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
   return (
     <div className="flex flex-col lg:flex-row h-[calc(100vh-140px)] gap-6 animate-fade-in overflow-hidden">
       
-      {/* LEFT PANEL: LIST & CONTROLS */}
+      {/* LEFT PANEL */}
       <div className={`lg:w-1/3 flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden ${viewMode === 'lobby' ? 'hidden lg:flex' : 'w-full'}`}>
           
-          {/* HEADER DA LISTA (Adaptável) */}
           <div className="p-6 border-b border-slate-100">
              {folderConfig ? (
                 <div className="flex items-start justify-between">
@@ -289,7 +276,6 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
                             <p className="text-xs text-slate-500 mt-0.5">{folderConfig.desc}</p>
                         </div>
                     </div>
-                    {/* Botão Criar só aparece se não estiver em Canceladas/Realizadas ou se quiser manter genérico */}
                     {!filterStatus.includes('canceled') && !filterStatus.includes('completed') && (
                         <button 
                             onClick={() => setViewMode('create')}
@@ -316,7 +302,6 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
              )}
           </div>
 
-          {/* LIST CONTENT */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
               {loading ? (
                   <div className="text-center py-10 text-slate-400">Carregando...</div>
@@ -339,7 +324,6 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
                             : 'bg-white border-slate-200 hover:border-blue-300'
                         }`}
                       >
-                          {/* Status Strip */}
                           <div className={`absolute left-0 top-0 bottom-0 w-1 ${
                               meet.status === 'scheduled' ? 'bg-blue-500' :
                               meet.status === 'completed' ? 'bg-green-500' : 'bg-red-500'
@@ -382,10 +366,9 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
           </div>
       </div>
 
-      {/* RIGHT PANEL: CONTEXTUAL VIEW */}
+      {/* RIGHT PANEL */}
       <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden relative flex flex-col">
           
-          {/* VIEW: CREATE FORM */}
           {viewMode === 'create' && (
               <div className="p-8 max-w-lg mx-auto w-full animate-fade-in my-auto">
                   <div className="mb-6">
@@ -426,7 +409,6 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
               </div>
           )}
 
-          {/* VIEW: EMPTY STATE */}
           {viewMode === 'list' && (
               <div className="flex flex-col items-center justify-center h-full text-slate-400">
                   <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mb-6 border border-slate-100">
@@ -437,10 +419,8 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
               </div>
           )}
 
-          {/* VIEW: VIRTUAL LOBBY (Agendada) ou DETAILS (Cancelada/Realizada) */}
           {viewMode === 'lobby' && selectedMeeting && (
               selectedMeeting.status === 'scheduled' ? (
-                  // LOBBY PADRÃO (Agendada)
                   <div className="flex flex-col h-full bg-slate-900 text-white relative">
                       <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-10 bg-gradient-to-b from-black/60 to-transparent">
                           <div>
@@ -501,13 +481,12 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
                             onClick={joinGoogleMeet}
                             className="px-8 py-4 rounded-xl font-bold shadow-lg flex items-center transition transform hover:scale-105 bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/50"
                           >
-                              <Video size={20} className="mr-2" />
+                              <ExternalLink size={20} className="mr-2" />
                               Entrar na Sala (Google Meet)
                           </button>
                       </div>
                   </div>
               ) : (
-                  // VISUALIZAÇÃO DE DETALHES PARA CANCELADAS / REALIZADAS
                   <div className="flex flex-col h-full bg-slate-50 relative">
                        <button onClick={backToList} className="absolute top-6 left-6 text-slate-500 hover:text-slate-800 text-sm flex items-center">
                            ← Voltar para lista
@@ -544,20 +523,6 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
                                    </div>
                                </div>
                            </div>
-
-                           {selectedMeeting.status === 'canceled' && (
-                               <div className="mt-6 flex items-center justify-center text-xs text-slate-400 bg-white px-4 py-2 rounded-full border border-slate-200">
-                                   <AlertTriangle size={14} className="mr-2 text-amber-500"/>
-                                   Esta reunião foi cancelada ou reembolsada.
-                               </div>
-                           )}
-
-                           {selectedMeeting.status === 'completed' && (
-                               <div className="mt-6 flex items-center justify-center text-xs text-green-600 bg-green-50 px-4 py-2 rounded-full border border-green-200">
-                                   <History size={14} className="mr-2"/>
-                                   Evento arquivado no histórico.
-                               </div>
-                           )}
                        </div>
                   </div>
               )

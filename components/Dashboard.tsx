@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { ViewState, NotificationItem, Meeting, Transaction, NotificationStatus } from '../types';
 import { Plus, Monitor, Video, CreditCard, ChevronRight, FileText, Send, Clock, Calendar as CalendarIcon, CheckCircle, XCircle, AlertCircle, ChevronLeft, User, Sparkles } from 'lucide-react';
@@ -228,7 +229,7 @@ const Dashboard: React.FC<DashboardProps> = ({ notifications, meetings, transact
             </button>
 
             <button 
-                onClick={() => window.open('https://meet.google.com/gvd-nmhs-jjv', '_blank')}
+                onClick={() => onNavigate(ViewState.MEETINGS)}
                 className="h-full w-full group relative flex flex-col items-center justify-center p-4 text-white transition-all duration-300 bg-slate-900 rounded-2xl hover:bg-slate-800 focus:outline-none border border-purple-500/30 shadow-[0_4px_20px_rgba(168,85,247,0.15)] hover:shadow-[0_4px_25px_rgba(168,85,247,0.25)] hover:-translate-y-1"
             >
                 <div className="p-3 bg-white/10 rounded-full mb-3 group-hover:bg-purple-500 group-hover:text-white transition-colors">

@@ -272,7 +272,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     }
   }, [currentStep]);
 
-  // RESTAURA RASCUNHO (SOMENTE LOCAL STORAGE)
+  // RESTAURA RASCUNHO (LOCAL)
   useEffect(() => {
       const STORAGE_KEY = `notify_draft_${user?.uid}`;
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -280,7 +280,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           try {
               const parsed = JSON.parse(saved);
               const diff = Date.now() - parsed.timestamp;
-              // Rascunho válido por 24h
               if (diff < 24 * 60 * 60 * 1000) { 
                   setFormData(parsed.data);
                   setCurrentStep(parsed.step);
@@ -295,10 +294,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   }, [user?.uid]);
 
-  // SALVA RASCUNHO AUTOMÁTICO (SOMENTE LOCAL STORAGE)
+  // SALVA RASCUNHO (LOCAL)
   useEffect(() => {
       const STORAGE_KEY = `notify_draft_${user?.uid}`;
-      // Salva rascunho até a etapa 7 (antes do pagamento final)
       if (currentStep > 1 && currentStep < 8) { 
           const payload = { 
               timestamp: Date.now(), 
@@ -311,9 +309,47 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   }, [formData, currentStep, signatureData, user?.uid, notificationId]);
 
-  // NOTA: NÃO SALVAMOS NO FIRESTORE ATÉ O PASSO DA ASSINATURA (Step 6 -> handlePersistData)
-  // Isso atende o requisito: "se o usuário abandonar... descarte tudo".
-  // O localStorage persiste, mas não enviamos nada para o servidor até ele assinar.
+  // NOVO: SALVA NO FIRESTORE AUTOMATICAMENTE AO MUDAR DE ETAPA
+  const saveDraftToFirestore = async () => {
+      if (!user || currentStep < 2) return;
+      
+      const totalAmount = calculateTotal();
+      const draftNotif: NotificationItem = {
+          id: notificationId,
+          notificante_uid: user.uid,
+          notificante_cpf: formData.sender.cpfCnpj.replace(/\D/g, ''),
+          notificante_dados_expostos: {
+              nome: formData.sender.name,
+              email: formData.sender.email,
+              telefone: formData.sender.phone,
+              foto_url: user.photoURL || undefined
+          },
+          notificados_cpfs: [formData.recipient.cpfCnpj.replace(/\D/g, '')],
+          recipientName: formData.recipient.name,
+          recipientEmail: formData.recipient.email,
+          recipientPhone: formData.recipient.phone,
+          recipientDocument: formData.recipient.cpfCnpj,
+          recipientAddress: formatAddressString(formData.recipient.address),
+
+          area: currentArea?.name || '',
+          species: formData.species,
+          facts: formData.facts,
+          subject: formData.subject || formData.species || 'Rascunho',
+          content: formData.generatedContent,
+          evidences: [], // Evidências não são salvas no rascunho rápido para economizar banda
+          createdAt: new Date().toISOString(),
+          status: NotificationStatus.DRAFT,
+          paymentAmount: totalAmount
+      };
+
+      try {
+          // Salva como Rascunho (DRAFT)
+          await saveNotification(draftNotif);
+          console.log("Rascunho salvo no Firestore:", notificationId);
+      } catch (e) {
+          console.error("Erro ao salvar rascunho automático:", e);
+      }
+  };
 
   const clearDraft = () => {
       const STORAGE_KEY = `notify_draft_${user?.uid}`;
@@ -331,10 +367,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           const checkInterval = setInterval(async () => {
               if (asaasPaymentId) {
                   try {
-                      // Verifica via API Backend (fura cache)
                       const result = await checkPaymentStatus(asaasPaymentId);
                       if (result.paid) {
-                          console.log("[POLLING] Pagamento Confirmado! Avançando...");
                           clearInterval(checkInterval);
                           handlePaymentConfirmed();
                       }
@@ -347,7 +381,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           const unsub = onSnapshot(doc(db, 'notificacoes', createdData.notif.id), (docSnapshot) => {
              const data = docSnapshot.data();
              if (data && (data.status === 'SENT' || data.status === 'Enviada')) {
-                 console.log("[LISTENER] Status atualizado no banco! Avançando...");
                  clearInterval(checkInterval);
                  handlePaymentConfirmed();
              }
@@ -480,7 +513,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     const rect = canvas.getBoundingClientRect();
     const x = (e.clientX || e.touches[0].clientX) - rect.left;
     const y = (e.clientY || e.touches[0].clientY) - rect.top;
-    ctx.beginPath();
+    ctx.beginPath(); // CORREÇÃO: Inicia novo caminho para evitar conflito com clear
     ctx.moveTo(x, y);
   };
   
@@ -508,8 +541,12 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     const canvas = canvasRef.current;
     if (canvas) {
       const ctx = canvas.getContext('2d');
-      ctx?.clearRect(0, 0, canvas.width, canvas.height);
-      setSignatureData(null);
+      if (ctx) {
+          // CORREÇÃO: Limpa e reseta o caminho
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.beginPath(); 
+          setSignatureData(null);
+      }
     }
   };
 
@@ -573,7 +610,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
         
         setFormData(prev => ({ ...prev, generatedContent: text }));
         alert("Minuta jurídica gerada com sucesso!");
-        // Apenas avança, não salva no Firestore ainda
+        
+        // Salva rascunho antes de avançar
+        await saveDraftToFirestore();
         setCurrentStep(6); 
     } catch (err: any) {
         console.error("Erro Generation:", err);
@@ -649,7 +688,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               paymentAmount: totalAmount
           };
 
-          // AQUI SALVAMOS NO FIRESTORE PELA PRIMEIRA VEZ
+          // AQUI SALVAMOS NO FIRESTORE COM STATUS "PENDENTE_PAGAMENTO"
           await saveNotification(finalNotif);
 
           newTrans = {
@@ -673,7 +712,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                       guestCpf: formData.recipient.cpfCnpj,
                       meetLink: `https://meet.google.com/xyz-abc`,
                       createdAt: new Date().toISOString(),
-                      status: 'scheduled' // A gente cria como scheduled, mas se não pagar, fica lá sem uso. O Webhook ativa se necessário.
+                      status: 'scheduled' 
                   };
                   await createMeeting(newMeet);
               } catch (meetErr) {
@@ -761,6 +800,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   };
 
   const renderProtocolScreen = () => {
+      // ... (Manter código existente)
       if (isDispatching) {
         return (
             <div className="flex flex-col items-center justify-center h-96 animate-fade-in">
@@ -843,6 +883,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   };
 
   const renderPackageScreen = () => {
+      // ... (Manter código existente)
       return (
         <div className="pb-12 max-w-4xl mx-auto animate-fade-in flex flex-col items-center">
             <h2 className="text-2xl font-bold text-slate-900 mb-6">Escolha o Método de Envio</h2>
@@ -911,6 +952,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   };
 
   const renderPaymentScreen = () => {
+      // ... (Manter código existente)
       if (!createdData.notif) {
           return (
               <div className="flex flex-col items-center justify-center h-96">
@@ -1188,6 +1230,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                                 if (currentStep >= 3) {
                                     // Apenas para efeito de UX, não persiste no Firestore
                                 }
+                                // SALVAMENTO AUTOMÁTICO DE RASCUNHO AQUI
+                                await saveDraftToFirestore();
                                 setCurrentStep(prev => prev + 1);
                             }} 
                             disabled={

@@ -1,7 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { Transaction } from '../types';
-import { Download, ArrowUpRight, ArrowDownLeft, Clock, RefreshCcw, FolderOpen, CheckCircle, Filter, Zap, MessageCircle } from 'lucide-react';
+import { Download, ArrowUpRight, ArrowDownLeft, Clock, RefreshCcw, FolderOpen, CheckCircle, Filter, Zap, MessageCircle, CreditCard, QrCode, Loader2, Copy } from 'lucide-react';
+import { initiateCheckout } from '../services/paymentService';
+import { jsPDF } from "jspdf";
 
 interface BillingProps {
   transactions: Transaction[];
@@ -10,128 +12,81 @@ interface BillingProps {
 }
 
 const Billing: React.FC<BillingProps> = ({ transactions, filterStatus, onRefund }) => {
-  
   const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
+  const [payingTransactionId, setPayingTransactionId] = useState<string | null>(null);
+  const [pixModalData, setPixModalData] = useState<{ encodedImage: string, payload: string } | null>(null);
 
   useEffect(() => {
     if (filterStatus && filterStatus.length > 0) {
         setFilteredTransactions(transactions.filter(t => filterStatus.includes(t.status)));
     } else {
-        setFilteredTransactions(transactions);
+        // Ordena por data (mais recente primeiro)
+        setFilteredTransactions([...transactions].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     }
   }, [transactions, filterStatus]);
 
-  // Função auxiliar para verificar se está dentro das 24h
-  const isRefundable = (dateString: string) => {
+  const handlePayPending = async (transaction: Transaction) => {
+      setPayingTransactionId(transaction.id);
       try {
-          const paymentDate = new Date(dateString);
-          const now = new Date();
-          const diffInMs = now.getTime() - paymentDate.getTime();
-          const diffInHours = diffInMs / (1000 * 60 * 60);
-          return diffInHours <= 24;
+          // Mock básico para o checkout
+          let notificationId = '';
+          if (transaction.description.includes('Ref:')) {
+              notificationId = transaction.description.split('Ref:')[1].trim();
+          }
+          const mockNotif: any = { id: notificationId || `REF-${transaction.id}` };
+
+          const response = await initiateCheckout(mockNotif, 'single', 'PIX');
+          
+          if (response.success && response.pixData) {
+              setPixModalData(response.pixData);
+          } else {
+              alert("Erro ao gerar Pix: " + response.error);
+          }
       } catch (e) {
-          return false;
+          console.error(e);
+          alert("Erro de conexão ao gerar pagamento.");
+      } finally {
+          setPayingTransactionId(null);
       }
   };
 
-  const generateReceiptPDF = (transaction: Transaction) => {
-      // Simulação simples de geração de PDF usando janela de impressão
-      const receiptWindow = window.open('', '_blank');
-      if (receiptWindow) {
-          receiptWindow.document.write(`
-              <html>
-              <head>
-                  <title>Recibo - ${transaction.id}</title>
-                  <style>
-                      body { font-family: sans-serif; padding: 40px; }
-                      .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
-                      .content { margin-bottom: 30px; }
-                      .row { display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-                      .total { font-size: 20px; font-weight: bold; text-align: right; margin-top: 20px; }
-                      .footer { font-size: 12px; color: #666; text-align: center; margin-top: 50px; }
-                  </style>
-              </head>
-              <body>
-                  <div class="header">
-                      <h1>RECIBO DE PAGAMENTO</h1>
-                      <p>Notify Serviços Jurídicos</p>
-                  </div>
-                  <div class="content">
-                      <div class="row"><strong>ID Transação:</strong> <span>${transaction.id}</span></div>
-                      <div class="row"><strong>Data:</strong> <span>${new Date(transaction.date).toLocaleDateString()} ${new Date(transaction.date).toLocaleTimeString()}</span></div>
-                      <div class="row"><strong>Descrição:</strong> <span>${transaction.description}</span></div>
-                      <div class="row"><strong>Status:</strong> <span>${transaction.status}</span></div>
-                  </div>
-                  <div class="total">
-                      VALOR TOTAL: R$ ${transaction.amount.toFixed(2)}
-                  </div>
-                  <div class="footer">
-                      Este é um documento digital gerado eletronicamente.
-                  </div>
-              </body>
-              </html>
-          `);
-          receiptWindow.document.close();
-          receiptWindow.print();
-      }
+  const generateReceipt = (transaction: Transaction) => {
+      const doc = new jsPDF();
+      
+      // Header
+      doc.setFontSize(22);
+      doc.setFont("helvetica", "bold");
+      doc.text("Recibo de Pagamento", 105, 20, { align: "center" });
+      
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text("Plataforma Notify - Inteligência Jurídica", 105, 28, { align: "center" });
+      
+      doc.setLineWidth(0.5);
+      doc.line(20, 35, 190, 35);
+      
+      // Details
+      doc.setFontSize(12);
+      let y = 50;
+      const lineHeight = 10;
+      
+      doc.text(`ID da Transação: ${transaction.id}`, 20, y); y += lineHeight;
+      doc.text(`Data: ${new Date(transaction.date).toLocaleString('pt-BR')}`, 20, y); y += lineHeight;
+      doc.text(`Descrição: ${transaction.description}`, 20, y); y += lineHeight;
+      doc.text(`Status: ${transaction.status.toUpperCase()}`, 20, y); y += lineHeight;
+      
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Valor Total: R$ ${transaction.amount.toFixed(2)}`, 20, y + 10);
+      
+      // Footer
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "italic");
+      doc.text("Este documento é um comprovante digital gerado automaticamente.", 105, 280, { align: "center" });
+      
+      doc.save(`recibo_${transaction.id}.pdf`);
   };
 
-  const handleSubscription = () => {
-      if(confirm('Deseja liberar o acesso ao Plano Pro?\n\n- 10 Notificações/mês\n- Prioridade no suporte\n\nValor: R$ 259,97 / mês')) {
-          // O fluxo real é tratado no componente pai ou redireciona para a view de assinatura
-          // Aqui é apenas um trigger visual se necessário, mas geralmente esse botão muda a view
-          // Para este exemplo, assumimos que a mudança de view é tratada externamente ou este botão apenas sinaliza a intenção.
-          // Como o App.tsx controla a view, este botão idealmente chamaria uma função para mudar a view, 
-          // mas como não temos essa prop aqui, vamos deixar o alerta informativo.
-          alert('Acesse o menu "Assinatura" para gerar o QR Code Pix.');
-      }
-  };
-
-  const handleWhatsAppRefund = (transactionId: string) => {
-      const message = `Olá, gostaria de solicitar o reembolso da transação ${transactionId}.`;
-      const url = `https://wa.me/558391559429?text=${encodeURIComponent(message)}`;
-      window.open(url, '_blank');
-  };
-
-  // Helper para configuração visual baseada no filtro
-  const getFilterConfig = () => {
-      if (!filterStatus) return null;
-      const status = filterStatus[0];
-      switch(status) {
-          case 'Pago': return {
-              title: 'Pagamentos Confirmados',
-              desc: 'Histórico de transações quitadas com sucesso.',
-              icon: CheckCircle,
-              colorClass: 'bg-green-100 text-green-600',
-              borderClass: 'border-green-200'
-          };
-          case 'Pendente': return {
-              title: 'Pagamentos Pendentes',
-              desc: 'Transações aguardando processamento ou pagamento.',
-              icon: Clock,
-              colorClass: 'bg-amber-100 text-amber-600',
-              borderClass: 'border-amber-200'
-          };
-          case 'Reembolsado': return {
-              title: 'Reembolsos',
-              desc: 'Valores estornados para o cliente.',
-              icon: RefreshCcw,
-              colorClass: 'bg-purple-100 text-purple-600',
-              borderClass: 'border-purple-200'
-          };
-          default: return {
-              title: 'Transações Filtradas',
-              desc: 'Lista personalizada.',
-              icon: Filter,
-              colorClass: 'bg-slate-100 text-slate-600',
-              borderClass: 'border-slate-200'
-          };
-      }
-  };
-
-  const filterConfig = getFilterConfig();
-
-  // --- RENDERIZAÇÃO DA TABELA (Reutilizável) ---
   const renderTable = () => (
     <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
@@ -158,10 +113,7 @@ const Billing: React.FC<BillingProps> = ({ transactions, filterStatus, onRefund 
                       </td>
                   </tr>
               ) : (
-                  filteredTransactions.map((t) => {
-                    const canRefund = isRefundable(t.date);
-                    
-                    return (
+                  filteredTransactions.map((t) => (
                         <tr key={t.id} className="hover:bg-slate-50 group transition-colors">
                         <td className="p-4">
                             <div className="flex items-center">
@@ -191,31 +143,30 @@ const Billing: React.FC<BillingProps> = ({ transactions, filterStatus, onRefund 
                             R$ {t.amount.toFixed(2)}
                         </td>
                         <td className="p-4 text-right flex items-center justify-end gap-2">
+                            {t.status === 'Pendente' && (
+                                <button 
+                                    onClick={() => handlePayPending(t)}
+                                    disabled={payingTransactionId === t.id}
+                                    className="flex items-center text-xs font-bold text-white bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-lg transition-all shadow-sm disabled:opacity-50"
+                                >
+                                    {payingTransactionId === t.id ? <Loader2 size={14} className="animate-spin mr-1.5" /> : <QrCode size={14} className="mr-1.5" />}
+                                    Pagar Agora
+                                </button>
+                            )}
+                            
                             {t.status === 'Pago' && (
                                 <button 
-                                    onClick={() => generateReceiptPDF(t)}
                                     className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" 
                                     title="Baixar Recibo (PDF)"
+                                    onClick={() => generateReceipt(t)}
                                 >
                                     <Download size={16} />
                                 </button>
                             )}
-                            
-                            {/* Botão de Reembolso -> WhatsApp */}
-                            {t.status === 'Pago' && (
-                                <button 
-                                    onClick={() => handleWhatsAppRefund(t.id)}
-                                    className="flex items-center text-xs font-bold text-slate-500 hover:text-green-600 border border-slate-200 hover:border-green-300 hover:bg-green-50 px-3 py-1.5 rounded-lg transition-all group/btn"
-                                    title="Solicitar Reembolso via WhatsApp"
-                                >
-                                    <MessageCircle size={14} className="mr-1.5" />
-                                    Suporte / Reembolso
-                                </button>
-                            )}
                         </td>
                         </tr>
-                    );
-                  })
+                    )
+                  )
               )}
             </tbody>
           </table>
@@ -223,86 +174,46 @@ const Billing: React.FC<BillingProps> = ({ transactions, filterStatus, onRefund 
     </div>
   );
 
-  // --- VISUALIZAÇÃO DE SUBPASTA (FILTRADA) ---
-  if (filterConfig) {
-      const folderTotal = filteredTransactions.reduce((acc, curr) => acc + curr.amount, 0);
-
-      return (
-          <div className="space-y-6 animate-fade-in">
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="flex items-center gap-4">
-                    <div className={`p-3 rounded-xl ${filterConfig.colorClass} border ${filterConfig.borderClass} shadow-sm`}>
-                        <filterConfig.icon size={24} />
-                    </div>
-                    <div>
-                        <h2 className="text-2xl font-bold text-slate-800">{filterConfig.title}</h2>
-                        <p className="text-slate-500 text-sm">{filterConfig.desc}</p>
-                    </div>
-                </div>
-                
-                {/* Resumo da Pasta */}
-                <div className="bg-white px-6 py-3 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
-                    <div className="text-right">
-                        <p className="text-xs font-bold text-slate-400 uppercase">Total nesta pasta</p>
-                        <p className="text-xl font-bold text-slate-800">R$ {folderTotal.toFixed(2)}</p>
-                    </div>
-                </div>
-              </div>
-
-              {renderTable()}
-          </div>
-      );
-  }
-
-  // --- VISUALIZAÇÃO PADRÃO (DASHBOARD FINANCEIRO) ---
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in relative">
       <div className="flex flex-col md:flex-row md:items-center justify-between mb-2">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Pagamentos e Serviços</h2>
+          <h2 className="text-2xl font-bold text-slate-800">Pagamentos</h2>
           <p className="text-slate-500">
-             Gerencie faturas e histórico de pagamentos.
+             Histórico financeiro e pagamentos pendentes.
           </p>
         </div>
-        {/* Botão apenas indicativo visual, a navegação ocorre pelo menu lateral 'Assinatura' */}
-        <div 
-            className="mt-4 md:mt-0 bg-slate-100 text-slate-600 px-5 py-2.5 rounded-lg flex items-center font-bold text-sm cursor-default border border-slate-200"
-        >
-          <Zap className="mr-2 text-yellow-500" size={16} />
-          Upgrade Plano Pro (Pix)
-        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-        <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-6 rounded-xl shadow-lg text-white">
-          <p className="text-slate-400 text-sm mb-1 font-medium">Envios Restantes</p>
-          <h3 className="text-3xl font-bold">10 / 10</h3>
-          <div className="mt-4 flex items-center text-xs text-slate-400">
-            <span className="bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded mr-2 flex items-center">
-              Plano Pro
-            </span>
-            Renova em 01/Nov
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <p className="text-slate-500 text-sm mb-1 font-medium">Confirmados (Geral)</p>
-          <h3 className="text-3xl font-bold text-slate-800">R$ {transactions.filter(t => t.status === 'Pago').reduce((acc, curr) => acc + curr.amount, 0).toFixed(2)}</h3>
-          <p className="text-xs text-slate-400 mt-2">Total pago confirmado</p>
-        </div>
-
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <p className="text-slate-500 text-sm mb-1 font-medium">Pendentes / Falhas</p>
-          <h3 className="text-3xl font-bold text-amber-600">R$ {transactions.filter(t => t.status === 'Pendente').reduce((acc, curr) => acc + curr.amount, 0).toFixed(2)}</h3>
-          <p className="text-xs text-slate-400 mt-2">Aguardando processamento</p>
-        </div>
-      </div>
-
-      <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-bold text-slate-800 text-lg">Histórico Recente</h3>
-      </div>
-      
       {renderTable()}
+
+      {/* MODAL DE PIX */}
+      {pixModalData && (
+          <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden">
+                  <div className="bg-slate-900 p-4 flex justify-between items-center text-white">
+                      <h3 className="font-bold flex items-center"><QrCode size={18} className="mr-2 text-emerald-400"/> Pagamento Pix</h3>
+                      <button onClick={() => setPixModalData(null)} className="text-slate-400 hover:text-white"><Zap size={18} className="rotate-45"/></button>
+                  </div>
+                  <div className="p-6 flex flex-col items-center text-center">
+                      <p className="text-sm text-slate-500 mb-4">Escaneie o QR Code ou copie o código abaixo para pagar.</p>
+                      <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-inner mb-4">
+                          <img src={`data:image/png;base64,${pixModalData.encodedImage}`} alt="Pix QR" className="w-48 h-48" />
+                      </div>
+                      <div className="flex gap-2 w-full">
+                          <input type="text" readOnly value={pixModalData.payload} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-500 truncate" />
+                          <button 
+                            onClick={() => {navigator.clipboard.writeText(pixModalData.payload); alert("Copiado!");}}
+                            className="bg-blue-100 text-blue-600 p-2 rounded-lg hover:bg-blue-200 transition"
+                          >
+                              <Copy size={16}/>
+                          </button>
+                      </div>
+                      <button onClick={() => setPixModalData(null)} className="mt-6 w-full py-3 bg-slate-900 text-white rounded-xl font-bold">Fechar</button>
+                  </div>
+              </div>
+          </div>
+      )}
     </div>
   );
 };
