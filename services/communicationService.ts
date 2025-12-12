@@ -1,9 +1,14 @@
 
 import { NotificationItem } from '../types';
+import { db } from './firebase';
+import { doc, updateDoc } from 'firebase/firestore';
 
 export const dispatchCommunications = async (notification: NotificationItem) => {
     console.log(`[DISPARO] Iniciando sequência para Notificação ${notification.id}`);
     let successCount = 0;
+    
+    // Objeto para atualizar IDs no banco caso seja um reenvio manual
+    const updates: any = {};
 
     try {
         // 1. E-MAIL: ENVIO REAL VIA SENDGRID (Backend)
@@ -17,12 +22,14 @@ export const dispatchCommunications = async (notification: NotificationItem) => 
                         recipientEmail: notification.recipientEmail,
                         recipientName: notification.recipientName,
                         subject: notification.subject,
-                        pdfUrl: notification.pdf_url
+                        pdfUrl: notification.pdf_url,
+                        notificationId: notification.id // Importante para rastreio
                     }),
                 });
 
                 if (response.ok) {
                     console.log("✅ E-mail enviado!");
+                    updates.emailStatus = 'SENT';
                     successCount++;
                 } else {
                     const errData = await response.json();
@@ -34,7 +41,6 @@ export const dispatchCommunications = async (notification: NotificationItem) => 
         }
 
         // 2. WHATSAPP: ENVIO REAL VIA Z-API (Backend)
-        // Usamos o recipientPhone para enviar a mensagem
         if (notification.recipientPhone) {
             try {
                 console.log("📱 Solicitando envio de WhatsApp (Z-API)...");
@@ -51,20 +57,34 @@ export const dispatchCommunications = async (notification: NotificationItem) => 
                         fileName: `Notificacao_${notification.id}.pdf`
                     }),
                 });
+                
+                const data = await response.json();
 
                 if (response.ok) {
                     console.log("✅ WhatsApp enviado!");
+                    updates.whatsappStatus = 'SENT';
+                    if (data.messageId) {
+                        updates.whatsappMessageId = data.messageId; // Salva ID para rastreio
+                    }
                     successCount++;
                 } else {
-                    const errData = await response.json();
-                    console.error("❌ Erro Z-API:", errData);
+                    console.error("❌ Erro Z-API:", data);
                 }
             } catch (zapErr) {
                 console.error("❌ Falha na conexão Z-API:", zapErr);
             }
         }
+
+        // Se houve sucesso e temos atualizações de metadados (ex: whatsappMessageId), salvamos no banco
+        if (Object.keys(updates).length > 0) {
+            try {
+                const docRef = doc(db, 'notificacoes', notification.id);
+                await updateDoc(docRef, updates);
+            } catch (e) {
+                console.error("Erro ao salvar metadados de envio:", e);
+            }
+        }
         
-        // Retorna true se pelo menos um canal funcionou
         return successCount > 0;
     } catch (error) {
         console.error("ERRO GERAL NO DISPARO:", error);

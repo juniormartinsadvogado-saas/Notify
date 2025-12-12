@@ -20,16 +20,26 @@ export default async function handler(req, res) {
 
   if (!phone) return res.status(400).json({ error: "Telefone é obrigatório." });
 
-  // Limpeza agressiva do telefone
+  // LIMPEZA E FORMATAÇÃO RIGOROSA DO TELEFONE
+  // 1. Remove tudo que não for dígito
   let cleanPhone = phone.replace(/\D/g, '');
-  if (cleanPhone.length < 12) {
+  
+  // 2. Remove zero à esquerda se houver (ex: 011999... -> 11999...)
+  if (cleanPhone.startsWith('0') && cleanPhone.length >= 11) {
+      cleanPhone = cleanPhone.substring(1);
+  }
+
+  // 3. Lógica para adicionar 55 se faltar
+  if (cleanPhone.length >= 10 && cleanPhone.length <= 11) {
       cleanPhone = '55' + cleanPhone;
   }
+  
+  console.log(`[Z-API] Enviando para: ${cleanPhone}`);
 
   const ZAPI_BASE = `https://api.z-api.io/instances/${instanceId}/token/${token}`;
 
   try {
-    let sent = false;
+    let zaapId = null;
 
     // TENTA ENVIAR PDF SE EXISTIR URL
     if (pdfUrl) {
@@ -40,16 +50,16 @@ export default async function handler(req, res) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     phone: cleanPhone,
-                    document: pdfUrl,
+                    document: pdfUrl, 
                     fileName: fileName || "Notificacao_Extrajudicial.pdf",
-                    caption: message
+                    caption: message 
                 })
             });
 
             const docData = await docResponse.json();
             if (docResponse.ok && !docData.error) {
-                sent = true;
                 console.log("[Z-API] PDF enviado com sucesso.");
+                zaapId = docData.messageId || docData.id;
             } else {
                 console.warn("[Z-API] Erro ao enviar PDF, falha na API:", docData);
             }
@@ -59,7 +69,7 @@ export default async function handler(req, res) {
     }
 
     // FALLBACK: SE O PDF FALHOU (OU NÃO EXISTE), ENVIA TEXTO COM O LINK
-    if (!sent) {
+    if (!zaapId) {
         console.log(`[Z-API] Usando Fallback Texto para ${cleanPhone}`);
         const textPayload = {
             phone: cleanPhone,
@@ -72,12 +82,18 @@ export default async function handler(req, res) {
             body: JSON.stringify(textPayload)
         });
         
-        if (!textResponse.ok) {
-            throw new Error("Falha total no envio Z-API (PDF e Texto).");
+        const textData = await textResponse.json();
+        
+        if (!textResponse.ok || textData.error) {
+            console.error("[Z-API] Falha no envio de texto:", textData);
+            throw new Error("Falha total no envio Z-API.");
         }
+        console.log("[Z-API] Texto enviado com sucesso.");
+        zaapId = textData.messageId || textData.id;
     }
 
-    return res.status(200).json({ success: true });
+    // Retorna o ID da mensagem para fins de rastreamento no webhook
+    return res.status(200).json({ success: true, messageId: zaapId });
 
   } catch (error) {
     console.error("[API/WHATSAPP] Handler Error:", error);

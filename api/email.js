@@ -10,7 +10,8 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { recipientEmail, recipientName, subject, pdfUrl } = req.body;
+  // Agora esperamos notificationId para rastreamento
+  const { recipientEmail, recipientName, subject, pdfUrl, notificationId } = req.body;
   const apiKey = process.env.SENDGRID_EMAIL_API_KEY || process.env.ENDGRID_EMAIL_API_KEY;
 
   if (!apiKey) {
@@ -43,7 +44,7 @@ Plataforma Notify - Inteligência Jurídica
         name: "Notify Jurídico"
     },
     subject: `NOTIFICAÇÃO EXTRAJUDICIAL: ${subject}`,
-    text: plainTextContent, // Versão texto plano para evitar SPAM
+    text: plainTextContent,
     html: `
       <!DOCTYPE html>
       <html>
@@ -86,9 +87,14 @@ Plataforma Notify - Inteligência Jurídica
                 Não responda a este e-mail automaticamente.
             </p>
         </div>
+        <img src="https://notify.ia.br/api/pixel?id=${notificationId}" width="1" height="1" style="display:none" />
       </body>
       </html>
     `,
+    // CUSTOM ARGS PARA WEBHOOK
+    custom_args: {
+        notificationId: notificationId || "unknown"
+    }
   };
 
   try {

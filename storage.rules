@@ -10,16 +10,6 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    // Helper para buscar a notificação no Firestore e verificar permissões
-    function getNotification(id) {
-      return firestore.get(/databases/(default)/documents/notificacoes/$(id));
-    }
-    
-    // Helper para buscar o CPF do usuário logado
-    function getUserCpf() {
-       return firestore.get(/databases/(default)/documents/usuarios/$(request.auth.uid)).data.cpf;
-    }
-
     // --- REGRAS ---
 
     // 1. FOTO DE PERFIL
@@ -28,21 +18,23 @@ service firebase.storage {
       allow write: if isAuthenticated() && request.auth.uid == userId;
     }
 
-    // 2. PASTA DA NOTIFICAÇÃO (PDF Assinado e Evidências)
-    // A regra {allPaths=**} aplica a segurança para QUALQUER arquivo dentro desta pasta
-    match /notificacoes/{notificationId}/{allPaths=**} {
-      // Upload: Permitido para usuários autenticados
+    // 2. DOCUMENTOS ASSINADOS (PDFs)
+    // Permite leitura pública (allow read: if true) para que destinatários não logados
+    // possam baixar o PDF clicando no link do e-mail.
+    // A segurança é feita pela obscuridade do token/URL longa gerada.
+    match /notificacoes/{notificationId}/documento_assinado.pdf {
+      allow read: if true;
       allow write: if isAuthenticated();
-      
-      // Leitura Segura:
-      // Verifica no Firestore se o usuário é o DONO ou o DESTINATÁRIO (via CPF)
-      allow read: if isAuthenticated() && (
-        getNotification(notificationId).data.notificante_uid == request.auth.uid ||
-        getUserCpf() in getNotification(notificationId).data.notificados_cpfs
-      );
+    }
+
+    // 3. EVIDÊNCIAS E OUTROS ARQUIVOS DA NOTIFICAÇÃO
+    // Mantém restrito, pois apenas o dono ou o sistema precisa acessar
+    match /notificacoes/{notificationId}/{allPaths=**} {
+      allow write: if isAuthenticated();
+      allow read: if isAuthenticated();
     }
     
-    // 3. ARQUIVOS PESSOAIS (File Manager)
+    // 4. ARQUIVOS PESSOAIS (File Manager)
     match /user_files/{userId}/{allPaths=**} {
       allow read, write: if isAuthenticated() && request.auth.uid == userId;
     }

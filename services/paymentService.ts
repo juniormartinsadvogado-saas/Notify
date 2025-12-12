@@ -40,7 +40,9 @@ export const getUserTransactions = async (userId: string): Promise<Transaction[]
                 description: data.description,
                 amount: data.amount,
                 date: data.date,
-                status: data.status
+                status: data.status,
+                notificationId: data.notificationId, // Recupera ID vinculado
+                recipientName: data.recipientName // Recupera Destinatário
             });
         });
         return transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());

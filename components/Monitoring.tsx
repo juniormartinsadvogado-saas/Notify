@@ -4,7 +4,9 @@ import { NotificationItem, NotificationStatus } from '../types';
 import { getNotificationsBySender, getNotificationsByRecipientCpf, saveNotification } from '../services/notificationService';
 import { initiateCheckout } from '../services/paymentService';
 import { getUserProfile } from '../services/userService';
-import { Send, RefreshCw, ChevronDown, ChevronUp, Package, Mail, FileText, CreditCard, Trash2, User, CheckCircle2, Circle, Clock, Inbox, Loader2, Zap, MapPin, AlertCircle, Copy, QrCode, MessageCircle } from 'lucide-react';
+import { Send, RefreshCw, ChevronDown, ChevronUp, Package, Mail, FileText, CreditCard, Trash2, User, CheckCircle2, Circle, Clock, Inbox, Loader2, Zap, MapPin, AlertCircle, Copy, QrCode, MessageCircle, Check, Eye } from 'lucide-react';
+import { db } from '../services/firebase';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
 interface MonitoringProps {
   notifications: NotificationItem[];
@@ -23,8 +25,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
   const [loading, setLoading] = useState(true);
   
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [senderProfile, setSenderProfile] = useState<any>(null);
-
+  
   // Estados para Reenvio com Pagamento
   const [isResending, setIsResending] = useState(false);
   const [pixData, setPixData] = useState<{ encodedImage: string, payload: string } | null>(null);
@@ -33,24 +34,94 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
       if (defaultTab) setActiveTab(defaultTab);
   }, [defaultTab]);
 
+  // --- REAL-TIME LISTENER (NOVO) ---
   useEffect(() => {
-    fetchData();
-  }, [user?.uid, activeTab]); 
+    if (!user) {
+        setLoading(false);
+        return;
+    }
 
-  // Sincroniza props
+    setLoading(true);
+    let q;
+    
+    // Define a query baseada na aba
+    if (activeTab === 'sent') {
+        q = query(
+            collection(db, 'notificacoes'), 
+            where("notificante_uid", "==", user.uid)
+        );
+    } else {
+        // Para recebidas, precisamos primeiro saber o CPF do user. 
+        // Como o 'where array-contains' é simples, podemos fazer direto se tivermos o CPF.
+        // Se não tivermos o CPF no user object (mock), teríamos que buscar.
+        // Assumindo que o componente pai ou o fluxo já garantiu perfil.
+        // Vou usar um fallback simples: se não tem CPF carregado, não busca recebidas no real-time agora.
+        setLoading(false);
+        return; 
+    }
+
+    // LISTENER
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+        const liveData: NotificationItem[] = [];
+        snapshot.forEach((doc) => {
+            const data = doc.data() as NotificationItem;
+            // Filtra pendentes se for aba de enviados
+            if (activeTab === 'sent' && data.status === NotificationStatus.PENDING_PAYMENT) {
+                return;
+            }
+            liveData.push(data);
+        });
+        
+        // Ordena por data
+        liveData.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setItems(liveData);
+        setLoading(false);
+    }, (error) => {
+        console.error("Erro no listener:", error);
+        setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid, activeTab]);
+
+  // Listener separado para 'Recebidas' pois depende do CPF async
   useEffect(() => {
-      if (propNotifications.length > 0 && activeTab === 'sent') {
-          setItems(prev => {
-              const currentIds = new Set(prev.map(i => i.id));
-              const newItems = propNotifications.filter(pn => !currentIds.has(pn.id));
-              if (newItems.length > 0) {
-                  return [...newItems, ...prev].sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-              }
-              return prev;
-          });
-      }
-  }, [propNotifications, activeTab]);
+     const setupReceivedListener = async () => {
+         if (activeTab === 'received' && user) {
+             setLoading(true);
+             const profile = await getUserProfile(user.uid);
+             if (profile && profile.cpf) {
+                 const cleanCpf = profile.cpf.replace(/\D/g, '');
+                 const q = query(
+                    collection(db, 'notificacoes'),
+                    where("notificados_cpfs", "array-contains", cleanCpf)
+                 );
+                 
+                 const unsubscribe = onSnapshot(q, (snapshot) => {
+                    const liveData: NotificationItem[] = [];
+                    snapshot.forEach((doc) => {
+                        const data = doc.data() as NotificationItem;
+                        if (data.status !== NotificationStatus.DRAFT && data.status !== NotificationStatus.PENDING_PAYMENT) {
+                            liveData.push(data);
+                        }
+                    });
+                    liveData.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+                    setItems(liveData);
+                    setLoading(false);
+                 });
+                 return unsubscribe;
+             } else {
+                 setLoading(false);
+             }
+         }
+     };
+     
+     let unsub: any;
+     setupReceivedListener().then(fn => unsub = fn);
+     return () => { if(unsub) unsub(); };
+  }, [activeTab, user]);
 
+  // Filtragem local
   useEffect(() => {
     let result = items;
     if (filterStatus && filterStatus.length > 0 && activeTab === 'sent') {
@@ -69,32 +140,6 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
     setFilteredItems(result);
   }, [items, filterStatus, activeTab, searchQuery]);
 
-  const fetchData = async () => {
-    if (!user) { setLoading(false); return; }
-    setLoading(true);
-    try {
-        if (activeTab === 'sent') {
-            const data = await getNotificationsBySender(user.uid);
-            // Filtra para mostrar na pasta "Notificações" apenas as pagas/enviadas
-            // As pendentes ficam na pasta "Pagamentos"
-            const sentOnly = data.filter(d => d.status !== NotificationStatus.PENDING_PAYMENT);
-            setItems(sentOnly);
-        } else {
-            const profile = await getUserProfile(user.uid);
-            if (profile && profile.cpf) {
-                const cleanCpf = profile.cpf.replace(/\D/g, '');
-                const data = await getNotificationsByRecipientCpf(cleanCpf);
-                setItems(data);
-            } else {
-                setItems([]); 
-            }
-        }
-    } catch (error) {
-        console.error("Erro ao buscar dados:", error);
-    } finally {
-        setLoading(false);
-    }
-  };
 
   const handleResendWithPayment = async (item: NotificationItem) => {
       if(!confirm("Deseja reenviar esta notificação? Será gerado um novo pagamento de R$ 57,92.")) return;
@@ -125,40 +170,94 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
   };
 
   const toggleExpand = async (item: NotificationItem) => {
-      if (expandedId === item.id) {
-          setExpandedId(null);
-      } else {
-          setExpandedId(item.id);
-          if (activeTab === 'received' && item.notificante_uid) {
-             const profile = await getUserProfile(item.notificante_uid);
-             setSenderProfile(profile);
-          }
-      }
+      setExpandedId(expandedId === item.id ? null : item.id);
   };
 
-  const DeliveryFlow = ({ status }: { status: NotificationStatus }) => {
-      const steps = [
-          { label: 'Paga', completed: true },
-          { label: 'Enviada', completed: [NotificationStatus.SENT, NotificationStatus.DELIVERED, NotificationStatus.READ].includes(status) },
-          { label: 'Entregue', completed: [NotificationStatus.DELIVERED, NotificationStatus.READ].includes(status) },
-          { label: 'Lida', completed: status === NotificationStatus.READ }
-      ];
+  const DeliveryFlow = ({ notification }: { notification: NotificationItem }) => {
+      const isDelivered = notification.status === NotificationStatus.DELIVERED || notification.status === NotificationStatus.READ;
+      const isRead = notification.status === NotificationStatus.READ;
+      
+      // Status Específicos
+      const emailSt = notification.emailStatus;
+      const whatsSt = notification.whatsappStatus;
 
       return (
-          <div className="flex items-center justify-between w-full max-w-md mt-4 relative px-2">
-              <div className="absolute top-2.5 left-0 w-full h-0.5 bg-slate-200 -z-10"></div>
-              {steps.map((step, idx) => (
-                  <div key={idx} className="flex flex-col items-center z-10 bg-white px-1">
-                      {step.completed ? (
-                          <CheckCircle2 size={24} className="text-green-500 bg-white rounded-full border-2 border-green-500" />
-                      ) : (
-                          <Circle size={24} className="text-slate-300 bg-white rounded-full border-2 border-slate-200" />
-                      )}
-                      <span className={`text-[10px] mt-1 font-bold ${step.completed ? 'text-slate-800' : 'text-slate-400'}`}>
-                          {step.label}
-                      </span>
-                  </div>
-              ))}
+          <div className="w-full">
+            {/* Linha do Tempo Global */}
+            <div className="flex items-center justify-between w-full max-w-md mt-4 relative px-2 mb-6">
+                <div className="absolute top-2.5 left-0 w-full h-0.5 bg-slate-200 -z-10"></div>
+                
+                {[
+                    { label: 'Paga', completed: true },
+                    { label: 'Enviada', completed: true },
+                    { label: 'Entregue', completed: isDelivered },
+                    { label: 'Lida', completed: isRead }
+                ].map((step, idx) => (
+                    <div key={idx} className="flex flex-col items-center z-10 bg-white px-1">
+                        {step.completed ? (
+                            <CheckCircle2 size={24} className="text-green-500 bg-white rounded-full border-2 border-green-500" />
+                        ) : (
+                            <Circle size={24} className="text-slate-300 bg-white rounded-full border-2 border-slate-200" />
+                        )}
+                        <span className={`text-[10px] mt-1 font-bold ${step.completed ? 'text-slate-800' : 'text-slate-400'}`}>
+                            {step.label}
+                        </span>
+                    </div>
+                ))}
+            </div>
+
+            {/* Detalhes por Canal (Granular) */}
+            <div className="grid grid-cols-2 gap-4">
+                {/* EMAIL STATUS */}
+                <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm flex items-start gap-3">
+                    <div className="p-2 bg-slate-100 rounded-full">
+                        <Mail size={16} className="text-slate-600"/>
+                    </div>
+                    <div>
+                        <p className="text-xs font-bold text-slate-700">E-mail</p>
+                        <p className="text-[10px] text-slate-400 truncate max-w-[120px]" title={notification.recipientEmail}>{notification.recipientEmail}</p>
+                        <div className="mt-1">
+                            {emailSt === 'OPENED' || emailSt === 'CLICKED' ? (
+                                <span className="text-[10px] font-bold text-green-600 flex items-center"><Eye size={10} className="mr-1"/> Lido / Aberto</span>
+                            ) : emailSt === 'DELIVERED' ? (
+                                <span className="text-[10px] font-bold text-blue-600 flex items-center"><Check size={10} className="mr-1"/> Entregue</span>
+                            ) : emailSt === 'BOUNCED' ? (
+                                <span className="text-[10px] font-bold text-red-500 flex items-center"><AlertCircle size={10} className="mr-1"/> Falha na entrega</span>
+                            ) : (
+                                <span className="text-[10px] font-bold text-slate-500 flex items-center"><Clock size={10} className="mr-1"/> Enviado</span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* WHATSAPP STATUS */}
+                <div className="bg-white border border-slate-200 rounded-lg p-3 shadow-sm flex items-start gap-3">
+                    <div className="p-2 bg-emerald-50 rounded-full">
+                        <MessageCircle size={16} className="text-emerald-600"/>
+                    </div>
+                    <div>
+                        <p className="text-xs font-bold text-slate-700">WhatsApp</p>
+                        <p className="text-[10px] text-slate-400 truncate max-w-[120px]">{notification.recipientPhone || '-'}</p>
+                        <div className="mt-1">
+                            {whatsSt === 'READ' ? (
+                                <span className="text-[10px] font-bold text-blue-500 flex items-center">
+                                    <Check size={10} className="mr-0.5"/>
+                                    <Check size={10} className="mr-1 -ml-1"/> 
+                                    Lido (Blue Tick)
+                                </span>
+                            ) : whatsSt === 'DELIVERED' ? (
+                                <span className="text-[10px] font-bold text-slate-500 flex items-center">
+                                    <Check size={10} className="mr-0.5"/>
+                                    <Check size={10} className="mr-1 -ml-1"/> 
+                                    Entregue
+                                </span>
+                            ) : (
+                                <span className="text-[10px] font-bold text-slate-400 flex items-center"><Check size={10} className="mr-1"/> Enviado</span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
           </div>
       );
   };
@@ -173,17 +272,16 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                 {activeTab === 'sent' ? 'Notificações Enviadas' : 'Notificações Recebidas'}
             </h2>
             <p className="text-slate-500">
-                {activeTab === 'sent' ? 'Histórico de documentos pagos e disparados.' : 'Documentos extrajudiciais recebidos em seu CPF.'}
+                {activeTab === 'sent' ? 'Rastreamento em tempo real de entrega e leitura.' : 'Documentos extrajudiciais recebidos em seu CPF.'}
             </p>
         </div>
-        <button onClick={fetchData} className="flex items-center text-sm font-medium text-slate-600 hover:text-blue-600 bg-white border border-slate-200 px-3 py-2 rounded-lg transition-all shadow-sm">
-            <RefreshCw size={14} className="mr-2" /> Atualizar
-        </button>
+        {/* Loader de Sincronização */}
+        {loading && <div className="flex items-center text-xs text-blue-600 bg-blue-50 px-3 py-1 rounded-full"><Loader2 size={12} className="animate-spin mr-2"/> Sincronizando...</div>}
       </div>
 
       {/* Lista */}
       <div className="space-y-4">
-        {loading ? (
+        {loading && items.length === 0 ? (
             <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div></div>
         ) : filteredItems.length === 0 ? (
             <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center animate-fade-in">
@@ -193,11 +291,6 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                 <h3 className="text-lg font-medium text-slate-700">
                     {activeTab === 'sent' ? 'Nenhuma notificação enviada' : 'Caixa de entrada vazia'}
                 </h3>
-                <p className="text-slate-500 text-sm mt-1 max-w-md mx-auto">
-                    {activeTab === 'sent' 
-                        ? 'As notificações aparecem aqui após a confirmação do pagamento.' 
-                        : 'Nenhum documento encontrado para seu CPF.'}
-                </p>
             </div>
         ) : (
             filteredItems.map((notif) => (
@@ -212,16 +305,22 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                         className="p-5 flex items-center justify-between cursor-pointer group"
                     >
                         <div className="flex items-center gap-4">
-                            <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 transition-colors border bg-blue-50 text-blue-600 border-blue-100`}>
-                                {activeTab === 'sent' ? <Send size={20} /> : <Mail size={20} />}
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 transition-colors border ${
+                                notif.status === NotificationStatus.READ ? 'bg-green-100 text-green-600 border-green-200' : 'bg-blue-50 text-blue-600 border-blue-100'
+                            }`}>
+                                {notif.status === NotificationStatus.READ ? <CheckCircle2 size={24} /> : (activeTab === 'sent' ? <Send size={20} /> : <Mail size={20} />)}
                             </div>
                             <div>
                                 <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-3">
                                     <h4 className="font-bold text-slate-800 text-sm md:text-base group-hover:text-blue-600 transition-colors">
                                         {activeTab === 'sent' ? `Para: ${notif.recipientName}` : `De: ${notif.notificante_dados_expostos?.nome || 'Remetente'}`}
                                     </h4>
-                                    <span className="self-start md:self-auto px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border bg-green-100 text-green-700 border-green-200">
-                                        Enviada
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${
+                                        notif.status === NotificationStatus.READ 
+                                        ? 'bg-green-100 text-green-700 border-green-200' 
+                                        : 'bg-blue-50 text-blue-600 border-blue-100'
+                                    }`}>
+                                        {notif.status}
                                     </span>
                                 </div>
                                 <p className="text-xs text-slate-500 mt-1 font-medium">{notif.species} <span className="text-slate-300 mx-1">•</span> {notif.subject}</p>
@@ -237,34 +336,11 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                         <div className="bg-slate-50 border-t border-slate-100 p-6 animate-slide-in-down">
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                                 <div>
-                                    <h5 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Rastreamento de Entrega</h5>
+                                    <h5 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Monitoramento em Tempo Real</h5>
                                     
                                     <div className="mb-6 p-4 bg-white rounded-xl border border-slate-100 shadow-sm">
-                                        <DeliveryFlow status={notif.status} />
-                                        <div className="mt-4 pt-4 border-t border-slate-50 grid grid-cols-2 gap-2 text-xs">
-                                            <div>
-                                                <p className="font-bold text-slate-700 flex items-center"><Mail size={12} className="mr-1"/> E-mail</p>
-                                                <p className="text-slate-500 truncate" title={notif.recipientEmail}>{notif.recipientEmail}</p>
-                                                <p className="text-green-600 font-bold mt-0.5">Enviado com sucesso</p>
-                                            </div>
-                                            <div>
-                                                <p className="font-bold text-slate-700 flex items-center"><MessageCircle size={12} className="mr-1"/> WhatsApp</p>
-                                                <p className="text-slate-500">{notif.recipientPhone || '-'}</p>
-                                                <p className="text-green-600 font-bold mt-0.5">Enviado com sucesso</p>
-                                            </div>
-                                        </div>
+                                        <DeliveryFlow notification={notif} />
                                     </div>
-
-                                    {/* Alerta de Erro (Simulado para UX) */}
-                                    {(!notif.recipientEmail || !notif.recipientPhone) && (
-                                        <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg flex items-start gap-2 mb-4">
-                                            <AlertCircle size={16} className="text-amber-600 mt-0.5 shrink-0" />
-                                            <div>
-                                                <p className="text-xs font-bold text-amber-700">Atenção nos dados de contato</p>
-                                                <p className="text-xs text-amber-600">Alguns canais de envio podem ter falhado se o destinatário não possui e-mail ou telefone cadastrado.</p>
-                                            </div>
-                                        </div>
-                                    )}
                                     
                                     <div className="bg-white p-4 rounded-xl border border-slate-200 mt-4 shadow-sm">
                                         <h6 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center"><User size={12} className="mr-1"/> Dados do Notificado</h6>
@@ -341,7 +417,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                       <p className="text-xs text-amber-600 mt-4 bg-amber-50 p-2 rounded">
                           Após o pagamento, a notificação será disparada novamente e aparecerá nesta lista.
                       </p>
-                      <button onClick={() => { setPixData(null); fetchData(); }} className="mt-4 w-full py-3 bg-slate-900 text-white rounded-xl font-bold">Fechar e Aguardar</button>
+                      <button onClick={() => { setPixData(null); }} className="mt-4 w-full py-3 bg-slate-900 text-white rounded-xl font-bold">Fechar</button>
                   </div>
               </div>
           </div>

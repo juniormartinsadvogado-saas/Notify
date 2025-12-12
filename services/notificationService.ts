@@ -1,7 +1,7 @@
 
 import { db, storage } from './firebase';
 import { 
-  collection, doc, setDoc, deleteDoc, 
+  collection, doc, setDoc, deleteDoc, getDoc,
   query, where, getDocs 
 } from 'firebase/firestore';
 import { 
@@ -118,6 +118,20 @@ export const deleteNotification = async (notification: NotificationItem) => {
 };
 
 // --- LEITURA ---
+
+export const getNotificationById = async (notificationId: string): Promise<NotificationItem | null> => {
+    try {
+        const docRef = doc(db, NOTIFICATIONS_COLLECTION, notificationId);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+            return docSnap.data() as NotificationItem;
+        }
+        return null;
+    } catch (error) {
+        console.error("Erro ao buscar notificação única:", error);
+        return null;
+    }
+};
 
 export const getNotificationsBySender = async (senderUid: string): Promise<NotificationItem[]> => {
     try {

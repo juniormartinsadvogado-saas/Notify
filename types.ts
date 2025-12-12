@@ -59,6 +59,13 @@ export interface NotificationItem {
     createdAt: string;
     status: NotificationStatus; // 'pendente' ou 'pago' (mapeado para enum)
     paymentAmount?: number;
+
+    // Rastreamento Granular (Novo)
+    emailStatus?: 'SENT' | 'DELIVERED' | 'OPENED' | 'CLICKED' | 'BOUNCED';
+    whatsappStatus?: 'SENT' | 'DELIVERED' | 'READ';
+    whatsappMessageId?: string; // ID interno da Z-API para correlação
+    readAt?: string;
+    deliveredAt?: string;
 }
   
 export interface Meeting {
@@ -81,6 +88,8 @@ export interface Transaction {
     amount: number;
     date: string;
     status: 'Pago' | 'Pendente' | 'Falha' | 'Reembolsado';
+    recipientName?: string; // Novo: Nome do destinatário da notificação
+    notificationId?: string; // Novo: ID da notificação vinculada
 }
 
 export interface FileItem {
