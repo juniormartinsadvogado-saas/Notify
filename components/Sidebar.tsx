@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { ViewState } from '../types';
 import { LayoutDashboard, Monitor, Video, CreditCard, LogOut, Settings, ChevronLeft, ChevronRight, Inbox, MessageCircle } from 'lucide-react';
 
@@ -9,7 +9,7 @@ interface SidebarProps {
   onLogout: () => void;
   isOpen: boolean;
   onToggle: () => void;
-  badgeCounts?: Record<string, number>;
+  badgeCounts?: Record<string, number>; // Mantido na interface para compatibilidade, mas ignorado no render
 }
 
 const LogoYSidebar = () => (
@@ -20,7 +20,7 @@ const LogoYSidebar = () => (
   </svg>
 );
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, isOpen, onToggle, badgeCounts = {} }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, isOpen, onToggle }) => {
   
   const menuItems = [
     { 
@@ -29,23 +29,22 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
         icon: <LayoutDashboard size={20} /> 
     },
     {
-        id: ViewState.MONITORING, // Pasta "Notificações" (Histórico de Enviadas/Pagas)
+        id: ViewState.MONITORING, 
         label: 'Notificações',
         icon: <Monitor size={20} />
     },
     {
-        id: ViewState.RECEIVED_NOTIFICATIONS, // Pasta "Recebidas"
+        id: ViewState.RECEIVED_NOTIFICATIONS, 
         label: 'Recebidas',
-        icon: <Inbox size={20} />,
-        badge: badgeCounts[ViewState.RECEIVED_NOTIFICATIONS]
+        icon: <Inbox size={20} />
     },
     {
-        id: ViewState.MEETINGS, // Pasta "Conciliações"
+        id: ViewState.MEETINGS, 
         label: 'Conciliações',
         icon: <Video size={20} />
     },
     {
-        id: ViewState.BILLING, // Pasta "Pagamentos"
+        id: ViewState.BILLING, 
         label: 'Pagamentos',
         icon: <CreditCard size={20} />
     },
@@ -59,9 +58,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
   return (
     <div 
       className={`
-        fixed inset-y-0 left-0 z-50 bg-[#0F172A] text-slate-300 h-screen flex flex-col shadow-2xl transition-all duration-300
+        fixed inset-y-0 left-0 z-[60] bg-[#0F172A] text-slate-300 h-screen flex flex-col shadow-2xl transition-all duration-300
         ${isOpen ? 'translate-x-0 w-72' : '-translate-x-full md:translate-x-0 md:w-20'}
       `}
+      onClick={(e) => e.stopPropagation()} // Impede que cliques dentro da sidebar fechem ela
     >
       <button 
         onClick={onToggle}
@@ -83,7 +83,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
         </span>
       </div>
 
-      {/* Navigation */}
+      {/* Navigation - Scrollable Area */}
       <nav className="flex-1 px-4 space-y-2 overflow-y-auto overflow-x-hidden scrollbar-none py-4">
         {isOpen && (
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-2 mb-2 animate-fade-in">
@@ -99,6 +99,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
                 key={item.id}
                 onClick={() => {
                     onChangeView(item.id);
+                    // No mobile, fecha ao clicar. No desktop, mantem.
                     if (window.innerWidth < 768) onToggle();
                 }}
                 title={!isOpen ? item.label : ''}
@@ -112,26 +113,17 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
                     <span className={`transition-colors duration-300 ${isActive ? 'text-white' : 'group-hover:text-blue-400'}`}>
                     {item.icon}
                     </span>
-                    {item.badge && item.badge > 0 && !isOpen && (
-                        <span className="absolute -top-1 -right-1 h-2.5 w-2.5 bg-red-500 rounded-full border border-[#0F172A]"></span>
-                    )}
                 </div>
 
                 <span className={`tracking-wide text-sm whitespace-nowrap flex-1 text-left transition-all duration-300 ${isOpen ? 'opacity-100 ml-1' : 'opacity-0 w-0 hidden'}`}>
                     {item.label}
                 </span>
-
-                {isOpen && item.badge && item.badge > 0 && (
-                    <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-                        {item.badge}
-                    </span>
-                )}
             </button>
           );
         })}
       </nav>
 
-      {/* Footer Fixed */}
+      {/* Footer Fixed - Sem bugs de hover */}
       <div className="p-4 shrink-0 border-t border-slate-800/50 flex flex-col gap-2 bg-[#0F172A] z-10">
          <a 
             href="https://wa.me/558391559429" 
@@ -141,7 +133,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
             className={`w-full flex items-center ${isOpen ? 'space-x-3 px-4 py-3' : 'justify-center p-2'} text-slate-400 hover:text-white hover:bg-emerald-500/10 rounded-xl group transition-all duration-200`}
          >
             <MessageCircle size={20} className="group-hover:text-emerald-400 transition-colors" />
-            <span className={`whitespace-nowrap font-bold text-sm transition-all duration-300 group-hover:text-emerald-400 ${isOpen ? 'opacity-100' : 'opacity-0 w-0 hidden'}`}>Suporte WhatsApp</span>
+            <span className={`whitespace-nowrap font-bold text-sm transition-all duration-300 group-hover:text-emerald-400 ${isOpen ? 'opacity-100' : 'opacity-0 w-0 hidden'}`}>Suporte</span>
          </a>
 
          <button 
@@ -150,7 +142,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
             className={`w-full flex items-center ${isOpen ? 'space-x-3 px-4 py-3' : 'justify-center p-2'} text-slate-400 hover:text-white hover:bg-red-500/10 rounded-xl group transition-all duration-200`}
          >
             <LogOut size={20} className="group-hover:text-red-400 transition-colors" />
-            <span className={`whitespace-nowrap font-bold text-sm transition-all duration-300 group-hover:text-red-400 ${isOpen ? 'opacity-100' : 'opacity-0 w-0 hidden'}`}>Sair da Conta</span>
+            <span className={`whitespace-nowrap font-bold text-sm transition-all duration-300 group-hover:text-red-400 ${isOpen ? 'opacity-100' : 'opacity-0 w-0 hidden'}`}>Sair</span>
          </button>
       </div>
     </div>
