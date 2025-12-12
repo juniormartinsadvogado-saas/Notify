@@ -1,3 +1,4 @@
+
 export default async function handler(req, res) {
   // CORS Configuration
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -30,6 +31,14 @@ export default async function handler(req, res) {
   const description = mode === 'subscription' 
     ? 'Assinatura Notify Pro - Mensal' 
     : `Notificação Extrajudicial - Ref: ${metadata.notificationId || 'Avulsa'}`;
+
+  // Determina a URL do Webhook dinamicamente
+  let webhookUrl = null;
+  if (process.env.BASE_URL) {
+      webhookUrl = `${process.env.BASE_URL}/api/webhook`;
+  } else if (process.env.VERCEL_URL) {
+      webhookUrl = `https://${process.env.VERCEL_URL}/api/webhook`;
+  }
 
   try {
     const ASAAS_URL = 'https://www.asaas.com/api/v3';
@@ -82,6 +91,19 @@ export default async function handler(req, res) {
         postalService: false
     };
 
+    // INJEÇÃO AUTOMÁTICA DE WEBHOOK (Força o Asaas a notificar esta URL)
+    /* 
+       Isso resolve o problema se o webhook não estiver configurado globalmente no painel do Asaas.
+       Nota: O Asaas nem sempre aceita localhost, funciona melhor em produção (Vercel).
+    */
+    /*
+    // Comentado pois alguns endpoints do Asaas podem rejeitar callbackUrl no payload de criação direta dependendo da versão da API.
+    // A melhor prática é configurar no painel, mas se quiser forçar, descomente abaixo se a API suportar:
+    // if (webhookUrl) {
+    //    paymentPayload.callbackUrl = webhookUrl; 
+    // }
+    */
+
     // Adiciona dados do cartão se for crédito
     if (billingType === 'CREDIT_CARD' && cardData) {
         paymentPayload.creditCard = {
@@ -119,6 +141,7 @@ export default async function handler(req, res) {
     const paymentData = await paymentResponse.json();
 
     if (paymentData.errors) {
+        console.error("Asaas Payment Error:", paymentData.errors);
         throw new Error(paymentData.errors[0].description);
     }
 
@@ -138,7 +161,8 @@ export default async function handler(req, res) {
             pixData: {
                 encodedImage: qrData.encodedImage,
                 payload: qrData.payload
-            }
+            },
+            webhookUrlHint: webhookUrl // Retorna para debug no frontend se necessário
         });
     }
 

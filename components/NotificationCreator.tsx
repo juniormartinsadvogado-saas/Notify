@@ -10,15 +10,13 @@ import {
   Wand2, Scale, Users, 
   FileText, PenTool, Check, Loader2, 
   Briefcase, ShoppingBag, Home, Heart, FileSignature, Scroll, UploadCloud, X, User, Video, CheckCircle2, ArrowRight, Calendar, ChevronLeft, Sparkles,
-  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode, Copy, AlertCircle, Plane, Zap, Rocket, Monitor, Trophy, Anchor, ShieldCheck, ChevronDown, Lightbulb, Printer, Lock, Send, Smartphone, Mail, MessageCircle, Save, LogIn, RefreshCw
+  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode, Copy, AlertCircle, Plane, Zap, Rocket, Monitor, Trophy, Anchor, ShieldCheck, ChevronDown, Lightbulb, Printer, Lock, Send, Smartphone, Mail, MessageCircle, Save, LogIn, RefreshCw, Package
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import { db } from '../services/firebase';
 import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 
-// ... (Manter constantes e imports inalterados) ...
-
-// CONSTANTES REPETIDAS APENAS PARA CONTEXTO DO ARQUIVO (Na prática o arquivo manterá as existentes)
+// CONSTANTES E ARRAYS DE DADOS
 const STEPS = [
   { id: 1, label: 'Áreas', icon: Scale },
   { id: 2, label: 'Fatos', icon: FileText },
@@ -26,7 +24,9 @@ const STEPS = [
   { id: 4, label: 'Conciliação', icon: Video },
   { id: 5, label: 'Geração IA', icon: Wand2 },
   { id: 6, label: 'Assinatura', icon: PenTool },
-  { id: 7, label: 'Envio Oficial', icon: ShieldCheck }, 
+  { id: 7, label: 'Envio', icon: Package }, // Nova Etapa: Seleção de Pacote
+  { id: 8, label: 'Pagamento', icon: Banknote }, // Etapa Isolada de Pagamento
+  { id: 9, label: 'Protocolo', icon: ShieldCheck }, // Etapa Final
 ];
 
 const LAW_AREAS = [
@@ -127,7 +127,6 @@ const formatAddressString = (addr: Address) => {
     return parts.join(', ') || 'Endereço não informado';
 };
 
-// ... (Componentes Auxiliares como DraftingAnimation, PersonForm, etc mantidos) ...
 const DraftingAnimation = () => (
     <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-20 overflow-hidden">
          <div className="relative">
@@ -230,6 +229,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const stepperRef = useRef<HTMLDivElement>(null); // REF PARA O STEPPER
+
   const [isDrawing, setIsDrawing] = useState(false);
   const [signatureData, setSignatureData] = useState<string | null>(null);
   const [documentHash, setDocumentHash] = useState<string | null>(null);
@@ -254,8 +255,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   
   // Payment States
   const [isProcessingAction, setIsProcessingAction] = useState(false);
-  const [protocolSuccess, setProtocolSuccess] = useState<boolean>(false);
-  const [isDispatching, setIsDispatching] = useState(false); // NOVO: Estado de "Enviando..."
+  const [isDispatching, setIsDispatching] = useState(false); // Visual de "Enviando..."
   const [pixData, setPixData] = useState<{ encodedImage: string, payload: string } | null>(null);
   const [asaasPaymentId, setAsaasPaymentId] = useState<string | null>(null); 
   const [createdData, setCreatedData] = useState<{notif?: NotificationItem, meet?: Meeting, trans?: Transaction}>({});
@@ -263,7 +263,17 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const currentArea = LAW_AREAS.find(a => a.id === formData.areaId);
   const availableSubtypes = currentArea ? (AREA_SUBTYPES[currentArea.id] || AREA_SUBTYPES['default']) : [];
 
-  // ... (Persistence e AutoSave mantidos) ...
+  // Efeito de Scroll Suave para o Stepper
+  useEffect(() => {
+    if (stepperRef.current) {
+      const activeStepEl = document.getElementById(`step-${currentStep}`);
+      if (activeStepEl) {
+        activeStepEl.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+      }
+    }
+  }, [currentStep]);
+
+  // Restaura rascunho
   useEffect(() => {
       const STORAGE_KEY = `notify_draft_${user?.uid}`;
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -287,7 +297,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
   useEffect(() => {
       const STORAGE_KEY = `notify_draft_${user?.uid}`;
-      if (currentStep > 1 && currentStep < 7) { 
+      // Salva rascunho até a etapa 7 (antes do pagamento final)
+      if (currentStep > 1 && currentStep < 8) { 
           const payload = { 
               timestamp: Date.now(), 
               step: currentStep, 
@@ -344,10 +355,11 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       localStorage.removeItem(STORAGE_KEY);
   };
 
-  // --- POLLING & PAYMENT ---
+  // --- POLLING & PAYMENT CHECK (SÓ NA ETAPA 8) ---
   useEffect(() => {
-      if (currentStep === 7 && createdData.notif && !protocolSuccess) {
+      if (currentStep === 8 && createdData.notif) {
           
+          // Se não tem Pix gerado ainda, gera automaticamente ao entrar na tela 8
           if (!pixData && !isProcessingAction) {
               generatePix();
           }
@@ -358,23 +370,23 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                       // Verifica via API Backend (fura cache)
                       const result = await checkPaymentStatus(asaasPaymentId);
                       if (result.paid) {
-                          console.log("[POLLING] Pagamento Confirmado!");
+                          console.log("[POLLING] Pagamento Confirmado! Avançando...");
                           clearInterval(checkInterval);
-                          handleWebhookSuccess();
+                          handlePaymentConfirmed();
                       }
                   } catch (e) {
                       console.warn("[POLLING] Erro:", e);
                   }
               }
-          }, 4000); 
+          }, 3500); 
 
           // Fallback: Listener do Firestore
           const unsub = onSnapshot(doc(db, 'notificacoes', createdData.notif.id), (docSnapshot) => {
              const data = docSnapshot.data();
              if (data && (data.status === 'SENT' || data.status === 'Enviada')) {
-                 console.log("[LISTENER] Status atualizado no banco!");
+                 console.log("[LISTENER] Status atualizado no banco! Avançando...");
                  clearInterval(checkInterval);
-                 handleWebhookSuccess();
+                 handlePaymentConfirmed();
              }
           });
 
@@ -383,7 +395,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               unsub();
           };
       }
-  }, [currentStep, createdData.notif, protocolSuccess, asaasPaymentId]);
+  }, [currentStep, createdData.notif, asaasPaymentId]);
 
   const generatePix = async () => {
       setIsProcessingAction(true);
@@ -412,8 +424,29 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   };
 
-  const handleWebhookSuccess = async () => {
+  // Botão manual de verificação (Fall-back)
+  const manualVerifyPayment = async () => {
+      if(!asaasPaymentId) return;
+      setIsProcessingAction(true);
+      try {
+          const result = await checkPaymentStatus(asaasPaymentId);
+          if (result.paid) {
+              handlePaymentConfirmed();
+          } else {
+              alert("Pagamento ainda não confirmado pelo banco. Tente novamente em alguns segundos.");
+          }
+      } catch(e) {
+          alert("Erro ao verificar. Tente novamente.");
+      } finally {
+          setIsProcessingAction(false);
+      }
+  };
+
+  const handlePaymentConfirmed = async () => {
       if (!user || !createdData.notif || !createdData.trans) return;
+      
+      // Muda para tela de PROTOCOLO (Etapa 9)
+      setCurrentStep(9);
       
       // Ativa estado visual de "Enviando..."
       setIsDispatching(true);
@@ -423,9 +456,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       
       await saveTransaction(user.uid, updatedTrans);
       
-      // DISPARO NO FRONTEND (Garante envio imediato mesmo que o webhook atrase)
-      // O webhook server-side tem proteção de idempotência baseada no status 'Enviada', 
-      // mas o frontend força o envio para melhor UX.
+      // DISPARO NO FRONTEND (Redundância)
       try {
           await dispatchCommunications(updatedNotif);
       } catch (err) {
@@ -433,10 +464,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
 
       setCreatedData({ notif: updatedNotif, meet: createdData.meet, trans: updatedTrans });
-      
-      // Desliga o loading e mostra sucesso
-      setIsDispatching(false);
-      setProtocolSuccess(true);
+      setIsDispatching(false); // Terminou o envio, mostra o protocolo final
       clearDraft();
   };
 
@@ -444,7 +472,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
     return 57.92;
   };
 
-  // ... (Funções auxiliares de validação, inputs, canvas, etc - MANTIDAS) ...
+  // ... (Validations and Helpers kept same) ...
   const validateAddresses = () => {
       const validate = (addr: Address) => addr.cep && addr.street && addr.number && addr.neighborhood && addr.city && addr.state;
       if (!validate(formData.sender.address)) return "Endereço do Remetente incompleto.";
@@ -696,7 +724,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           }
 
           setCreatedData({ notif: finalNotif, meet: newMeet, trans: newTrans });
-          setTimeout(() => setCurrentStep(7), 100);
+          
+          // CRÍTICO: Avança para etapa 7 (Seleção de Pacote), não Pagamento direto
+          setTimeout(() => setCurrentStep(7), 100); 
 
       } catch (e: any) {
           console.error(e);
@@ -773,222 +803,259 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       return await uploadSignedPdf(notificationId, pdfBlob);
   };
 
-  const renderProtocolScreen = () => (
-      <div className="flex flex-col items-center justify-center animate-fade-in text-center p-6 bg-white rounded-2xl border border-slate-200 shadow-xl max-w-2xl mx-auto my-8">
-          
-          <div className="relative mb-8 mt-4">
-               <div className="absolute inset-0 bg-green-400 blur-2xl opacity-20 rounded-full animate-pulse"></div>
-               <div className="relative bg-white p-6 rounded-full border-4 border-green-50 shadow-lg">
-                  <ShieldCheck size={64} className="text-green-500" />
-               </div>
-               <div className="absolute -bottom-2 -right-2 bg-slate-900 text-white p-2 rounded-full border-2 border-white">
-                   <Check size={16} strokeWidth={4} />
-               </div>
-          </div>
+  // STEP 9: PROTOCOLO (SEPARADO)
+  const renderProtocolScreen = () => {
+      // Estado de loading enquanto envia
+      if (isDispatching) {
+        return (
+            <div className="flex flex-col items-center justify-center h-96 animate-fade-in">
+                <div className="relative mb-6">
+                    <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full"></div>
+                    <Send size={64} className="text-blue-600 relative z-10 animate-bounce" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-800 mb-2">Enviando Notificação...</h3>
+                <p className="text-slate-500 text-center max-w-md">
+                    Detectamos o pagamento! Estamos disparando os e-mails e mensagens de WhatsApp oficiais agora.
+                </p>
+                <div className="mt-6 flex space-x-2">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
+                </div>
+            </div>
+        );
+      }
 
-          <h2 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight">Protocolo de Sucesso</h2>
-          <p className="text-slate-500 mb-10 max-w-md text-lg leading-relaxed">
-              Sua notificação foi registrada e está sendo enviada automaticamente para o destinatário.
-          </p>
+      return (
+        <div className="flex flex-col items-center justify-center animate-fade-in text-center p-6 bg-white rounded-2xl border border-slate-200 shadow-xl max-w-2xl mx-auto my-8">
+            <div className="relative mb-8 mt-4">
+                <div className="absolute inset-0 bg-green-400 blur-2xl opacity-20 rounded-full animate-pulse"></div>
+                <div className="relative bg-white p-6 rounded-full border-4 border-green-50 shadow-lg">
+                    <ShieldCheck size={64} className="text-green-500" />
+                </div>
+                <div className="absolute -bottom-2 -right-2 bg-slate-900 text-white p-2 rounded-full border-2 border-white">
+                    <Check size={16} strokeWidth={4} />
+                </div>
+            </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full mb-8">
-              <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-center">
-                   <div className="bg-green-100 p-2 rounded-lg mb-2 text-green-700"><Smartphone size={20}/></div>
-                   <span className="text-xs font-bold text-slate-400 uppercase">WhatsApp</span>
-                   <span className="font-bold text-slate-800">Enviado</span>
-              </div>
-              <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-center">
-                   <div className="bg-blue-100 p-2 rounded-lg mb-2 text-blue-700"><Mail size={20}/></div>
-                   <span className="text-xs font-bold text-slate-400 uppercase">E-mail</span>
-                   <span className="font-bold text-slate-800">Enviado</span>
-              </div>
-          </div>
+            <h2 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight">Protocolo de Sucesso</h2>
+            <p className="text-slate-500 mb-10 max-w-md text-lg leading-relaxed">
+                Sua notificação foi registrada e enviada automaticamente para o destinatário.
+            </p>
 
-          <div className="w-full bg-slate-50 rounded-xl border border-slate-200 p-6 text-left relative overflow-hidden mb-8">
-              <div className="absolute top-0 right-0 p-4 opacity-5"><FileText size={100} /></div>
-              <div className="relative z-10 space-y-4">
-                  <div className="flex justify-between items-center border-b border-slate-200 pb-3">
-                      <span className="text-xs font-bold text-slate-400 uppercase">ID do Protocolo</span>
-                      <span className="font-mono text-lg font-bold text-slate-800 tracking-wider">{createdData.notif?.id}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-slate-400 uppercase">Destinatário</span>
-                      <span className="font-medium text-slate-700">{createdData.notif?.recipientName}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold text-slate-400 uppercase">Status Jurídico</span>
-                      <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold flex items-center">
-                          <CheckCircle2 size={12} className="mr-1"/> Válido
-                      </span>
-                  </div>
-              </div>
-          </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full mb-8">
+                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-center">
+                    <div className="bg-green-100 p-2 rounded-lg mb-2 text-green-700"><Smartphone size={20}/></div>
+                    <span className="text-xs font-bold text-slate-400 uppercase">WhatsApp</span>
+                    <span className="font-bold text-slate-800">Enviado</span>
+                </div>
+                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 flex flex-col items-center justify-center text-center">
+                    <div className="bg-blue-100 p-2 rounded-lg mb-2 text-blue-700"><Mail size={20}/></div>
+                    <span className="text-xs font-bold text-slate-400 uppercase">E-mail</span>
+                    <span className="font-bold text-slate-800">Enviado</span>
+                </div>
+            </div>
 
-          <button 
-              onClick={() => {
-                  if (createdData.notif && createdData.meet && createdData.trans) {
-                      onSave(createdData.notif, createdData.meet, createdData.trans);
-                  } else {
-                      onBack?.();
-                  }
-              }} 
-              className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-slate-800 transition transform hover:scale-[1.02] flex items-center justify-center text-lg"
-          >
-              <ArrowRight size={20} className="mr-2" />
-              Acompanhar no Painel
-          </button>
-      </div>
-  );
+            <div className="w-full bg-slate-50 rounded-xl border border-slate-200 p-6 text-left relative overflow-hidden mb-8">
+                <div className="absolute top-0 right-0 p-4 opacity-5"><FileText size={100} /></div>
+                <div className="relative z-10 space-y-4">
+                    <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+                        <span className="text-xs font-bold text-slate-400 uppercase">ID do Protocolo</span>
+                        <span className="font-mono text-lg font-bold text-slate-800 tracking-wider">{createdData.notif?.id}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-slate-400 uppercase">Destinatário</span>
+                        <span className="font-medium text-slate-700">{createdData.notif?.recipientName}</span>
+                    </div>
+                </div>
+            </div>
 
-  const renderPaymentStep = () => {
+            <button 
+                onClick={() => {
+                    if (createdData.notif && createdData.meet && createdData.trans) {
+                        onSave(createdData.notif, createdData.meet, createdData.trans);
+                    } else {
+                        onBack?.();
+                    }
+                }} 
+                className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-slate-800 transition transform hover:scale-[1.02] flex items-center justify-center text-lg"
+            >
+                <ArrowRight size={20} className="mr-2" />
+                Acompanhar no Painel
+            </button>
+        </div>
+      );
+  };
+
+  // STEP 7: SELEÇÃO DE PACOTE (NOVA TELA - ESTILO COMERCIAL)
+  const renderPackageScreen = () => {
+      return (
+        <div className="pb-12 max-w-4xl mx-auto animate-fade-in flex flex-col items-center">
+            <h2 className="text-2xl font-bold text-slate-900 mb-6">Escolha o Método de Envio</h2>
+            
+            <div className="bg-white p-6 md:p-8 rounded-2xl border-2 border-blue-500 shadow-xl relative overflow-hidden group transition-all max-w-md w-full">
+                <div className="absolute top-0 right-0 bg-blue-600 text-white text-xs font-bold px-4 py-1.5 rounded-bl-xl z-20 shadow-md">
+                    RECOMENDADO
+                </div>
+                
+                <div className="relative z-10">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 className="text-xl font-bold text-slate-900">Notificação Full Time</h3>
+                            <p className="text-slate-500 text-sm mt-1">Envio oficial certificado com validade jurídica.</p>
+                        </div>
+                        <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                            <Zap size={24} fill="currentColor" />
+                        </div>
+                    </div>
+
+                    <div className="flex items-baseline mb-6 border-b border-slate-100 pb-6">
+                        <span className="text-4xl font-extrabold text-slate-900 tracking-tight">R$ {calculateTotal().toFixed(2).replace('.', ',')}</span>
+                        <span className="ml-2 text-slate-500 text-sm font-medium">/ pagamento único</span>
+                    </div>
+                    
+                    <div className="space-y-4 mb-8">
+                        <div className="flex items-center">
+                            <div className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center mr-3 shrink-0">
+                                <MessageCircle size={16} />
+                            </div>
+                            <div>
+                                <p className="font-bold text-slate-800 text-sm">WhatsApp Oficial</p>
+                                <p className="text-xs text-slate-500">Envio imediato com PDF anexo e confirmação.</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center">
+                            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mr-3 shrink-0">
+                                <Mail size={16} />
+                            </div>
+                            <div>
+                                <p className="font-bold text-slate-800 text-sm">E-mail Certificado</p>
+                                <p className="text-xs text-slate-500">Rastreamento de abertura e link seguro.</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center">
+                            <div className="w-8 h-8 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center mr-3 shrink-0">
+                                <ShieldCheck size={16} />
+                            </div>
+                            <div>
+                                <p className="font-bold text-slate-800 text-sm">Validade Jurídica</p>
+                                <p className="text-xs text-slate-500">Documento assinado e hash único.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button 
+                        onClick={() => setCurrentStep(8)}
+                        className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold text-lg hover:bg-slate-800 transition-all shadow-lg flex items-center justify-center group-hover:scale-[1.02]"
+                    >
+                        Contratar e Pagar <ArrowRight size={20} className="ml-2" />
+                    </button>
+                </div>
+            </div>
+        </div>
+      );
+  };
+
+  // STEP 8: PAGAMENTO (REDUZIDO, APENAS QR CODE)
+  const renderPaymentScreen = () => {
       if (!createdData.notif) {
           return (
               <div className="flex flex-col items-center justify-center h-96">
                   <Loader2 className="animate-spin text-slate-400 mb-4" size={48} />
-                  <p className="text-slate-500 text-lg font-medium">Gerando registro seguro...</p>
+                  <p className="text-slate-500 text-lg font-medium">Preparando ambiente seguro...</p>
               </div>
           );
-      }
-
-      if (isDispatching) {
-          return (
-              <div className="flex flex-col items-center justify-center h-96 animate-fade-in">
-                  <div className="relative mb-6">
-                      <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full"></div>
-                      <Send size={64} className="text-blue-600 relative z-10 animate-bounce" />
-                  </div>
-                  <h3 className="text-xl font-bold text-slate-800 mb-2">Enviando Notificação...</h3>
-                  <p className="text-slate-500 text-center max-w-md">
-                      Estamos disparando os e-mails e mensagens de WhatsApp oficiais agora. Por favor, aguarde a confirmação.
-                  </p>
-                  <div className="mt-6 flex space-x-2">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"></div>
-                  </div>
-              </div>
-          );
-      }
-
-      if (protocolSuccess) {
-          return renderProtocolScreen();
       }
 
       return (
-        <div className="pb-12 max-w-4xl mx-auto animate-fade-in">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-                
-                {/* COLUNA ESQUERDA: Valor Compactado */}
-                <div className="bg-white p-4 md:p-6 rounded-xl border border-slate-200 shadow-md relative overflow-hidden group hover:border-blue-300 transition-all">
-                    <div className="absolute top-0 right-0 bg-gradient-to-l from-blue-600 to-blue-500 text-white text-[10px] font-bold px-3 py-1 rounded-bl-lg z-20 shadow-sm">
-                        PREMIUM
-                    </div>
-                    
-                    <div className="relative z-10">
-                        <h3 className="text-lg font-bold text-slate-900 mb-1">Notificação Full Time</h3>
-                        <p className="text-slate-500 text-[10px] mb-3 leading-tight">Envio oficial certificado com validade jurídica.</p>
-
-                        <div className="flex items-baseline mb-4">
-                            <span className="text-2xl font-extrabold text-slate-900 tracking-tight">R$ {calculateTotal().toFixed(2).replace('.', ',')}</span>
-                            <span className="ml-1 text-slate-500 text-[10px] font-medium">/ único</span>
-                        </div>
-                        
-                        <div className="bg-slate-50 rounded-lg p-3 border border-slate-100">
-                            <h4 className="font-bold text-slate-800 mb-2 flex items-center text-[10px] uppercase tracking-wide">
-                                <Zap className="text-yellow-500 mr-1.5" size={12} fill="currentColor" />
-                                Canais Inclusos
-                            </h4>
-                            <div className="space-y-2">
-                                <div className="flex items-center">
-                                    <div className="w-6 h-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center mr-2 shrink-0">
-                                        <MessageCircle size={14} />
-                                    </div>
-                                    <div>
-                                        <p className="font-bold text-slate-800 text-[10px]">WhatsApp Oficial</p>
-                                        <p className="text-[9px] text-slate-500 leading-none">PDF anexo imediato.</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center">
-                                    <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mr-2 shrink-0">
-                                        <Mail size={14} />
-                                    </div>
-                                    <div>
-                                        <p className="font-bold text-slate-800 text-[10px]">E-mail Certificado</p>
-                                        <p className="text-[9px] text-slate-500 leading-none">Rastreamento de leitura.</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+        <div className="pb-12 max-w-md mx-auto animate-fade-in flex flex-col items-center">
+            
+            <div className="mb-6 w-full bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center">
+                <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase">Resumo do Pedido</p>
+                    <p className="font-bold text-slate-800">Notificação Full Time</p>
                 </div>
+                <div className="text-right">
+                    <p className="text-lg font-bold text-slate-900">R$ {calculateTotal().toFixed(2).replace('.', ',')}</p>
+                </div>
+            </div>
 
-                {/* COLUNA DIREITA: QR Code Pix Compactado */}
-                <div className="bg-slate-900 text-white p-4 md:p-6 rounded-xl shadow-lg relative overflow-hidden flex flex-col items-center text-center">
-                    {/* Background decorativo */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-900 z-0"></div>
-                    <div className="absolute -top-12 -right-12 w-40 h-40 bg-emerald-500/20 rounded-full blur-2xl"></div>
+            {/* QR Code Pix Card */}
+            <div className="bg-slate-900 text-white p-6 md:p-8 rounded-2xl shadow-xl relative overflow-hidden flex flex-col items-center text-center w-full">
+                {/* Background decorativo */}
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-900 z-0"></div>
+                <div className="absolute -top-12 -right-12 w-40 h-40 bg-emerald-500/20 rounded-full blur-2xl"></div>
 
-                    <div className="relative z-10 w-full max-w-xs mx-auto">
-                        <div className="flex items-center justify-center gap-2 mb-3">
-                            <div className="p-1.5 bg-white/10 rounded-lg backdrop-blur-sm border border-white/10">
-                                <QrCode size={16} className="text-emerald-400" />
-                            </div>
-                            <div className="text-left">
-                                <h4 className="text-sm font-bold leading-none">Pagamento Pix</h4>
-                                <p className="text-slate-400 text-[10px] mt-0.5">Aprovação imediata</p>
+                <div className="relative z-10 w-full">
+                    <div className="flex items-center justify-center gap-2 mb-4">
+                        <div className="p-2 bg-white/10 rounded-lg backdrop-blur-sm border border-white/10">
+                            <QrCode size={20} className="text-emerald-400" />
+                        </div>
+                        <div className="text-left">
+                            <h4 className="text-base font-bold leading-none">Pagamento Pix</h4>
+                            <p className="text-slate-400 text-xs mt-1">Aprovação imediata</p>
+                        </div>
+                    </div>
+
+                    {isProcessingAction && !pixData ? (
+                        <div className="bg-white/5 rounded-xl p-8 border border-white/10 backdrop-blur-sm">
+                            <Loader2 size={32} className="text-emerald-400 animate-spin mx-auto mb-3" />
+                            <p className="text-slate-300 text-xs font-medium animate-pulse">Gerando Código Seguro...</p>
+                        </div>
+                    ) : pixData ? (
+                        <div className="bg-white p-4 rounded-xl shadow-lg animate-scale-in mb-4 max-w-[220px] mx-auto">
+                            <div className="relative group">
+                                <img 
+                                    src={`data:image/png;base64,${pixData.encodedImage}`} 
+                                    alt="QR Code Pix" 
+                                    className="w-full h-auto rounded border border-slate-100" 
+                                />
+                                {/* Scan Line Animation */}
+                                <div className="absolute inset-0 border-b-2 border-emerald-500 opacity-50 animate-scan pointer-events-none"></div>
                             </div>
                         </div>
+                    ) : (
+                        <div className="bg-red-500/10 p-4 rounded-lg border border-red-500/30 text-red-200 text-xs">
+                            <AlertCircle className="mx-auto mb-2" size={24}/>
+                            <p className="mb-3">{error || "Erro ao conectar."}</p>
+                            <button onClick={generatePix} className="bg-white text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-50 transition w-full">Tentar Novamente</button>
+                        </div>
+                    )}
 
-                        {isProcessingAction && !pixData ? (
-                            <div className="bg-white/5 rounded-lg p-6 border border-white/10 backdrop-blur-sm">
-                                <Loader2 size={24} className="text-emerald-400 animate-spin mx-auto mb-2" />
-                                <p className="text-slate-300 text-[10px] font-medium animate-pulse">Gerando Código...</p>
+                    {pixData && (
+                        <>
+                            <div className="flex gap-2 mb-4">
+                                <input 
+                                    type="text" 
+                                    readOnly 
+                                    value={pixData.payload} 
+                                    className="w-full bg-slate-800 border border-slate-700 text-slate-400 text-[10px] p-3 rounded-lg outline-none truncate" 
+                                />
+                                <button 
+                                    onClick={() => {navigator.clipboard.writeText(pixData.payload); alert("Código Pix copiado!");}} 
+                                    className="bg-emerald-500 hover:bg-emerald-600 text-white p-3 rounded-lg transition-colors flex items-center justify-center shrink-0"
+                                    title="Copiar"
+                                >
+                                    <Copy size={16} />
+                                </button>
                             </div>
-                        ) : pixData ? (
-                            <div className="bg-white p-3 rounded-lg shadow-md animate-scale-in mb-3 max-w-[200px] mx-auto">
-                                <div className="relative group">
-                                    <img 
-                                        src={`data:image/png;base64,${pixData.encodedImage}`} 
-                                        alt="QR Code Pix" 
-                                        className="w-full h-auto rounded border border-slate-100" 
-                                    />
-                                    {/* Scan Line Animation */}
-                                    <div className="absolute inset-0 border-b-2 border-emerald-500 opacity-50 animate-scan pointer-events-none"></div>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="bg-red-500/10 p-3 rounded-lg border border-red-500/30 text-red-200 text-[10px]">
-                                <AlertCircle className="mx-auto mb-1" size={20}/>
-                                <p className="mb-2">{error || "Erro ao conectar."}</p>
-                                <button onClick={generatePix} className="bg-white text-red-600 px-3 py-1 rounded font-bold hover:bg-red-50 transition text-[10px]">Tentar Novamente</button>
-                            </div>
-                        )}
 
-                        {pixData && (
-                            <>
-                                <div className="flex gap-1.5 mb-3">
-                                    <input 
-                                        type="text" 
-                                        readOnly 
-                                        value={pixData.payload} 
-                                        className="w-full bg-slate-800 border border-slate-700 text-slate-400 text-[9px] p-2 rounded-lg outline-none truncate" 
-                                    />
-                                    <button 
-                                        onClick={() => {navigator.clipboard.writeText(pixData.payload); alert("Código Pix copiado!");}} 
-                                        className="bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-lg transition-colors flex items-center justify-center shrink-0"
-                                        title="Copiar"
-                                    >
-                                        <Copy size={14} />
-                                    </button>
-                                </div>
-
-                                <div className="flex items-center justify-center text-emerald-400 text-[10px] animate-pulse font-medium bg-emerald-500/10 py-1.5 rounded-lg w-full">
-                                    <RefreshCw size={10} className="mr-1.5 animate-spin"/>
+                            <div className="flex flex-col gap-3 w-full">
+                                <div className="flex items-center justify-center text-emerald-400 text-xs animate-pulse font-medium bg-emerald-500/10 py-2 rounded-lg w-full">
+                                    <RefreshCw size={12} className="mr-2 animate-spin"/>
                                     Aguardando confirmação automática...
                                 </div>
-                            </>
-                        )}
-                    </div>
+                                
+                                <button 
+                                    onClick={manualVerifyPayment}
+                                    disabled={isProcessingAction}
+                                    className="w-full text-xs text-slate-400 hover:text-white underline decoration-slate-600 hover:decoration-white transition-all disabled:opacity-50"
+                                >
+                                    Já realizei o pagamento, verificar agora
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </div>
             </div>
             
@@ -1007,20 +1074,23 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       );
   };
 
-  // ... (Resto do componente mantido - Renderização condicional dos steps) ...
   const visibleAreas = showAllAreas ? LAW_AREAS : LAW_AREAS.slice(0, 4);
 
   return (
     <div className="max-w-5xl mx-auto pb-24 relative">
-       {/* STEPPER HEADER */}
-       <div className="mb-8 overflow-x-auto pb-2 scrollbar-none">
+       {/* STEPPER HEADER SCROLLABLE */}
+       <div className="mb-8 overflow-x-auto pb-2 scrollbar-none" ref={stepperRef}>
            <div className="flex justify-between min-w-[600px] px-2">
                {STEPS.map((step, idx) => (
-                   <div key={step.id} className={`flex flex-col items-center relative z-10 ${currentStep >= step.id ? 'opacity-100' : 'opacity-40'}`}>
+                   <div 
+                        id={`step-${step.id}`}
+                        key={step.id} 
+                        className={`flex flex-col items-center relative z-10 mx-2 transition-all duration-500 ${currentStep >= step.id ? 'opacity-100' : 'opacity-40'}`}
+                   >
                        <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-all duration-500 ${currentStep >= step.id ? 'bg-slate-900 text-white shadow-lg scale-110' : 'bg-slate-200 text-slate-500'}`}>
                            {currentStep > step.id ? <Check size={18} /> : <step.icon size={18} />}
                        </div>
-                       <span className="text-[10px] font-bold uppercase tracking-wider">{step.label}</span>
+                       <span className="text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">{step.label}</span>
                        {idx < STEPS.length - 1 && (
                            <div className={`absolute top-5 left-1/2 w-full h-[2px] -z-10 ${currentStep > step.id ? 'bg-slate-900' : 'bg-slate-200'}`} style={{ width: 'calc(100% + 40px)' }}></div>
                        )}
@@ -1147,13 +1217,17 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                             </div>
                         );
                     case 7:
-                        return renderPaymentStep();
+                        return renderPackageScreen(); // TELA DE PACOTE (NOVO)
+                    case 8:
+                        return renderPaymentScreen(); // TELA DE PAGAMENTO (REDUZIDA)
+                    case 9:
+                        return renderProtocolScreen(); // TELA DE PROTOCOLO
                     default:
                         return null;
                 }
            })()}
 
-           {currentStep !== 5 && currentStep !== 7 && (
+           {currentStep !== 5 && currentStep !== 7 && currentStep !== 8 && currentStep !== 9 && (
                <div className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md border-t border-slate-200 p-4 md:p-6 z-40 flex justify-between max-w-5xl mx-auto md:relative md:bg-transparent md:border-0 md:p-0 mt-8">
                    <button onClick={() => { if (currentStep === 1) onBack?.(); else setCurrentStep(prev => prev - 1); }} className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition">Voltar</button>
                    {currentStep < 6 && (

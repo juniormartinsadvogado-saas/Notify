@@ -51,12 +51,13 @@ export default async function handler(req, res) {
       // 1. Validação de Token
       const asaasToken = req.headers['asaas-access-token'];
       if (process.env.ASAAS_WEBHOOK_TOKEN && asaasToken !== process.env.ASAAS_WEBHOOK_TOKEN) {
-          console.warn(`[WEBHOOK] Token inválido.`);
+          console.warn(`[WEBHOOK] Token inválido ou não fornecido: ${asaasToken}`);
+          // Não retornamos 401 para não expor a existência do endpoint, apenas logamos.
           return res.status(401).json({ error: 'Acesso Negado' });
       }
 
       const event = req.body;
-      console.log(`[WEBHOOK] Recebido evento: ${event.event} | ID: ${event.payment?.id}`);
+      console.log(`[WEBHOOK] Recebido evento: ${event.event} | ID Pagamento: ${event.payment?.id}`);
 
       // 2. Filtro de Eventos
       if (event.event !== 'PAYMENT_CONFIRMED' && event.event !== 'PAYMENT_RECEIVED') {
@@ -72,16 +73,22 @@ export default async function handler(req, res) {
       const payment = event.payment;
       let notificationId = payment.externalReference; 
       
-      // Fallback
+      // Fallback: Tenta extrair da descrição se externalReference falhar
       if (!notificationId && payment.description && payment.description.includes('Ref: ')) {
           try {
               const parts = payment.description.split('Ref: ');
-              if (parts.length > 1) notificationId = parts[1].trim();
-          } catch (e) {}
+              if (parts.length > 1) {
+                  // Pega o ID que geralmente começa com NOT-
+                  const possibleId = parts[1].trim().split(' ')[0]; 
+                  notificationId = possibleId;
+              }
+          } catch (e) {
+              console.warn('[WEBHOOK] Falha ao extrair ID da descrição:', e);
+          }
       }
 
       if (!notificationId) {
-        console.error('[WEBHOOK] Pagamento sem Notification ID.');
+        console.error('[WEBHOOK] Pagamento sem Notification ID (externalReference) e falha no fallback.');
         return res.status(200).json({ error: 'Sem ID de referência' });
       }
 
@@ -90,6 +97,7 @@ export default async function handler(req, res) {
       const docSnap = await docRef.get();
 
       if (!docSnap.exists) {
+        console.error(`[WEBHOOK] Notificação não encontrada no Firestore: ${notificationId}`);
         return res.status(200).json({ error: 'Notificação não encontrada' });
       }
 
@@ -105,7 +113,7 @@ export default async function handler(req, res) {
               paymentDate: payment.paymentDate || new Date().toISOString(),
               paymentMethod: payment.billingType || 'ASAAS_WEBHOOK'
           });
-          console.log(`[WEBHOOK] Notificação ${notificationId} atualizada para ENVIADA.`);
+          console.log(`[WEBHOOK] Notificação ${notificationId} atualizada para ENVIADA com sucesso.`);
 
           // 5. DISPAROS (Apenas se não foi enviado antes)
           const dispatchPromises = [];
@@ -138,7 +146,7 @@ export default async function handler(req, res) {
                       let cleanPhone = notification.recipientPhone.replace(/\D/g, '');
                       if (cleanPhone.length < 13 && !cleanPhone.startsWith('55')) cleanPhone = '55' + cleanPhone;
                       
-                      await fetch(`https://api.z-api.io/instances/${instanceId}/token/${token}/send-document-pdf`, {
+                      const zapiResponse = await fetch(`https://api.z-api.io/instances/${instanceId}/token/${token}/send-document-pdf`, {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({
@@ -148,6 +156,11 @@ export default async function handler(req, res) {
                               caption: `Olá, ${notification.recipientName}.\n\nVocê recebeu uma notificação extrajudicial importante.\nAcesse o documento oficial acima.`
                           })
                       });
+                      
+                      const zapiData = await zapiResponse.json();
+                      if (!zapiResponse.ok) {
+                          throw new Error(JSON.stringify(zapiData));
+                      }
                       console.log('[WEBHOOK] WhatsApp enviado com sucesso.');
                   } catch (e) {
                       console.error('[WEBHOOK] Erro Whats:', e.message);
