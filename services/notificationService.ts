@@ -22,11 +22,13 @@ const getMediaType = (mimeType: string): 'fotos' | 'videos' | 'documentos' => {
 
 // --- FASE 2: UPLOAD PDF ---
 
-export const uploadSignedPdf = async (notificationId: string, pdfBlob: Blob): Promise<string> => {
+export const uploadSignedPdf = async (notificationId: string, pdfBlob: Blob, documentHash: string): Promise<string> => {
     try {
         if (!auth.currentUser) throw new Error("Usuário não autenticado para upload.");
 
-        const storagePath = `notificacoes/${notificationId}/documento_assinado.pdf`;
+        // ALTERAÇÃO CRÍTICA: Nome do arquivo agora é o HASH
+        const fileName = `${documentHash}.pdf`;
+        const storagePath = `notificacoes/${notificationId}/${fileName}`;
         const storageRef = ref(storage, storagePath);
 
         // Adiciona metadados explícitos para garantir que o Storage aceite como PDF
@@ -34,7 +36,8 @@ export const uploadSignedPdf = async (notificationId: string, pdfBlob: Blob): Pr
             contentType: 'application/pdf',
             customMetadata: {
                 'uid': auth.currentUser.uid,
-                'notificationId': notificationId
+                'notificationId': notificationId,
+                'documentHash': documentHash
             }
         };
 
@@ -46,24 +49,28 @@ export const uploadSignedPdf = async (notificationId: string, pdfBlob: Blob): Pr
         return downloadUrl;
     } catch (error: any) {
         console.error("Erro crítico no upload do PDF:", error);
-        throw new Error(`Falha no upload do documento: ${error.message}`);
+        throw new Error(`Falha no upload do documento (Storage): ${error.message}`);
     }
 };
 
 export const uploadEvidence = async (notificationId: string, file: File): Promise<EvidenceItem> => {
     try {
+        if (!auth.currentUser) throw new Error("Usuário offline.");
+
         const mediaType = getMediaType(file.type);
+        // Sanitiza nome do arquivo
         const sanitizedName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
         const fileName = `${Date.now()}_${sanitizedName}`;
         
         const storagePath = `notificacoes/${notificationId}/${mediaType}/${fileName}`;
         const storageRef = ref(storage, storagePath);
 
+        console.log(`[STORAGE] Subindo evidência: ${storagePath}`);
         await uploadBytes(storageRef, file);
         const downloadUrl = await getDownloadURL(storageRef);
 
         return {
-            id: `ev-${Date.now()}`,
+            id: `ev-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
             name: file.name,
             url: downloadUrl,
             type: mediaType === 'fotos' ? 'image' : mediaType === 'videos' ? 'video' : 'document',
@@ -71,7 +78,8 @@ export const uploadEvidence = async (notificationId: string, file: File): Promis
             createdAt: new Date().toISOString()
         };
     } catch (error: any) {
-        throw new Error("Falha ao salvar arquivo de evidência.");
+        console.error("Erro upload evidência:", error);
+        throw new Error(`Falha ao salvar evidência ${file.name}: ${error.message}`);
     }
 };
 
@@ -90,7 +98,7 @@ export const deleteEvidence = async (storagePath: string) => {
 
 export const saveNotification = async (notification: NotificationItem) => {
     try {
-        // GARANTIA DE SEGURANÇA: Usa o UID da sessão atual, não o que veio do objeto (que pode estar obsoleto)
+        // GARANTIA DE SEGURANÇA: Usa o UID da sessão atual
         const currentUser = auth.currentUser;
         if (!currentUser) throw new Error("Sessão expirada. Faça login novamente.");
 
@@ -141,8 +149,17 @@ export const deleteNotification = async (notification: NotificationItem) => {
         if (notification.evidences && notification.evidences.length > 0) {
             await Promise.all(notification.evidences.map(ev => deleteEvidence(ev.storagePath)));
         }
-        const pdfRef = ref(storage, `notificacoes/${notification.id}/documento_assinado.pdf`);
-        await deleteObject(pdfRef).catch(() => {});
+        // Tenta deletar PDF. Nota: Precisamos adivinhar o nome se for hash, 
+        // ou confiar que notification.pdf_url ajuda a extrair o ref, mas o ideal é ter o path.
+        // Aqui usamos um catch generico pois o nome mudou para hash.
+        if (notification.documentHash) {
+             const pdfRef = ref(storage, `notificacoes/${notification.id}/${notification.documentHash}.pdf`);
+             await deleteObject(pdfRef).catch(() => {});
+        } else {
+             // Fallback legado
+             const pdfRef = ref(storage, `notificacoes/${notification.id}/documento_assinado.pdf`);
+             await deleteObject(pdfRef).catch(() => {});
+        }
 
         await deleteDoc(doc(db, NOTIFICATIONS_COLLECTION, notification.id));
     } catch (error) {

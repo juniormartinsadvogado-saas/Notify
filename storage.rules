@@ -18,20 +18,20 @@ service firebase.storage {
       allow write: if isAuthenticated() && request.auth.uid == userId;
     }
 
-    // 2. DOCUMENTOS ASSINADOS (PDFs)
-    // Permite leitura pública (allow read: if true) para que destinatários não logados
-    // possam baixar o PDF clicando no link do e-mail.
-    // A segurança é feita pela obscuridade do token/URL longa gerada.
-    match /notificacoes/{notificationId}/documento_assinado.pdf {
-      allow read: if true;
+    // 2. PASTA DE NOTIFICAÇÕES (CRÍTICO: Correção de Permissão)
+    // Permite que qualquer arquivo PDF na raiz da pasta da notificação seja lido publicamente (para links de envio)
+    // Permite escrita se autenticado (para salvar PDF com Hash e evidências)
+    
+    match /notificacoes/{notificationId}/{fileName} {
+      // Leitura pública se for PDF (para o destinatário acessar via link) ou se usuário logado
+      allow read: if (fileName.matches('.*\\.pdf')) || isAuthenticated();
+      // Escrita permitida para usuários autenticados
       allow write: if isAuthenticated();
     }
 
-    // 3. EVIDÊNCIAS E OUTROS ARQUIVOS DA NOTIFICAÇÃO
-    // Mantém restrito, pois apenas o dono ou o sistema precisa acessar
-    match /notificacoes/{notificationId}/{allPaths=**} {
-      allow write: if isAuthenticated();
-      allow read: if isAuthenticated();
+    // 3. SUBPASTAS DE EVIDÊNCIAS (fotos/videos/documentos) dentro da notificação
+    match /notificacoes/{notificationId}/{subFolder}/{fileName} {
+      allow read, write: if isAuthenticated();
     }
     
     // 4. ARQUIVOS PESSOAIS (File Manager)

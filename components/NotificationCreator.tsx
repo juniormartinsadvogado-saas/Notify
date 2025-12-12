@@ -297,19 +297,27 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           const uploadedEvidences: EvidenceItem[] = [];
           if (localFiles.length > 0) {
               console.log(`[UPLOAD] Iniciando upload de ${localFiles.length} evidências...`);
-              for (const fileItem of localFiles) {
+              // Processa em paralelo para acelerar e verificar erros
+              const uploadPromises = localFiles.map(async (fileItem) => {
                   try {
-                      const evidence = await uploadEvidence(notificationId, fileItem.file);
-                      uploadedEvidences.push(evidence);
+                      return await uploadEvidence(notificationId, fileItem.file);
                   } catch (err) {
                       console.error(`Erro ao subir arquivo ${fileItem.name}:`, err);
+                      // Continua, mas loga. Se for crítico, poderia lançar erro.
+                      return null; 
                   }
-              }
+              });
+              
+              const results = await Promise.all(uploadPromises);
+              results.forEach(res => {
+                  if (res) uploadedEvidences.push(res);
+              });
           }
 
           // 2. Geração e Upload do PDF
           console.log("Iniciando geração e upload do PDF...");
-          const pdfUrl = await generateAndUploadPdf(true); 
+          // Passamos o uniqueHash para usar como nome do arquivo
+          const pdfUrl = await generateAndUploadPdf(true, uniqueHash); 
           console.log("PDF Gerado e salvo em:", pdfUrl);
 
           // 3. Montar Objeto da Notificação
@@ -359,7 +367,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   };
 
   // --- NOVO GERADOR DE PDF PROFISSIONAL ---
-  const generateAndUploadPdf = async (isDraft: boolean): Promise<string> => {
+  // Atualizado para receber o docHash como parametro opcional para o nome do arquivo
+  const generateAndUploadPdf = async (isDraft: boolean, hashForFilename?: string): Promise<string> => {
       const doc = new jsPDF({
           orientation: 'p',
           unit: 'mm',
@@ -541,7 +550,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       drawFooter(pageNumber);
 
       const pdfBlob = doc.output('blob');
-      return await uploadSignedPdf(notificationId, pdfBlob);
+      // Envia o hashForFilename (ou o default notificationId) para o serviço
+      return await uploadSignedPdf(notificationId, pdfBlob, hashForFilename || "documento_assinado");
   };
 
   // --- 8. INICIAR PAGAMENTO ---
