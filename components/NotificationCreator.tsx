@@ -178,10 +178,26 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const [isCheckingManual, setIsCheckingManual] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const stepperRef = useRef<HTMLDivElement>(null); // Ref para o Stepper
   const [isDrawing, setIsDrawing] = useState(false);
 
   const currentArea = LAW_AREAS.find(a => a.id === formData.areaId);
   const availableSubtypes = currentArea ? (AREA_SUBTYPES[currentArea.id] || AREA_SUBTYPES['default']) : [];
+
+  // --- AUTO SCROLL STEPPER ---
+  useEffect(() => {
+      if (stepperRef.current) {
+          // Encontra o elemento do passo atual
+          const activeStepElement = stepperRef.current.children[currentStep - 1] as HTMLElement;
+          if (activeStepElement) {
+              activeStepElement.scrollIntoView({ 
+                  behavior: 'smooth', 
+                  block: 'nearest', 
+                  inline: 'center' 
+              });
+          }
+      }
+  }, [currentStep]);
 
   // --- STRATEGY: REAL-TIME LISTENER + BACKUP POLLING ---
   useEffect(() => {
@@ -661,15 +677,17 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           }
 
           const payerData = role === 'representative' ? formData.representative : formData.sender;
+          // LIMPEZA EXTREMA DO CPF (APENAS NÚMEROS)
           const cleanCpfPayer = payerData.cpfCnpj ? payerData.cpfCnpj.replace(/\D/g, '') : '';
 
-          if (!cleanCpfPayer || cleanCpfPayer.length < 11) {
-              throw new Error("CPF/CNPJ do Pagador inválido. Verifique seus dados.");
+          // VALIDAÇÃO RÍGIDA: APENAS CPF (11 DÍGITOS)
+          if (!cleanCpfPayer || cleanCpfPayer.length !== 11) {
+              throw new Error("O pagamento via Pix exige um CPF válido (11 dígitos). Verifique os dados do pagador.");
           }
 
           const checkout = await initiateCheckout(notif, 'single', 'PIX', null, {
               name: payerData.name || user.displayName,
-              cpfCnpj: cleanCpfPayer,
+              cpfCnpj: cleanCpfPayer, // Envia limpo
               email: payerData.email || user.email,
               phone: payerData.phone || ''
           });
@@ -687,7 +705,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               
               setCurrentStep(8); 
           } else {
-              alert("Erro ao gerar Pix: " + (checkout.error || "Verifique o CPF/CNPJ."));
+              alert("Erro ao gerar Pix: " + (checkout.error || "Verifique o CPF/CNPJ e tente novamente."));
           }
 
       } catch (e: any) {
@@ -710,15 +728,15 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               </div>
           </div>
 
-          {/* STEPPER */}
-          <div className="mb-10 flex overflow-x-auto pb-4 gap-4 px-2">
+          {/* STEPPER (Com Scroll Automático) */}
+          <div ref={stepperRef} className="mb-10 flex overflow-x-auto pb-4 gap-4 px-2 scroll-smooth">
               {STEPS.map((s, i) => (
                   <div key={s.id} className="flex items-center min-w-fit">
-                      <div className={`flex flex-col items-center ${s.id === currentStep ? 'opacity-100 scale-110' : 'opacity-75'}`}>
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 mb-1 ${s.id <= currentStep ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-300'}`}>
+                      <div className={`flex flex-col items-center transition-all duration-300 ${s.id === currentStep ? 'opacity-100 scale-110' : 'opacity-75'}`}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 mb-1 transition-colors ${s.id <= currentStep ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-300'}`}>
                               {s.id < currentStep ? <Check size={16}/> : <s.icon size={18}/>}
                           </div>
-                          <span className="text-[10px] font-bold uppercase">{s.label}</span>
+                          <span className={`text-[10px] font-bold uppercase ${s.id === currentStep ? 'text-slate-900' : 'text-slate-400'}`}>{s.label}</span>
                       </div>
                       {i < STEPS.length - 1 && <div className={`w-8 h-0.5 mx-2 ${s.id < currentStep ? 'bg-slate-900' : 'bg-slate-200'}`}/>}
                   </div>
@@ -1053,6 +1071,17 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                       Acompanhar no Painel
                   </button>
               </div>
+          )}
+
+          {/* --- FLOAT BACK BUTTON --- */}
+          {currentStep > 1 && currentStep <= 6 && (
+              <button 
+                  onClick={() => setCurrentStep(s => s - 1)} 
+                  className="fixed bottom-6 left-6 z-50 bg-white text-slate-600 p-4 rounded-full shadow-xl border border-slate-200 hover:bg-slate-50 hover:text-slate-900 transition-all hover:-translate-y-1 active:scale-95 group"
+                  title="Voltar etapa"
+              >
+                  <ChevronLeft size={24} className="group-hover:-translate-x-1 transition-transform"/>
+              </button>
           )}
       </div>
   );

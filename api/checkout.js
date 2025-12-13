@@ -37,12 +37,16 @@ export default async function handler(req, res) {
     
     // 1. GESTÃO DO CLIENTE NO ASAAS
     let customerId = null;
-    const cpfCnpj = payerInfo?.cpfCnpj || metadata?.cpfCnpj;
+    let cpfCnpj = payerInfo?.cpfCnpj || metadata?.cpfCnpj;
     const name = payerInfo?.name || metadata?.name || 'Cliente Notify';
     
+    // LIMPEZA EXTREMA NO BACKEND (Segurança contra erros de frontend)
     if (cpfCnpj) {
-        const cleanCpf = cpfCnpj.replace(/\D/g, '');
-        const findCustomer = await fetch(`${ASAAS_URL}/customers?cpfCnpj=${cleanCpf}`, {
+        cpfCnpj = cpfCnpj.replace(/[^0-9]/g, '');
+    }
+
+    if (cpfCnpj) {
+        const findCustomer = await fetch(`${ASAAS_URL}/customers?cpfCnpj=${cpfCnpj}`, {
             method: 'GET',
             headers: { 'access_token': apiKey }
         });
@@ -63,7 +67,7 @@ export default async function handler(req, res) {
             body: JSON.stringify({
                 name: name,
                 email: userEmail,
-                cpfCnpj: cpfCnpj ? cpfCnpj.replace(/\D/g, '') : undefined,
+                cpfCnpj: cpfCnpj, // Envia limpo
                 notificationDisabled: false 
             })
         });
@@ -94,7 +98,7 @@ export default async function handler(req, res) {
         paymentPayload.creditCardHolderInfo = {
             name: cardData.holderName,
             email: userEmail,
-            cpfCnpj: cpfCnpj ? cpfCnpj.replace(/\D/g, '') : undefined,
+            cpfCnpj: cpfCnpj,
             postalCode: '00000000', 
             addressNumber: '0',
             phone: '00000000000' 
