@@ -59,185 +59,226 @@ export default async function handler(req, res) {
         return res.status(200).json({ received: true, message: 'Ignorado' });
       }
       
-      console.log(`[WEBHOOK] Processando Pagamento: ${event.payment?.id}`);
+      console.log(`[WEBHOOK] Processando Pagamento Confirmado: ${event.payment?.id}`);
 
       const db = getFirebaseDB();
       if (!db) return res.status(500).json({ error: 'Database error' });
 
       const payment = event.payment;
       
-      // --- LÓGICA DE NOTIFICAÇÃO AVULSA ---
+      // --- 1. IDENTIFICAÇÃO DA NOTIFICAÇÃO ---
       let notificationId = payment.externalReference; 
       
-      if (!notificationId && payment.description && payment.description.includes('Ref: ')) {
+      if (!notificationId && payment.description && payment.description.includes('Ref:')) {
           try {
-              notificationId = payment.description.split('Ref: ')[1].trim().split(' ')[0];
-          } catch (e) {}
+              const parts = payment.description.split('Ref:');
+              if (parts.length > 1) {
+                  notificationId = parts[1].trim().split(' ')[0]; 
+              }
+          } catch (e) {
+              console.error('[WEBHOOK] Erro ao parsear descrição:', e);
+          }
       }
 
       if (!notificationId) {
-        console.error('[WEBHOOK] ID de referência da notificação não encontrado.');
+        console.error('[WEBHOOK] ID de referência da notificação não encontrado no pagamento.');
         return res.status(200).json({ error: 'No Notification ID found' });
       }
+
+      console.log(`[WEBHOOK] Notificação Alvo: ${notificationId}`);
 
       const docRef = db.collection('notificacoes').doc(notificationId);
       const docSnap = await docRef.get();
 
       if (!docSnap.exists) {
+        console.error('[WEBHOOK] Documento da notificação não existe no Firestore.');
         return res.status(200).json({ error: 'Notificação não existe no banco' });
       }
 
       const notification = docSnap.data();
-      const alreadySent = notification.status === 'Enviada' || notification.status === 'SENT';
+      
+      // --- 2. ATUALIZAÇÃO DE STATUS (CRÍTICO) ---
+      
+      const batch = db.batch();
 
-      if (!alreadySent) {
-          // 1. Atualiza Status Inicial da Notificação
-          await docRef.update({
-              status: 'Enviada', 
-              updatedAt: new Date().toISOString(),
-              paymentId: payment.id,
-              paymentDate: payment.paymentDate || new Date().toISOString(),
-              paymentMethod: payment.billingType || 'ASAAS_WEBHOOK',
-              emailStatus: 'SENT',
-              whatsappStatus: 'SENT'
+      // A. Atualiza Notificação -> ENVIADA
+      batch.update(docRef, {
+          status: 'Enviada', 
+          updatedAt: new Date().toISOString(),
+          paymentId: payment.id,
+          paymentDate: payment.paymentDate || new Date().toISOString(),
+          paymentMethod: payment.billingType || 'ASAAS_WEBHOOK',
+          emailStatus: 'SENT', 
+          whatsappStatus: 'SENT'
+      });
+
+      // B. Atualiza Transação -> PAGO (Tira da aba pendente)
+      const txQuery = await db.collection('transactions')
+          .where('notificationId', '==', notificationId)
+          .get();
+
+      if (!txQuery.empty) {
+          txQuery.forEach(txDoc => {
+              batch.update(txDoc.ref, { status: 'Pago' });
+              console.log(`[WEBHOOK] Atualizando transação ${txDoc.id} para Pago.`);
           });
+      }
 
-          // 2. ATUALIZA STATUS DA REUNIÃO VINCULADA (Se existir)
-          // Procura reuniões criadas pelo usuário (hostUid) que estão 'pending' e foram criadas recentemente
-          try {
-              // Busca a reunião mais recente pendente deste usuário
-              const meetingsSnap = await db.collection('reunioes')
-                  .where('hostUid', '==', notification.notificante_uid)
-                  .where('status', '==', 'pending')
-                  .orderBy('createdAt', 'desc')
-                  .limit(1)
-                  .get();
+      // C. Atualiza Reunião (Se houver) -> CONFIRMADA
+      const meetingsSnap = await db.collection('reunioes')
+          .where('hostUid', '==', notification.notificante_uid)
+          .where('status', '==', 'pending')
+          .orderBy('createdAt', 'desc')
+          .limit(1)
+          .get();
 
-              if (!meetingsSnap.empty) {
-                  const meetingDoc = meetingsSnap.docs[0];
-                  // Confirma a reunião
-                  await meetingDoc.ref.update({ status: 'scheduled' });
-                  console.log(`[WEBHOOK] Reunião ${meetingDoc.id} confirmada.`);
-              }
-          } catch (meetErr) {
-              console.error("[WEBHOOK] Erro ao confirmar reunião:", meetErr);
-          }
+      if (!meetingsSnap.empty) {
+          const meetingDoc = meetingsSnap.docs[0];
+          batch.update(meetingDoc.ref, { status: 'scheduled' });
+      }
 
-          // 3. DISPAROS COM RASTREAMENTO AUTOMÁTICO
-          const dispatchPromises = [];
+      await batch.commit();
+      console.log('[WEBHOOK] Status atualizados no Firestore.');
 
-          const officialSubject = `NOTIFICAÇÃO EXTRAJUDICIAL: ${notification.subject}`;
-          const whatsappText = `*NOTIFICAÇÃO EXTRAJUDICIAL*\nRef: ${notification.subject}\n\nPrezado(a) ${notification.recipientName},\n\nEsta mensagem serve como comunicado oficial registrado na plataforma Notify.\n\nVocê possui um documento jurídico importante aguardando leitura. O teor completo, assinado digitalmente, encontra-se disponível no link abaixo:\n\n📄 *Acessar Documento:* ${notification.pdf_url}\n\nA ausência de manifestação poderá ser interpretada como silêncio para fins legais.\n\nAtenciosamente,\n*${notification.notificante_dados_expostos.nome}*\nCPF: ${notification.notificante_cpf}`;
+      // --- 3. DISPAROS DE COMUNICAÇÃO ---
+      
+      const officialSubject = `NOTIFICAÇÃO EXTRAJUDICIAL - PROTOCOLO ${notificationId}`;
+      const cleanPhone = notification.recipientPhone ? notification.recipientPhone.replace(/\D/g, '') : '';
+      
+      // Ajuste Fino Telefone
+      let whatsappNumber = cleanPhone;
+      if (whatsappNumber.length >= 10 && whatsappNumber.length <= 11) {
+          whatsappNumber = '55' + whatsappNumber;
+      } else if (whatsappNumber.startsWith('0')) {
+          whatsappNumber = whatsappNumber.substring(1);
+          if (whatsappNumber.length <= 11) whatsappNumber = '55' + whatsappNumber;
+      }
 
-          // A. EMAIL (SendGrid)
-          const sgKey = process.env.SENDGRID_EMAIL_API_KEY || process.env.ENDGRID_EMAIL_API_KEY;
-          if (notification.recipientEmail && sgKey) {
-              const emailTask = async () => {
-                  try {
-                      sgMail.setApiKey(sgKey);
-                      await sgMail.send({
-                          to: notification.recipientEmail,
-                          from: process.env.SENDGRID_FROM_EMAIL || 'notificacao@notify.ia.br',
-                          subject: officialSubject,
-                          html: `
-                            <!DOCTYPE html>
-                            <html>
-                            <body style="margin: 0; padding: 0; font-family: Helvetica, Arial, sans-serif; background-color: #f4f4f5; color: #333;">
-                                <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 40px; border-radius: 8px; margin-top: 20px; border: 1px solid #e2e8f0;">
-                                    <h2 style="text-align:center">NOTIFICAÇÃO EXTRAJUDICIAL</h2>
-                                    <p>Olá, <strong>${notification.recipientName}</strong>.</p>
-                                    <p>Acesse seu documento no botão abaixo:</p>
-                                    <div style="text-align: center; margin: 30px 0;">
-                                        <a href="${notification.pdf_url}" style="background-color: #0F172A; color: #ffffff; padding: 16px 32px; text-decoration: none; border-radius: 6px; font-weight: bold;">
-                                            ACESSAR DOCUMENTO
+      const whatsappText = `*COMUNICADO OFICIAL - NOTIFY*\n\nPrezado(a) ${notification.recipientName},\n\nEmitimos uma Notificação Extrajudicial registrada sob o protocolo *${notificationId}*.\n\nEste documento possui validade jurídica e requer sua atenção imediata.\n\n📂 *Acesse o documento digital:* \n${notification.pdf_url}\n\nAtenciosamente,\n*${notification.notificante_dados_expostos.nome}*`;
+
+      const dispatchPromises = [];
+
+      // A. EMAIL (SendGrid)
+      const sgKey = process.env.SENDGRID_EMAIL_API_KEY || process.env.ENDGRID_EMAIL_API_KEY;
+      if (notification.recipientEmail && sgKey) {
+          const emailTask = async () => {
+              try {
+                  sgMail.setApiKey(sgKey);
+                  await sgMail.send({
+                      to: notification.recipientEmail,
+                      from: process.env.SENDGRID_FROM_EMAIL || 'notificacao@notify.ia.br',
+                      subject: officialSubject,
+                      html: `
+                        <!DOCTYPE html>
+                        <html lang="pt-BR">
+                        <body style="margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f8fafc; color: #334155;">
+                            <div style="max-width: 600px; margin: 40px auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); border: 1px solid #e2e8f0;">
+                                <div style="background-color: #0f172a; padding: 30px; text-align: center;">
+                                    <h1 style="color: #ffffff; margin: 0; font-size: 20px; letter-spacing: 1px; font-weight: 600;">NOTIFICAÇÃO EXTRAJUDICIAL</h1>
+                                    <p style="color: #94a3b8; font-size: 12px; margin-top: 8px; text-transform: uppercase;">Protocolo Digital: ${notificationId}</p>
+                                </div>
+                                
+                                <div style="padding: 40px;">
+                                    <p style="font-size: 16px; margin-bottom: 24px;">Olá, <strong>${notification.recipientName}</strong>.</p>
+                                    
+                                    <p style="font-size: 15px; line-height: 1.6; margin-bottom: 24px; color: #475569;">
+                                        Você recebeu um comunicado formal via plataforma Notify. Este documento foi registrado e possui validade jurídica para todos os fins.
+                                    </p>
+                                    
+                                    <div style="background-color: #f1f5f9; border-left: 4px solid #3b82f6; padding: 16px; margin-bottom: 30px; border-radius: 4px;">
+                                        <p style="margin: 0; font-size: 14px; font-weight: 600; color: #1e293b;">Assunto: ${notification.subject}</p>
+                                        <p style="margin: 5px 0 0; font-size: 13px; color: #64748b;">Remetente: ${notification.notificante_dados_expostos.nome}</p>
+                                    </div>
+
+                                    <div style="text-align: center; margin: 35px 0;">
+                                        <a href="${notification.pdf_url}" target="_blank" style="background-color: #2563eb; color: #ffffff; padding: 16px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block; transition: background-color 0.2s;">
+                                            LER DOCUMENTO COMPLETO
                                         </a>
                                     </div>
-                                    <p style="font-size:12px; color:#999">Enviado por Notify.</p>
+                                    
+                                    <p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
+                                        Este e-mail foi enviado automaticamente pela plataforma Notify Jurídica.<br>
+                                        Segurança e validade garantidas por assinatura digital.
+                                    </p>
                                 </div>
-                            </body>
-                            </html>
-                          `,
-                          custom_args: {
-                              notificationId: notificationId
-                          }
-                      });
-                      console.log('[WEBHOOK] Email enviado com sucesso.');
-                  } catch (e) {
-                      console.error('[WEBHOOK] Erro Email:', e.response?.body || e.message);
-                  }
-              };
-              dispatchPromises.push(emailTask());
-          }
+                            </div>
+                        </body>
+                        </html>
+                      `,
+                      custom_args: { notificationId: notificationId }
+                  });
+                  console.log('[WEBHOOK] Email enviado via SendGrid.');
+              } catch (e) {
+                  console.error('[WEBHOOK] Erro Email:', e.response?.body || e.message);
+              }
+          };
+          dispatchPromises.push(emailTask());
+      }
 
-          // B. WHATSAPP (Z-API)
-          const zInstance = process.env.API_INSTANCE_ID || process.env.ZAPI_INSTANCE_ID;
-          const zToken = process.env.API_INSTANCE_TOKEN || process.env.ZAPI_INSTANCE_TOKEN;
-          
-          if (notification.recipientPhone && zInstance && zToken) {
-              const whatsTask = async () => {
-                  try {
-                      // Usa a mesma função auxiliar que criamos no frontend ou API Route
-                      const ZAPI_URL = "https://notify.ia.br/api/whatsapp"; // Chamada interna para usar a lógica robusta de lá
-                      // Como estamos no server-side, podemos chamar a lógica diretamente ou via fetch localhost se fosse Next.js real.
-                      // Aqui, replicaremos a chamada simplificada para a API Externa da Z-API com a formatação correta:
-                      
-                      let cleanPhone = notification.recipientPhone.replace(/\D/g, '');
-                      if (cleanPhone.length >= 10 && cleanPhone.length <= 11) cleanPhone = '55' + cleanPhone;
-                      else if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
+      // B. WHATSAPP (Z-API)
+      const zInstance = process.env.API_INSTANCE_ID || process.env.ZAPI_INSTANCE_ID;
+      const zToken = process.env.API_INSTANCE_TOKEN || process.env.ZAPI_INSTANCE_TOKEN;
+      
+      if (whatsappNumber && zInstance && zToken) {
+          const whatsTask = async () => {
+              try {
+                  const ZAPI_ENDPOINT = `https://api.z-api.io/instances/${zInstance}/token/${zToken}`;
+                  let zaapId = null;
 
-                      const ZAPI_ENDPOINT = `https://api.z-api.io/instances/${zInstance}/token/${zToken}`;
-                      let zaapId = null;
-
-                      // Tenta PDF
-                      if (notification.pdf_url) {
+                  // Tenta PDF
+                  if (notification.pdf_url) {
+                      try {
                           const resPdf = await fetch(`${ZAPI_ENDPOINT}/send-document-pdf`, {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
-                                  phone: cleanPhone,
+                                  phone: whatsappNumber,
                                   document: notification.pdf_url,
-                                  fileName: "Notificacao_Extrajudicial.pdf",
+                                  fileName: `Notificacao_${notificationId}.pdf`,
                                   caption: whatsappText
                               })
                           });
                           const dataPdf = await resPdf.json();
-                          if (resPdf.ok && !dataPdf.error) zaapId = dataPdf.messageId || dataPdf.id;
+                          if (resPdf.ok && (dataPdf.messageId || dataPdf.id)) {
+                              zaapId = dataPdf.messageId || dataPdf.id;
+                              console.log('[WEBHOOK] PDF WhatsApp enviado.');
+                          }
+                      } catch (errPdf) {
+                          console.error("[WEBHOOK] Erro PDF Whats:", errPdf.message);
                       }
-
-                      // Fallback Texto
-                      if (!zaapId) {
-                          const resText = await fetch(`${ZAPI_ENDPOINT}/send-text`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                  phone: cleanPhone,
-                                  message: whatsappText + `\n\nLink: ${notification.pdf_url}`
-                              })
-                          });
-                          const dataText = await resText.json();
-                          zaapId = dataText.messageId || dataText.id;
-                      }
-
-                      if (zaapId) {
-                          await docRef.update({ whatsappMessageId: zaapId });
-                      }
-
-                  } catch (e) {
-                      console.error('[WEBHOOK] Erro Whats:', e.message);
                   }
-              };
-              dispatchPromises.push(whatsTask());
-          }
 
-          if (dispatchPromises.length > 0) {
-              await Promise.all(dispatchPromises);
-          }
+                  // Fallback Texto (garante entrega do link)
+                  if (!zaapId) {
+                      const resText = await fetch(`${ZAPI_ENDPOINT}/send-text`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                              phone: whatsappNumber,
+                              message: whatsappText + `\n\nLink: ${notification.pdf_url}`
+                          })
+                      });
+                      const dataText = await resText.json();
+                      if (resText.ok) zaapId = dataText.messageId || dataText.id;
+                  }
+
+                  if (zaapId) await docRef.update({ whatsappMessageId: zaapId });
+
+              } catch (e) {
+                  console.error('[WEBHOOK] Erro Crítico WhatsApp:', e.message);
+              }
+          };
+          dispatchPromises.push(whatsTask());
+      }
+
+      if (dispatchPromises.length > 0) {
+          await Promise.allSettled(dispatchPromises);
       }
 
       return res.status(200).json({ success: true });
 
   } catch (error) {
-      console.error('[WEBHOOK] Erro Crítico:', error);
-      return res.status(200).json({ error: 'Erro interno tratado', details: error.message });
+      console.error('[WEBHOOK] Erro Geral:', error);
+      return res.status(200).json({ error: 'Erro interno processado', details: error.message });
   }
 }

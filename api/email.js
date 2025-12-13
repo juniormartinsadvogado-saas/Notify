@@ -10,32 +10,15 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  // Agora esperamos notificationId para rastreamento
   const { recipientEmail, recipientName, subject, pdfUrl, notificationId } = req.body;
   const apiKey = process.env.SENDGRID_EMAIL_API_KEY || process.env.ENDGRID_EMAIL_API_KEY;
 
   if (!apiKey) {
-    console.error("[API/EMAIL] SENDGRID_EMAIL_API_KEY faltando.");
     return res.status(500).json({ error: 'Configuração de servidor incompleta.' });
   }
 
   sgMail.setApiKey(apiKey);
   const senderEmail = process.env.SENDGRID_FROM_EMAIL || 'notificacao@notify.ia.br';
-
-  const plainTextContent = `
-NOTIFICAÇÃO EXTRAJUDICIAL
-
-Olá, ${recipientName}.
-
-Você recebeu um comunicado formal referente ao assunto: ${subject}.
-
-O documento completo, com validade jurídica e assinatura digital, encontra-se disponível para leitura imediata no link abaixo:
-
-${pdfUrl}
-
-Atenciosamente,
-Plataforma Notify - Inteligência Jurídica
-  `;
 
   const msg = {
     to: recipientEmail,
@@ -44,54 +27,74 @@ Plataforma Notify - Inteligência Jurídica
         name: "Notify Jurídico"
     },
     subject: `NOTIFICAÇÃO EXTRAJUDICIAL: ${subject}`,
-    text: plainTextContent,
+    text: `Olá ${recipientName}, você recebeu uma notificação extrajudicial. Acesse o documento completo aqui: ${pdfUrl}`,
     html: `
       <!DOCTYPE html>
-      <html>
+      <html lang="pt-BR">
       <head>
         <meta charset="utf-8">
         <title>Notificação Extrajudicial</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
       </head>
-      <body style="margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f4f4f5; color: #333;">
-        <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 40px; border-radius: 8px; margin-top: 20px; border: 1px solid #e2e8f0;">
-            <div style="text-align: center; margin-bottom: 30px;">
-                <h2 style="color: #0F172A; margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px;">Notificação Extrajudicial</h2>
-                <p style="font-size: 14px; color: #64748b; margin-top: 5px;">Documento Oficial Registrado</p>
-            </div>
-            
-            <p style="font-size: 16px; margin-bottom: 20px;">Olá, <strong>${recipientName}</strong>.</p>
-            
-            <p style="font-size: 15px; line-height: 1.6; margin-bottom: 20px; color: #334155;">
-                Você recebeu um comunicado formal referente ao assunto: <strong>${subject}</strong>.
-            </p>
-            
-            <p style="font-size: 15px; line-height: 1.6; margin-bottom: 30px; color: #334155;">
-                O documento completo, com validade jurídica e assinatura digital, encontra-se disponível para leitura imediata através do botão abaixo:
-            </p>
-            
-            <div style="text-align: center; margin-bottom: 40px;">
-                <a href="${pdfUrl}" target="_blank" rel="noopener noreferrer" style="background-color: #0F172A; color: #ffffff; padding: 16px 32px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px rgba(15, 23, 42, 0.1);">
-                    ACESSAR DOCUMENTO (PDF)
-                </a>
-            </div>
-            
-            <p style="font-size: 13px; color: #64748b; line-height: 1.5; text-align: center;">
-                Caso o botão não funcione, copie e cole o link abaixo no seu navegador:<br/>
-                <a href="${pdfUrl}" style="color: #2563eb;">${pdfUrl}</a>
-            </p>
-            
-            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
-            
-            <p style="font-size: 12px; color: #94a3b8; text-align: center;">
-                Enviado via Plataforma Notify - Inteligência Jurídica.<br/>
-                Não responda a este e-mail automaticamente.
-            </p>
-        </div>
-        <img src="https://notify.ia.br/api/pixel?id=${notificationId}" width="1" height="1" style="display:none" />
+      <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f1f5f9; color: #1e293b;">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="min-width: 100%;">
+            <tr>
+                <td align="center" style="padding: 40px 0;">
+                    <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 1px solid #e2e8f0;">
+                        <!-- Header -->
+                        <tr>
+                            <td align="center" style="background-color: #0f172a; padding: 30px;">
+                                <h1 style="color: #ffffff; font-size: 22px; margin: 0; font-weight: 700; letter-spacing: 0.5px;">NOTIFICAÇÃO EXTRAJUDICIAL</h1>
+                                <p style="color: #94a3b8; font-size: 12px; margin-top: 8px; text-transform: uppercase;">Protocolo Digital: <strong>${notificationId || 'N/A'}</strong></p>
+                            </td>
+                        </tr>
+                        
+                        <!-- Content -->
+                        <tr>
+                            <td style="padding: 40px 40px 20px 40px;">
+                                <p style="font-size: 16px; margin-bottom: 20px;">Prezado(a) <strong>${recipientName}</strong>,</p>
+                                
+                                <p style="font-size: 15px; line-height: 1.6; color: #475569; margin-bottom: 25px;">
+                                    Informamos que foi emitido um documento de teor jurídico referente ao assunto: <strong>${subject}</strong>.
+                                </p>
+                                
+                                <p style="font-size: 15px; line-height: 1.6; color: #475569; margin-bottom: 35px;">
+                                    Para tomar ciência do conteúdo integral, bem como dos prazos e medidas legais cabíveis, acesse o documento original assinado digitalmente através do botão abaixo:
+                                </p>
+                                
+                                <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                                    <tr>
+                                        <td align="center">
+                                            <a href="${pdfUrl}" target="_blank" style="background-color: #2563eb; color: #ffffff; padding: 16px 32px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);">
+                                                ACESSAR DOCUMENTO
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
+                                
+                                <p style="font-size: 13px; color: #64748b; margin-top: 30px; text-align: center;">
+                                    Link direto: <a href="${pdfUrl}" style="color: #2563eb;">${pdfUrl}</a>
+                                </p>
+                            </td>
+                        </tr>
+                        
+                        <!-- Footer -->
+                        <tr>
+                            <td style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+                                <p style="font-size: 11px; color: #94a3b8; margin: 0;">
+                                    Enviado via Plataforma Notify - Automação Jurídica.<br/>
+                                    Este é um aviso automático, por favor não responda a este e-mail.
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+        <img src="https://notify.ia.br/api/pixel?id=${notificationId}" width="1" height="1" style="display:none" alt="" />
       </body>
       </html>
     `,
-    // CUSTOM ARGS PARA WEBHOOK
     custom_args: {
         notificationId: notificationId || "unknown"
     }
