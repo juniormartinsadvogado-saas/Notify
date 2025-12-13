@@ -22,18 +22,22 @@ import { auth, db } from './services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
-// Filtros para visualização rápida nas sub-rotas (se necessário)
-const FILTER_CREATED = [NotificationStatus.DRAFT];
-const FILTER_DELIVERED = [NotificationStatus.SENT, NotificationStatus.DELIVERED, NotificationStatus.READ];
-const FILTER_PENDING = [NotificationStatus.PENDING_PAYMENT];
+// FILTROS ROBUSTOS (Aceitam Inglês e Português para evitar pastas vazias)
+const FILTER_CREATED = [NotificationStatus.DRAFT, 'Draft', 'Rascunho'];
+const FILTER_DELIVERED = [
+    NotificationStatus.SENT, 'SENT', 'Enviada', 
+    NotificationStatus.DELIVERED, 'DELIVERED', 'Entregue', 
+    NotificationStatus.READ, 'READ', 'Lida', 'OPENED', 'CLICKED'
+];
+const FILTER_PENDING = [NotificationStatus.PENDING_PAYMENT, 'PENDING_PAYMENT', 'Aguardando Pagamento', 'Pendente'];
 
-const FILTER_MEETING_SCHEDULED = ['scheduled'];
-const FILTER_MEETING_DONE = ['completed'];
-const FILTER_MEETING_CANCELED = ['canceled'];
+const FILTER_MEETING_SCHEDULED = ['scheduled', 'Agendada'];
+const FILTER_MEETING_DONE = ['completed', 'Realizada'];
+const FILTER_MEETING_CANCELED = ['canceled', 'Cancelada'];
 
-const FILTER_PAYMENT_CONFIRMED = ['Pago'];
-const FILTER_PAYMENT_PENDING = ['Pendente'];
-const FILTER_PAYMENT_REFUNDED = ['Reembolsado'];
+const FILTER_PAYMENT_CONFIRMED = ['Pago', 'PAID', 'CONFIRMED'];
+const FILTER_PAYMENT_PENDING = ['Pendente', 'PENDING'];
+const FILTER_PAYMENT_REFUNDED = ['Reembolsado', 'REFUNDED'];
 
 const App: React.FC = () => {
   const [showSplash, setShowSplash] = useState(true);
@@ -97,18 +101,16 @@ const App: React.FC = () => {
                 const profile = await ensureUserProfile(currentUser);
                 
                 // --- 1. MONITORAMENTO: NOTIFICAÇÕES ENVIADAS (Dono) ---
-                // Traz TUDO que eu criei. O Dashboard vai decidir se mostra na pasta "Notificações" (Pagas) ou "Pagamentos" (Pendentes).
                 const qNotifs = query(collection(db, 'notificacoes'), where("notificante_uid", "==", currentUser.uid));
                 unsubscribeNotifs = onSnapshot(qNotifs, (snapshot) => {
                     const loadedNotifs: NotificationItem[] = [];
                     snapshot.forEach(doc => {
                         const data = doc.data() as NotificationItem;
-                        // Ignora rascunhos puros (que não foram para o passo de pagamento/assinatura)
+                        // Ignora rascunhos puros
                         if (data.status !== NotificationStatus.DRAFT) {
                             loadedNotifs.push(data);
                         }
                     });
-                    // Ordena: Mais recentes primeiro
                     loadedNotifs.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
                     setNotifications(loadedNotifs);
                 });
@@ -122,7 +124,7 @@ const App: React.FC = () => {
                             const loadedReceived: NotificationItem[] = [];
                             snapshot.forEach(doc => {
                                 const data = doc.data() as NotificationItem;
-                                // Só mostra para o destinatário se já foi enviada (paga)
+                                // Só mostra para o destinatário se já foi enviada/paga
                                 if (['Enviada', 'Entregue', 'Lida', 'SENT', 'DELIVERED', 'READ'].includes(data.status)) {
                                     loadedReceived.push(data);
                                 }
@@ -212,7 +214,6 @@ const App: React.FC = () => {
           
           // 1. Alertas de Pagamento Confirmado
           transactions.slice(0, 5).forEach(t => {
-              // Só mostra alertas de pagamentos bem sucedidos ou falhas
               if (t.status === 'Pago' || t.status === 'Falha') {
                   alerts.push({
                       id: `tx-${t.id}`,
@@ -225,11 +226,11 @@ const App: React.FC = () => {
           });
 
           // 2. Alertas de Notificações Enviadas (Mudança de Status)
-          notifications.filter(n => n.status === NotificationStatus.SENT || n.status === 'Lida').slice(0, 3).forEach(n => {
+          notifications.filter(n => ['Enviada', 'Entregue', 'Lida', 'SENT', 'DELIVERED', 'READ'].includes(n.status)).slice(0, 3).forEach(n => {
                alerts.push({
-                  id: `sent-${n.id}-${n.status}`, // ID único composto
+                  id: `sent-${n.id}-${n.status}`, 
                   type: 'system',
-                  title: n.status === 'Lida' ? 'Notificação Lida' : 'Notificação Enviada',
+                  title: n.status === 'Lida' || n.status === 'READ' ? 'Notificação Lida' : 'Notificação Enviada',
                   desc: `Destino: ${n.recipientName}`,
                   date: n.updatedAt || n.createdAt
               });
@@ -275,8 +276,7 @@ const App: React.FC = () => {
   };
 
   const handleSaveNotification = async (notification: NotificationItem, meeting?: Meeting, transaction?: Transaction) => {
-    // Ação imediata pós-criação (Feedback Visual)
-    // O Listener Real-time vai confirmar isso em milissegundos depois
+    // Listener já cuida da atualização visual
     if (user && transaction) {
         await saveTransaction(user.uid, transaction);
         if (transaction.description.includes('Assinatura')) {
@@ -344,14 +344,20 @@ const App: React.FC = () => {
                   user={user} 
                />;
       case ViewState.CREATE_NOTIFICATION: return <NotificationCreator onSave={handleSaveNotification} user={user} onBack={() => setCurrentView(ViewState.DASHBOARD)} />;
-      case ViewState.RECEIVED_NOTIFICATIONS: return <ReceivedNotifications />;
+      case ViewState.RECEIVED_NOTIFICATIONS: 
+        // Passa as recebidas explicitamente
+        return <Monitoring notifications={receivedNotifications} defaultTab="received" />;
       
-      // MONITORING: Mostra todas as enviadas (O componente Monitoring filtra visualmente)
-      case ViewState.MONITORING: return <Monitoring notifications={notifications} searchQuery={searchQuery} />;
+      // MONITORING (NOTIFICAÇÕES ENVIADAS): Passa array completo filtrado previamente
+      case ViewState.MONITORING: 
+        return <Monitoring notifications={notifications} searchQuery={searchQuery} defaultTab="sent" />;
       
       // FILTROS ESPECÍFICOS (Vindos dos cards do Dashboard)
-      case ViewState.NOTIFICATIONS_DELIVERED: return <Monitoring notifications={notifications} filterStatus={FILTER_DELIVERED} searchQuery={searchQuery} />;
-      case ViewState.NOTIFICATIONS_PENDING: return <Monitoring notifications={notifications} filterStatus={FILTER_PENDING} searchQuery={searchQuery} />;
+      // Passamos a lista completa para o Monitoring e o filtro de status
+      case ViewState.NOTIFICATIONS_DELIVERED: 
+        return <Monitoring notifications={notifications} filterStatus={FILTER_DELIVERED} searchQuery={searchQuery} defaultTab="sent" />;
+      case ViewState.NOTIFICATIONS_PENDING: 
+        return <Monitoring notifications={notifications} filterStatus={FILTER_PENDING} searchQuery={searchQuery} defaultTab="sent" />;
       
       case ViewState.CONCILIATIONS_SCHEDULED: return <MeetingScheduler filterStatus={FILTER_MEETING_SCHEDULED} meetingsProp={meetings} />;
       case ViewState.CONCILIATIONS_DONE: return <MeetingScheduler filterStatus={FILTER_MEETING_DONE} meetingsProp={meetings} />;

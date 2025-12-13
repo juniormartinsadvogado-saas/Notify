@@ -41,24 +41,21 @@ const MiniClock = () => {
 
 const Dashboard: React.FC<DashboardProps> = ({ notifications, receivedCount, meetings, transactions, onNavigate, user }) => {
 
-  // LÓGICA RÍGIDA DE CONTAGEM E SEPARAÇÃO DE PASTAS
+  // LÓGICA RÍGIDA DE CONTAGEM E SEPARAÇÃO DE PASTAS (Igual App.tsx)
   
   // 1. Notificações Enviadas (Pagas e em transito ou entregues)
   // Regra: Só conta se estiver PAGA (Enviada, Entregue, Lida)
   const sentCount = notifications.filter(n => 
-      ['Enviada', 'Entregue', 'Lida', 'SENT', 'DELIVERED', 'READ'].includes(n.status)
+      ['Enviada', 'Entregue', 'Lida', 'SENT', 'DELIVERED', 'READ', 'OPENED', 'CLICKED'].includes(n.status)
   ).length;
 
   // 2. Recebidas (Já vem calculada do App.tsx via CPF)
   
   // 3. Conciliações (Apenas Confirmadas)
-  // Regra: 'scheduled' significa que foi paga e confirmada.
-  const meetScheduled = meetings.filter(m => m.status === 'scheduled').length;
+  const meetScheduled = meetings.filter(m => ['scheduled', 'Agendada'].includes(m.status)).length;
   
   // 4. Pagamentos Pendentes
-  // Regra: Conta notificações 'PENDING_PAYMENT' OU transações 'Pendente'.
-  // Para evitar duplicação visual, focamos na transação financeira pendente.
-  const payPending = transactions.filter(t => t.status === 'Pendente').length;
+  const payPending = transactions.filter(t => ['Pendente', 'PENDING', 'Aguardando'].includes(t.status)).length;
 
   const MainCard = ({ 
     title, 
