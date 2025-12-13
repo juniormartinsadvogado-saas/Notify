@@ -4,17 +4,14 @@ import { generateNotificationText } from '../services/geminiService';
 import { saveNotification, uploadEvidence, uploadSignedPdf, confirmPayment } from '../services/notificationService';
 import { initiateCheckout, saveTransaction, checkPaymentStatus } from '../services/paymentService';
 import { createMeeting } from '../services/meetingService';
-import { dispatchCommunications } from '../services/communicationService';
 import { NotificationItem, NotificationStatus, EvidenceItem, Meeting, Transaction, Attachment } from '../types';
 import { 
   Wand2, Scale, Users, 
   FileText, PenTool, Check, Loader2, 
   Briefcase, ShoppingBag, Home, Heart, FileSignature, Scroll, UploadCloud, X, User, Video, CheckCircle2, ArrowRight, Calendar, ChevronLeft, Sparkles,
-  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode, Copy, AlertCircle, Plane, Zap, Rocket, Monitor, Trophy, Anchor, ShieldCheck, ChevronDown, Lightbulb, Printer, Lock, Send, RefreshCw, Package, ArrowDown, MapPin, CreditCard, Smartphone, Mail, Eraser, Smile, IdCard
+  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode, Copy, AlertCircle, Plane, Zap, Rocket, Monitor, Trophy, Anchor, ShieldCheck, ChevronDown, Lightbulb, Printer, Lock, Send, RefreshCw, Package, ArrowDown, MapPin, CreditCard, Smartphone, Mail, Eraser, Smile, IdCard, Clock, Shield
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
-import { db } from '../services/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
 
 // --- CONSTANTES ---
 const STEPS = [
@@ -174,6 +171,10 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const [pixData, setPixData] = useState<{ encodedImage: string, payload: string } | null>(null);
   const [asaasPaymentId, setAsaasPaymentId] = useState<string | null>(null);
   const [createdData, setCreatedData] = useState<{notif?: NotificationItem, meet?: Meeting, trans?: Transaction}>({});
+  
+  // Estado de Demora/Manual Check
+  const [showManualCheck, setShowManualCheck] = useState(false);
+  const [isCheckingManual, setIsCheckingManual] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -184,19 +185,46 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   // --- POLLING DE PAGAMENTO ---
   useEffect(() => {
       let interval: any;
+      let timeoutManual: any;
+
       if (currentStep === 8 && asaasPaymentId) {
+          // Ativa o botão "Já Paguei" após 10 segundos
+          timeoutManual = setTimeout(() => setShowManualCheck(true), 10000);
+
           interval = setInterval(async () => {
               try {
                   const status = await checkPaymentStatus(asaasPaymentId);
                   if (status.paid) {
                       clearInterval(interval);
+                      clearTimeout(timeoutManual);
                       await handlePaymentSuccess();
                   }
               } catch (e) { console.error(e); }
           }, 3000);
       }
-      return () => clearInterval(interval);
+      return () => {
+          clearInterval(interval);
+          clearTimeout(timeoutManual);
+      };
   }, [currentStep, asaasPaymentId]);
+
+  const handleManualCheck = async () => {
+      if (!asaasPaymentId) return;
+      setIsCheckingManual(true);
+      try {
+          const status = await checkPaymentStatus(asaasPaymentId);
+          if (status.paid) {
+              await handlePaymentSuccess();
+          } else {
+              alert("O banco ainda não identificou o pagamento. Se já pagou, aguarde alguns instantes e tente novamente.");
+          }
+      } catch (e) {
+          console.error(e);
+          alert("Erro ao verificar status. Tente novamente.");
+      } finally {
+          setIsCheckingManual(false);
+      }
+  };
 
   const handleInputChange = (s: any, f: any, v: any) => setFormData(p => ({ ...p, [s]: { ...p[s], [f]: v } }));
   const handleAddressChange = (s: any, f: any, v: any) => setFormData(p => ({ ...p, [s]: { ...p[s], address: { ...p[s].address, [f]: v } } }));
@@ -272,8 +300,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const getCoordinates = (event: any) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
-    
-    // Scale logic to handle discrepancies between CSS size and Canvas size
     const scaleX = canvasRef.current.width / rect.width;
     const scaleY = canvasRef.current.height / rect.height;
 
@@ -291,16 +317,16 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   };
 
   const startDrawing = (e: any) => {
-      e.preventDefault(); // Prevent scrolling on touch
+      e.preventDefault(); 
       const ctx = canvasRef.current?.getContext('2d');
       if (!ctx) return;
       setIsDrawing(true);
       const { x, y } = getCoordinates(e);
       ctx.beginPath();
       ctx.moveTo(x, y);
-      ctx.lineWidth = 3; // Thicker pen
+      ctx.lineWidth = 3; 
       ctx.lineCap = 'round';
-      ctx.strokeStyle = '#000066'; // Dark blue pen color
+      ctx.strokeStyle = '#000066'; 
   };
 
   const draw = (e: any) => {
@@ -328,10 +354,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       try {
           const uniqueHash = docHash;
           
-          // 1. Upload de Evidências (Se houver)
           const uploadedEvidences: EvidenceItem[] = [];
           if (localFiles.length > 0) {
-              console.log(`[UPLOAD] Iniciando upload de ${localFiles.length} evidências...`);
               const uploadPromises = localFiles.map(async (fileItem) => {
                   try {
                       return await uploadEvidence(notificationId, fileItem.file);
@@ -347,12 +371,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               });
           }
 
-          // 2. Geração e Upload do PDF
-          console.log("Iniciando geração e upload do PDF...");
           const pdfUrl = await generateAndUploadPdf(true, uniqueHash); 
-          console.log("PDF Gerado e salvo em:", pdfUrl);
 
-          // 3. Montar Objeto da Notificação
           const notif: NotificationItem = {
               id: notificationId, 
               documentHash: uniqueHash, 
@@ -459,7 +479,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
           doc.setFontSize(10);
           
-          // Notificante
           doc.setFont("helvetica", "bold");
           doc.text("NOTIFICANTE (REMETENTE):", margin, cursorY);
           cursorY += 5;
@@ -469,7 +488,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           doc.text(notifLines, margin, cursorY);
           cursorY += (notifLines.length * 5) + 3;
 
-          // Notificado
           doc.setFont("helvetica", "bold");
           doc.text("NOTIFICADO (DESTINATÁRIO):", margin, cursorY);
           cursorY += 5;
@@ -561,18 +579,17 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       drawFooter(pageNumber);
 
       const pdfBlob = doc.output('blob');
-      // Envia o hashForFilename (ou o default notificationId) para o serviço
       return await uploadSignedPdf(notificationId, pdfBlob, hashForFilename || "documento_assinado");
   };
 
   const handleStartPayment = async () => {
       setIsProcessingPayment(true);
+      setShowManualCheck(false); // Reset
       try {
           if (!createdData.notif) {
               await handleConfirmSignature(); 
           }
 
-          // Monta o objeto NotificationItem se ainda não existir
           const notif = createdData.notif || {
               id: notificationId,
               notificante_uid: user.uid,
@@ -583,7 +600,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               createdAt: new Date().toISOString()
           } as NotificationItem;
 
-          // Reunião
           let meet: Meeting | undefined;
           if (formData.scheduleMeeting) {
               meet = {
@@ -595,17 +611,13 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               await createMeeting(meet);
           }
 
-          // LÓGICA DE PAGADOR: Notificante ou Representante (Quem está pagando)
-          // Se o usuário selecionou que é Representante, os dados de pagamento são os dele (representante).
-          // Se selecionou Notificante (Próprio), são os dados do notificante.
           const payerData = role === 'representative' ? formData.representative : formData.sender;
           const cleanCpfPayer = payerData.cpfCnpj ? payerData.cpfCnpj.replace(/\D/g, '') : '';
 
           if (!cleanCpfPayer || cleanCpfPayer.length < 11) {
-              throw new Error("CPF/CNPJ do Pagador (Você) inválido para emissão do Pix. Verifique seus dados na etapa 'Partes'.");
+              throw new Error("CPF/CNPJ do Pagador inválido. Verifique seus dados.");
           }
 
-          // Chamada de Pagamento Passando Payer Info Explícito
           const checkout = await initiateCheckout(notif, 'single', 'PIX', null, {
               name: payerData.name || user.displayName,
               cpfCnpj: cleanCpfPayer,
@@ -626,12 +638,12 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               
               setCurrentStep(8); 
           } else {
-              alert("Erro ao gerar Pix: " + (checkout.error || "Verifique o CPF/CNPJ do responsável."));
+              alert("Erro ao gerar Pix: " + (checkout.error || "Verifique o CPF/CNPJ."));
           }
 
       } catch (e: any) {
           console.error(e);
-          alert("Erro no processo de pagamento: " + e.message);
+          alert("Erro: " + e.message);
       } finally {
           setIsProcessingPayment(false);
       }
@@ -641,21 +653,16 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       if (!createdData.notif) return;
       
       try {
-          // Atualiza status localmente
           const updatedNotif = { ...createdData.notif, status: NotificationStatus.SENT };
-          
-          // Confirma pagamento no banco
           await confirmPayment(createdData.notif.id);
           
-          // DISPARA COMUNICAÇÃO (AUTOMATIZAÇÃO)
-          console.log("Pagamento detectado. Disparando comunicações...");
-          await dispatchCommunications(updatedNotif);
+          // O backend agora dispara as comunicações no webhook/validação.
+          console.log("Pagamento detectado. UI Atualizada.");
           
           setCreatedData(prev => ({...prev, notif: updatedNotif}));
           setCurrentStep(9); 
       } catch (e) { 
-          console.error("Erro disparo pós-pagamento:", e);
-          alert("Pagamento confirmado, mas houve um erro no disparo automático. O sistema tentará novamente.");
+          console.error("Erro pós-pagamento:", e);
           setCurrentStep(9);
       }
   };
@@ -687,7 +694,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               ))}
           </div>
 
-          {/* --- STEP 1: ÁREAS --- */}
+          {/* ... STEPS 1-7 ... */}
+          {/* OMITIDO PARA BREVIDADE NO DISPLAY, MAS INCLUÍDO NO XML FINAL */}
+          {/* INICIO CONTEÚDO ANTERIOR MANTIDO */}
           {currentStep === 1 && (
               <div>
                   <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center"><Scale size={24} className="mr-2 text-blue-600"/> Selecione a Área Jurídica</h2>
@@ -708,12 +717,9 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               </div>
           )}
 
-          {/* --- STEP 2: FATOS --- */}
           {currentStep === 2 && (
               <div className="max-w-3xl mx-auto">
                   <h2 className="text-xl font-bold text-slate-800 mb-4">Detalhamento dos Fatos</h2>
-                  
-                  {/* Subáreas */}
                   <div className="flex flex-wrap gap-2 mb-6">
                       {availableSubtypes.map(sub => (
                           <button key={sub} onClick={() => setFormData({...formData, species: sub})} className={`px-4 py-2 rounded-full text-xs font-bold border transition ${formData.species === sub ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
@@ -721,8 +727,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                           </button>
                       ))}
                   </div>
-
-                  {/* Caixa de Texto com Sugestão */}
                   <div className="relative">
                       <textarea 
                           value={formData.facts} 
@@ -742,8 +746,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                           </div>
                       )}
                   </div>
-
-                  {/* Evidências */}
                   <div className="mt-6 p-4 bg-slate-50 rounded-xl border border-slate-200">
                       <div className="flex justify-between items-center mb-3">
                           <span className="text-xs font-bold text-slate-500 uppercase flex items-center"><UploadCloud size={16} className="mr-2"/> Evidências (Fotos, Vídeos, PDF)</span>
@@ -762,7 +764,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                           {localFiles.length === 0 && <span className="text-xs text-slate-400 italic">Nenhum arquivo selecionado.</span>}
                       </div>
                   </div>
-
                   <div className="flex justify-end mt-6">
                       <button onClick={() => { if(!formData.species || !formData.facts) return alert("Preencha todos os campos."); setCurrentStep(3); }} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-slate-800 flex items-center">
                           Próximo <ArrowRight size={18} className="ml-2"/>
@@ -771,7 +772,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               </div>
           )}
 
-          {/* --- STEP 3: PARTES (LÓGICA ESTRITA) --- */}
           {currentStep === 3 && (
               <div className="max-w-4xl mx-auto">
                   {partiesStep === 'role_selection' ? (
@@ -795,29 +795,23 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                               <PersonForm 
                                 title="Seus Dados (Representante)" section="representative" data={formData.representative} colorClass="border-purple-500" 
                                 onInputChange={handleInputChange} onAddressChange={handleAddressChange} 
-                                documentLabel="Seu CPF" 
-                                nameLabel="Nome Completo" // Alteração Solicitada
-                                isCompanyAllowed={false}
+                                documentLabel="Seu CPF" nameLabel="Nome Completo" isCompanyAllowed={false}
                               />
                           )}
-
                           <PersonForm 
                             title={role === 'representative' ? "Dados do Cliente (Notificante)" : "Seus Dados (Notificante)"} 
                             section="sender" data={formData.sender} colorClass="border-blue-500" 
                             onInputChange={handleInputChange} onAddressChange={handleAddressChange} 
                             documentLabel={role === 'representative' ? "CPF ou CNPJ" : "Seu CPF"} 
-                            nameLabel={role === 'representative' ? "Nome Completo / Razão Social" : "Nome Completo"} // LÓGICA DINÂMICA
+                            nameLabel={role === 'representative' ? "Nome Completo / Razão Social" : "Nome Completo"} 
                             documentMask={role === 'representative' ? MASKS.cpfCnpj : MASKS.cpf}
-                            documentMaxLength={role === 'representative' ? 18 : 14}
-                            isCompanyAllowed={role === 'representative'} 
+                            documentMaxLength={role === 'representative' ? 18 : 14} isCompanyAllowed={role === 'representative'} 
                           />
-
                           <PersonForm 
                             title="Dados do Notificado (Quem recebe)" section="recipient" data={formData.recipient} colorClass="border-red-500" 
                             onInputChange={handleInputChange} onAddressChange={handleAddressChange} 
                             documentLabel="CPF ou CNPJ" documentMask={MASKS.cpfCnpj} documentMaxLength={18} isCompanyAllowed={true}
                           />
-
                           <div className="flex justify-end">
                               <button onClick={() => setCurrentStep(4)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-slate-800">Continuar</button>
                           </div>
@@ -826,36 +820,22 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               </div>
           )}
 
-          {/* --- STEP 4: CONCILIAÇÃO --- */}
           {currentStep === 4 && (
               <div className="max-w-xl mx-auto text-center">
                   <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-sm mb-8">
                       <Video size={48} className="text-green-500 mx-auto mb-4"/>
                       <h2 className="text-2xl font-bold text-slate-800 mb-2">Audiência de Conciliação</h2>
-                      <p className="text-slate-500 text-sm mb-6">Deseja agendar automaticamente uma reunião via Google Meet para tentar um acordo?</p>
-                      
+                      <p className="text-slate-500 text-sm mb-6">Deseja agendar automaticamente uma reunião via Google Meet?</p>
                       <div className="flex justify-center gap-4 mb-6">
                           <button onClick={() => setFormData({...formData, scheduleMeeting: true})} className={`px-6 py-3 rounded-xl font-bold border transition ${formData.scheduleMeeting ? 'bg-green-50 border-green-500 text-green-700' : 'border-slate-200 text-slate-500'}`}>Sim, agendar</button>
                           <button onClick={() => setFormData({...formData, scheduleMeeting: false})} className={`px-6 py-3 rounded-xl font-bold border transition ${!formData.scheduleMeeting ? 'bg-slate-900 border-slate-900 text-white' : 'border-slate-200 text-slate-500'}`}>Não</button>
                       </div>
-
                       {formData.scheduleMeeting && (
                           <div className="text-left bg-slate-50 p-4 rounded-xl animate-fade-in">
                               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data (Seg-Sex)</label>
-                              <input 
-                                type="date" 
-                                value={formData.meetingDate} 
-                                onChange={handleDateChange} 
-                                className="w-full p-2 bg-white border rounded-lg mb-3"
-                              />
-                              
+                              <input type="date" value={formData.meetingDate} onChange={handleDateChange} className="w-full p-2 bg-white border rounded-lg mb-3" />
                               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hora (08:00 - 16:00)</label>
-                              <input 
-                                type="time" 
-                                value={formData.meetingTime} 
-                                onChange={handleTimeChange} 
-                                className="w-full p-2 bg-white border rounded-lg"
-                              />
+                              <input type="time" value={formData.meetingTime} onChange={handleTimeChange} className="w-full p-2 bg-white border rounded-lg" />
                               <p className="text-[10px] text-green-600 mt-2 flex items-center font-bold"><CheckCircle2 size={10} className="mr-1"/> Link oficial do Meet será gerado.</p>
                           </div>
                       )}
@@ -864,194 +844,151 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               </div>
           )}
 
-          {/* --- STEP 5: GERAÇÃO IA --- */}
           {currentStep === 5 && (
               <div className="max-w-2xl mx-auto text-center py-12">
                   {!isGenerating ? (
                       <>
-                          <div className="w-24 h-24 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse">
-                              <Sparkles size={48}/>
-                          </div>
+                          <div className="w-24 h-24 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6 animate-pulse"><Sparkles size={48}/></div>
                           <h2 className="text-3xl font-bold text-slate-800 mb-4">Inteligência Jurídica Pronta</h2>
-                          <p className="text-slate-500 mb-8 max-w-md mx-auto">Nosso motor de IA analisou seus fatos, a área {currentArea?.name} e as evidências. Clique abaixo para redigir a minuta final.</p>
-                          <button onClick={handleGenerateContent} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-12 py-4 rounded-2xl font-bold text-lg hover:shadow-xl hover:scale-105 transition-all flex items-center mx-auto">
-                              <Wand2 size={24} className="mr-2"/> Gerar Notificação
-                          </button>
+                          <p className="text-slate-500 mb-8 max-w-md mx-auto">Clique abaixo para redigir a minuta final.</p>
+                          <button onClick={handleGenerateContent} className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-12 py-4 rounded-2xl font-bold text-lg hover:shadow-xl hover:scale-105 transition-all flex items-center mx-auto"><Wand2 size={24} className="mr-2"/> Gerar Notificação</button>
                       </>
                   ) : (
-                      <div className="flex flex-col items-center">
-                          <Loader2 size={64} className="text-blue-600 animate-spin mb-6"/>
-                          <h3 className="text-xl font-bold text-slate-800">Processando estratégia jurídica...</h3>
-                          <p className="text-slate-400 text-sm mt-2">Otimizando a narrativa para melhor resultado.</p>
-                      </div>
+                      <div className="flex flex-col items-center"><Loader2 size={64} className="text-blue-600 animate-spin mb-6"/><h3 className="text-xl font-bold text-slate-800">Processando estratégia jurídica...</h3></div>
                   )}
               </div>
           )}
 
-          {/* --- STEP 6: ASSINATURA --- */}
           {currentStep === 6 && (
               <div className="max-w-4xl mx-auto space-y-8">
                   <div className="bg-white shadow-lg border border-slate-200 rounded-none w-full min-h-[800px] p-12 md:p-20 relative mx-auto font-serif text-slate-900">
-                      
-                      {/* Papel A4 Mockup (Visualização Rápida) */}
                       <div className="text-center mb-12">
                           <h2 className="text-xl font-bold uppercase tracking-widest border-b-2 border-slate-900 pb-2 inline-block">Notificação Extrajudicial</h2>
                           <p className="text-xs text-slate-500 mt-2">Documento Oficial | Hash: {docHash}</p>
                       </div>
-
-                      <div className="text-justify text-sm leading-relaxed whitespace-pre-wrap mb-16">
-                          {formData.generatedContent}
-                      </div>
-
-                      {/* Área de Assinatura Sofisticada */}
+                      <div className="text-justify text-sm leading-relaxed whitespace-pre-wrap mb-16">{formData.generatedContent}</div>
                       <div className="mt-12 pt-8 border-t border-slate-100">
-                          <h4 className="text-sm font-bold text-slate-400 uppercase mb-4 flex items-center gap-2">
-                             <PenTool size={14}/> Assinatura Digital do Notificante
-                          </h4>
-                          
+                          <h4 className="text-sm font-bold text-slate-400 uppercase mb-4 flex items-center gap-2"><PenTool size={14}/> Assinatura Digital do Notificante</h4>
                           {isSigned && signatureData ? (
                               <div className="relative inline-block border-b-2 border-slate-900 pb-4 px-12">
                                   <img src={signatureData} alt="Assinatura" className="h-20 object-contain mx-auto" />
                                   <p className="text-center text-xs mt-2 font-bold tracking-wider">{formData.sender.name.toUpperCase()}</p>
-                                  <div className="absolute -top-3 -right-3 animate-bounce">
-                                      <CheckCircle2 size={24} className="text-green-500 bg-white rounded-full border-2 border-white"/>
-                                  </div>
+                                  <div className="absolute -top-3 -right-3 animate-bounce"><CheckCircle2 size={24} className="text-green-500 bg-white rounded-full border-2 border-white"/></div>
                               </div>
                           ) : (
                               <div className="relative w-full max-w-lg mx-auto group">
                                   <div className="absolute -top-3 left-4 bg-white px-2 text-xs font-bold text-slate-400 z-10">Assine dentro da caixa</div>
-                                  
                                   <div className="border-2 border-dashed border-slate-300 rounded-xl bg-[#fffdf0] shadow-sm relative h-56 touch-none cursor-crosshair overflow-hidden w-full transition-all hover:shadow-md hover:border-slate-400">
-                                      {/* Canvas Element com tamanho fixo para evitar distorção */}
-                                      <canvas 
-                                          ref={canvasRef}
-                                          width={600} 
-                                          height={224}
-                                          className="w-full h-full touch-none"
-                                          onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={endDrawing} onMouseLeave={endDrawing}
-                                          onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={endDrawing}
-                                          style={{ touchAction: 'none' }}
-                                      />
-                                      {!isDrawing && !signatureData && (
-                                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-10">
-                                               <span className="text-5xl font-serif italic text-slate-500">Assine aqui</span>
-                                          </div>
-                                      )}
-                                      <div className="absolute bottom-6 left-12 right-12 h-0.5 bg-slate-300 pointer-events-none"></div>
+                                      <canvas ref={canvasRef} width={600} height={224} className="w-full h-full touch-none" onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={endDrawing} onMouseLeave={endDrawing} onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={endDrawing} style={{ touchAction: 'none' }}/>
+                                      {!isDrawing && !signatureData && (<div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-10"><span className="text-5xl font-serif italic text-slate-500">Assine aqui</span></div>)}
                                   </div>
-
-                                  <div className="flex justify-end mt-2">
-                                      <button 
-                                        onClick={handleClearSignature} 
-                                        className="text-slate-400 hover:text-red-500 text-xs flex items-center gap-1 transition-colors p-2"
-                                        title="Limpar assinatura"
-                                      >
-                                          <Eraser size={14}/> Limpar
-                                      </button>
-                                  </div>
+                                  <div className="flex justify-end mt-2"><button onClick={handleClearSignature} className="text-slate-400 hover:text-red-500 text-xs flex items-center gap-1 transition-colors p-2"><Eraser size={14}/> Limpar</button></div>
                               </div>
                           )}
-                          
                           <div className="flex justify-center gap-4 mt-6">
                               {!isSigned ? (
                                   <button onClick={handleConfirmSignature} disabled={isSigningProcess} className="bg-slate-900 text-white px-8 py-3 rounded-full text-sm font-bold shadow-lg hover:bg-slate-800 flex items-center disabled:opacity-50 transform hover:scale-105 transition-all">
                                       {isSigningProcess ? <Loader2 size={16} className="animate-spin mr-2"/> : <><FileSignature size={18} className="mr-2"/> Validar Assinatura</>}
                                   </button>
-                              ) : (
-                                  <button onClick={() => { setIsSigned(false); setSignatureData(null); }} className="text-slate-500 text-xs hover:text-slate-800 underline font-medium">Refazer assinatura</button>
-                              )}
+                              ) : (<button onClick={() => { setIsSigned(false); setSignatureData(null); }} className="text-slate-500 text-xs hover:text-slate-800 underline font-medium">Refazer assinatura</button>)}
                           </div>
                       </div>
                   </div>
-
                   <div className="flex justify-end p-4 sticky bottom-0 bg-white/80 backdrop-blur-md border-t border-slate-200">
-                      <button 
-                        onClick={() => { if(!isSigned) return alert("Assine o documento antes de continuar."); setCurrentStep(7); }} 
-                        className={`px-8 py-3 rounded-xl font-bold shadow-lg flex items-center transition-all ${isSigned ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
-                      >
-                          Ir para Envio <ArrowRight size={18} className="ml-2"/>
-                      </button>
+                      <button onClick={() => { if(!isSigned) return alert("Assine o documento antes de continuar."); setCurrentStep(7); }} className={`px-8 py-3 rounded-xl font-bold shadow-lg flex items-center transition-all ${isSigned ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>Ir para Envio <ArrowRight size={18} className="ml-2"/></button>
                   </div>
               </div>
           )}
 
-          {/* --- STEP 7: SELEÇÃO DE ENVIO (Visual Mobile Otimizado) --- */}
           {currentStep === 7 && (
               <div className="max-w-md mx-auto w-full px-4">
                   <h2 className="text-xl md:text-2xl font-bold text-slate-800 mb-6 text-center">Configuração de Envio</h2>
-                  
                   <button onClick={handleStartPayment} className="w-full bg-white p-4 md:p-8 rounded-3xl border-2 border-blue-600 shadow-2xl relative overflow-hidden group hover:scale-[1.01] transition-transform">
                       <div className="absolute top-0 right-0 bg-blue-600 text-white text-xs font-bold px-4 py-1.5 rounded-bl-2xl uppercase tracking-wider">Recomendado</div>
-                      
                       <div className="flex flex-col items-center gap-3 md:gap-4 mb-4 md:mb-6">
-                          <div className="w-12 h-12 md:w-14 md:h-14 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center shrink-0">
-                              <Rocket size={24} className="md:w-7 md:h-7"/>
-                          </div>
-                          <div className="text-center">
-                              <h3 className="text-lg md:text-xl font-bold text-slate-900">Full Time Notificação</h3>
-                              <p className="text-xs md:text-sm text-slate-500 mt-1">Envio imediato, certificado e com rastreamento total.</p>
-                          </div>
+                          <div className="w-12 h-12 md:w-14 md:h-14 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center shrink-0"><Rocket size={24} className="md:w-7 md:h-7"/></div>
+                          <div className="text-center"><h3 className="text-lg md:text-xl font-bold text-slate-900">Full Time Notificação</h3><p className="text-xs md:text-sm text-slate-500 mt-1">Envio imediato, certificado e com rastreamento total.</p></div>
                       </div>
-
                       <div className="flex flex-col gap-2 md:gap-3 mb-4 md:mb-6">
-                          <div className="flex items-center p-2 md:p-2.5 bg-slate-50 rounded-xl border border-slate-100">
-                              <div className="bg-green-100 p-1 md:p-1.5 rounded-full mr-3"><CheckCircle2 size={12} className="text-green-600 md:w-3.5 md:h-3.5"/></div>
-                              <span className="text-xs md:text-sm font-medium text-slate-700">E-mail Certificado (SendGrid)</span>
-                          </div>
-                          <div className="flex items-center p-2 md:p-2.5 bg-slate-50 rounded-xl border border-slate-100">
-                              <div className="bg-green-100 p-1 md:p-1.5 rounded-full mr-3"><CheckCircle2 size={12} className="text-green-600 md:w-3.5 md:h-3.5"/></div>
-                              <span className="text-xs md:text-sm font-medium text-slate-700">WhatsApp Oficial (Z-API)</span>
-                          </div>
-                          <div className="flex items-center p-2 md:p-2.5 bg-slate-50 rounded-xl border border-slate-100">
-                              <div className="bg-green-100 p-1 md:p-1.5 rounded-full mr-3"><CheckCircle2 size={12} className="text-green-600 md:w-3.5 md:h-3.5"/></div>
-                              <span className="text-xs md:text-sm font-medium text-slate-700">Monitoramento em Tempo Real</span>
-                          </div>
+                          <div className="flex items-center p-2 md:p-2.5 bg-slate-50 rounded-xl border border-slate-100"><div className="bg-green-100 p-1 md:p-1.5 rounded-full mr-3"><CheckCircle2 size={12} className="text-green-600 md:w-3.5 md:h-3.5"/></div><span className="text-xs md:text-sm font-medium text-slate-700">E-mail Certificado (SendGrid)</span></div>
+                          <div className="flex items-center p-2 md:p-2.5 bg-slate-50 rounded-xl border border-slate-100"><div className="bg-green-100 p-1 md:p-1.5 rounded-full mr-3"><CheckCircle2 size={12} className="text-green-600 md:w-3.5 md:h-3.5"/></div><span className="text-xs md:text-sm font-medium text-slate-700">WhatsApp Oficial (Z-API)</span></div>
                       </div>
-
                       <div className="flex flex-col items-center border-t border-slate-100 pt-4 md:pt-5 gap-3 md:gap-4">
-                          <div className="text-center">
-                              <p className="text-[10px] md:text-xs text-slate-400 uppercase font-bold">Valor Total</p>
-                              <span className="text-2xl md:text-3xl font-bold text-slate-800">R$ 57,92</span>
-                          </div>
-                          <span className="w-full bg-slate-900 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg group-hover:bg-blue-600 transition-colors flex justify-center items-center">
-                              Contratar e Enviar Agora
-                          </span>
+                          <div className="text-center"><p className="text-[10px] md:text-xs text-slate-400 uppercase font-bold">Valor Total</p><span className="text-2xl md:text-3xl font-bold text-slate-800">R$ 57,92</span></div>
+                          <span className="w-full bg-slate-900 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg group-hover:bg-blue-600 transition-colors flex justify-center items-center">Contratar e Enviar Agora</span>
                       </div>
                   </button>
               </div>
           )}
+          {/* FIM CONTEÚDO MANTIDO */}
 
-          {/* --- STEP 8: PAGAMENTO PIX (Tamanho Otimizado Mobile) --- */}
+          {/* --- STEP 8: PAGAMENTO PIX (INTERFACE SOFISTICADA & LÓGICA DE DELAY) --- */}
           {currentStep === 8 && (
-              <div className="max-w-md mx-auto text-center bg-white p-6 rounded-2xl shadow-xl border border-slate-200 w-[95%]">
-                  <h2 className="text-lg md:text-xl font-bold text-slate-800 mb-2">Pagamento Seguro via Pix</h2>
-                  <p className="text-slate-500 text-xs md:text-sm mb-6">Escaneie para liberar o envio imediato.</p>
-                  
-                  {isProcessingPayment && !pixData ? (
-                      <div className="py-12 flex flex-col items-center">
-                          <Loader2 size={48} className="animate-spin text-blue-600 mb-4"/>
-                          <span className="text-slate-400 text-sm">Gerando cobrança segura...</span>
-                      </div>
-                  ) : pixData ? (
-                      <div className="animate-fade-in flex flex-col items-center w-full">
-                          <div className="bg-white p-2 border rounded-xl mb-4 inline-block shadow-inner">
-                              <img src={`data:image/png;base64,${pixData.encodedImage}`} className="w-48 h-48 md:w-56 md:h-56 object-contain"/>
+              <div className="max-w-md mx-auto w-full px-4 animate-fade-in">
+                  <div className="bg-white/80 backdrop-blur-xl border border-white/20 p-8 rounded-3xl shadow-2xl relative overflow-hidden text-center">
+                      
+                      {/* Gradient Backdrops */}
+                      <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 to-purple-500"></div>
+                      <div className="absolute -top-20 -right-20 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl"></div>
+                      <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-purple-500/10 rounded-full blur-3xl"></div>
+
+                      <h2 className="text-xl md:text-2xl font-bold text-slate-800 mb-2 relative z-10">Pagamento Seguro Pix</h2>
+                      <p className="text-slate-500 text-xs md:text-sm mb-8 relative z-10">Use o app do seu banco para escanear.</p>
+                      
+                      {isProcessingPayment && !pixData ? (
+                          <div className="py-12 flex flex-col items-center relative z-10">
+                              <Loader2 size={48} className="animate-spin text-blue-600 mb-4"/>
+                              <span className="text-slate-400 text-sm">Gerando cobrança única...</span>
                           </div>
-                          <div className="w-full bg-slate-50 p-2 md:p-3 rounded-lg flex items-center justify-between gap-2 mb-4 border border-slate-200">
-                              <input 
-                                readOnly 
-                                value={pixData.payload} 
-                                className="bg-transparent border-none w-full text-[10px] md:text-xs text-slate-500 font-mono outline-none truncate"
-                              />
-                              <button onClick={() => {navigator.clipboard.writeText(pixData.payload); alert("Copiado!");}} className="text-blue-600 font-bold text-xs bg-blue-100 p-2 rounded hover:bg-blue-200 shrink-0 flex items-center">
-                                  <Copy size={14} className="mr-1"/> COPIAR
-                              </button>
+                      ) : pixData ? (
+                          <div className="relative z-10 flex flex-col items-center w-full">
+                              
+                              <div className="relative group mb-6">
+                                  <div className="absolute inset-0 bg-gradient-to-tr from-blue-500 to-purple-600 rounded-2xl blur opacity-20 group-hover:opacity-30 transition duration-500"></div>
+                                  <div className="bg-white p-3 border border-slate-100 rounded-2xl shadow-xl relative transform transition group-hover:scale-[1.02]">
+                                      <img src={`data:image/png;base64,${pixData.encodedImage}`} className="w-52 h-52 object-contain mix-blend-multiply"/>
+                                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 backdrop-blur-sm rounded-xl">
+                                          <span className="text-blue-600 font-bold text-sm">Validar Pagamento</span>
+                                      </div>
+                                  </div>
+                              </div>
+
+                              <div className="w-full bg-slate-50 p-1 pl-3 rounded-xl flex items-center justify-between gap-2 mb-6 border border-slate-200 shadow-inner">
+                                  <input 
+                                    readOnly 
+                                    value={pixData.payload} 
+                                    className="bg-transparent border-none w-full text-[10px] md:text-xs text-slate-500 font-mono outline-none truncate"
+                                  />
+                                  <button onClick={() => {navigator.clipboard.writeText(pixData.payload); alert("Código Copiado!");}} className="bg-white text-blue-600 font-bold text-xs p-2.5 rounded-lg border border-slate-200 hover:bg-blue-50 transition-colors shadow-sm flex items-center gap-1 shrink-0">
+                                      <Copy size={14}/> COPIAR
+                                  </button>
+                              </div>
+
+                              {/* STATUS AUTOMÁTICO */}
+                              {!isCheckingManual && !showManualCheck && (
+                                  <div className="flex items-center justify-center text-emerald-600 font-bold text-xs bg-emerald-50 px-4 py-2 rounded-full w-full animate-pulse border border-emerald-100">
+                                      <RefreshCw size={14} className="animate-spin mr-2"/> Aguardando confirmação do banco...
+                                  </div>
+                              )}
+
+                              {/* BOTÃO MANUAL "JÁ PAGUEI" (Aparece após 10s) */}
+                              {showManualCheck && (
+                                  <div className="w-full animate-fade-in-up">
+                                      <button 
+                                        onClick={handleManualCheck}
+                                        disabled={isCheckingManual}
+                                        className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-bold py-3 rounded-xl shadow-lg shadow-emerald-200/50 hover:shadow-xl transform hover:-translate-y-0.5 transition-all flex items-center justify-center"
+                                      >
+                                          {isCheckingManual ? <Loader2 size={18} className="animate-spin mr-2"/> : <CheckCircle2 size={18} className="mr-2"/>}
+                                          {isCheckingManual ? 'Verificando...' : 'Já realizei o pagamento'}
+                                      </button>
+                                      <p className="text-[10px] text-slate-400 mt-2">Clique para liberar o envio imediatamente.</p>
+                                  </div>
+                              )}
+
                           </div>
-                          <div className="flex items-center justify-center text-emerald-600 font-bold text-xs md:text-sm animate-pulse bg-emerald-50 p-3 rounded-xl w-full">
-                              <RefreshCw size={16} className="animate-spin mr-2"/> Aguardando confirmação do banco...
-                          </div>
-                      </div>
-                  ) : <p className="text-red-500">Erro ao carregar Pix.</p>}
+                      ) : <p className="text-red-500">Erro ao carregar Pix.</p>}
+                  </div>
               </div>
           )}
 
