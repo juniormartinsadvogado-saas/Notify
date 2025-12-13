@@ -65,6 +65,9 @@ export default async function handler(req, res) {
       if (!db) return res.status(500).json({ error: 'Database error' });
 
       const payment = event.payment;
+      
+      // --- LÓGICA DE NOTIFICAÇÃO AVULSA ---
+      // Tenta obter o ID da notificação pelo externalReference ou Descrição
       let notificationId = payment.externalReference; 
       
       if (!notificationId && payment.description && payment.description.includes('Ref: ')) {
@@ -74,8 +77,8 @@ export default async function handler(req, res) {
       }
 
       if (!notificationId) {
-        console.error('[WEBHOOK] ID da notificação não encontrado.');
-        return res.status(200).json({ error: 'No ID found' });
+        console.error('[WEBHOOK] ID de referência da notificação não encontrado.');
+        return res.status(200).json({ error: 'No Notification ID found' });
       }
 
       const docRef = db.collection('notificacoes').doc(notificationId);
@@ -100,15 +103,13 @@ export default async function handler(req, res) {
               whatsappStatus: 'SENT'
           });
 
-          // 2. DISPAROS COM RASTREAMENTO
+          // 2. DISPAROS COM RASTREAMENTO AUTOMÁTICO
           const dispatchPromises = [];
 
           const officialSubject = `NOTIFICAÇÃO EXTRAJUDICIAL: ${notification.subject}`;
           const whatsappText = `*NOTIFICAÇÃO EXTRAJUDICIAL*\nRef: ${notification.subject}\n\nPrezado(a) ${notification.recipientName},\n\nEsta mensagem serve como comunicado oficial registrado na plataforma Notify.\n\nVocê possui um documento jurídico importante aguardando leitura. O teor completo, assinado digitalmente, encontra-se disponível no link abaixo:\n\n📄 *Acessar Documento:* ${notification.pdf_url}\n\nA ausência de manifestação poderá ser interpretada como silêncio para fins legais.\n\nAtenciosamente,\n*${notification.notificante_dados_expostos.nome}*\nCPF: ${notification.notificante_cpf}`;
 
-          const emailHtml = `... (HTML do email mantido) ...`; // Mantido o mesmo HTML por brevidade no snippet, mas incluindo a lógica abaixo
-
-          // 1. EMAIL (SendGrid) - Passando custom_args
+          // A. EMAIL (SendGrid)
           const sgKey = process.env.SENDGRID_EMAIL_API_KEY || process.env.ENDGRID_EMAIL_API_KEY;
           if (notification.recipientEmail && sgKey) {
               const emailTask = async () => {
@@ -121,8 +122,7 @@ export default async function handler(req, res) {
                           html: `
                             <!DOCTYPE html>
                             <html>
-                            <head><meta charset="utf-8"></head>
-                            <body style="margin: 0; padding: 0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f4f4f5; color: #333;">
+                            <body style="margin: 0; padding: 0; font-family: Helvetica, Arial, sans-serif; background-color: #f4f4f5; color: #333;">
                                 <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 40px; border-radius: 8px; margin-top: 20px; border: 1px solid #e2e8f0;">
                                     <h2 style="text-align:center">NOTIFICAÇÃO EXTRAJUDICIAL</h2>
                                     <p>Olá, <strong>${notification.recipientName}</strong>.</p>
@@ -138,7 +138,7 @@ export default async function handler(req, res) {
                             </html>
                           `,
                           custom_args: {
-                              notificationId: notificationId // RASTREAMENTO SENDGRID
+                              notificationId: notificationId
                           }
                       });
                       console.log('[WEBHOOK] Email enviado com sucesso.');
@@ -149,7 +149,7 @@ export default async function handler(req, res) {
               dispatchPromises.push(emailTask());
           }
 
-          // 2. WHATSAPP (Z-API) - Capturando MessageID
+          // B. WHATSAPP (Z-API)
           const zInstance = process.env.API_INSTANCE_ID || process.env.ZAPI_INSTANCE_ID;
           const zToken = process.env.API_INSTANCE_TOKEN || process.env.ZAPI_INSTANCE_TOKEN;
           
@@ -162,7 +162,6 @@ export default async function handler(req, res) {
                       const ZAPI_URL = `https://api.z-api.io/instances/${zInstance}/token/${zToken}`;
                       let zaapId = null;
 
-                      // Tenta enviar PDF
                       if (notification.pdf_url) {
                           const resPdf = await fetch(`${ZAPI_URL}/send-document-pdf`, {
                               method: 'POST',
@@ -175,12 +174,9 @@ export default async function handler(req, res) {
                               })
                           });
                           const dataPdf = await resPdf.json();
-                          if (resPdf.ok) {
-                              zaapId = dataPdf.messageId || dataPdf.id;
-                          }
+                          if (resPdf.ok) zaapId = dataPdf.messageId || dataPdf.id;
                       }
 
-                      // Fallback Texto
                       if (!zaapId) {
                           const resText = await fetch(`${ZAPI_URL}/send-text`, {
                               method: 'POST',
@@ -194,9 +190,7 @@ export default async function handler(req, res) {
                           zaapId = dataText.messageId || dataText.id;
                       }
 
-                      // ATUALIZA FIRESTORE COM O ID DA Z-API PARA RASTREIO
                       if (zaapId) {
-                          console.log(`[WEBHOOK] WhatsApp enviado. ID Rastreio: ${zaapId}`);
                           await docRef.update({ whatsappMessageId: zaapId });
                       }
 

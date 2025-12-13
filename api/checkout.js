@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { mode, userEmail, metadata, payerInfo, billingType, cardData } = req.body;
+  const { userEmail, metadata, payerInfo, billingType, cardData } = req.body;
   const apiKey = process.env.ASAAS_PAGAMENTO_API_KEY;
 
   if (!apiKey) {
@@ -26,13 +26,11 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Erro de configuração no servidor de pagamentos." });
   }
 
-  // Definição de Valores
-  const value = mode === 'subscription' ? 259.97 : 57.92;
-  const description = mode === 'subscription' 
-    ? 'Assinatura Notify Pro - Mensal' 
-    : `Notificação Extrajudicial - Ref: ${metadata.notificationId || 'Avulsa'}`;
+  // Definição de Valor Único para Notificação Avulsa
+  const value = 57.92;
+  const description = `Notificação Extrajudicial - Ref: ${metadata.notificationId || 'Avulsa'}`;
+  const externalReference = metadata.notificationId; // Vincula estritamente à notificação
 
-  // Determina a URL do Webhook dinamicamente
   let webhookUrl = null;
   if (process.env.BASE_URL) {
       webhookUrl = `${process.env.BASE_URL}/api/webhook`;
@@ -80,31 +78,17 @@ export default async function handler(req, res) {
         customerId = newCustomer.id;
     }
 
-    // 2. CRIAÇÃO DA COBRANÇA
+    // 2. CRIAÇÃO DA COBRANÇA (Cobrança única /payments)
     let paymentPayload = {
         customer: customerId,
         billingType: billingType,
         value: value,
         dueDate: new Date(Date.now() + 259200000).toISOString().split('T')[0], // +3 dias
         description: description,
-        externalReference: metadata.notificationId,
+        externalReference: externalReference, 
         postalService: false
     };
 
-    // INJEÇÃO AUTOMÁTICA DE WEBHOOK (Força o Asaas a notificar esta URL)
-    /* 
-       Isso resolve o problema se o webhook não estiver configurado globalmente no painel do Asaas.
-       Nota: O Asaas nem sempre aceita localhost, funciona melhor em produção (Vercel).
-    */
-    /*
-    // Comentado pois alguns endpoints do Asaas podem rejeitar callbackUrl no payload de criação direta dependendo da versão da API.
-    // A melhor prática é configurar no painel, mas se quiser forçar, descomente abaixo se a API suportar:
-    // if (webhookUrl) {
-    //    paymentPayload.callbackUrl = webhookUrl; 
-    // }
-    */
-
-    // Adiciona dados do cartão se for crédito
     if (billingType === 'CREDIT_CARD' && cardData) {
         paymentPayload.creditCard = {
             holderName: cardData.holderName,
@@ -117,19 +101,13 @@ export default async function handler(req, res) {
             name: cardData.holderName,
             email: userEmail,
             cpfCnpj: cpfCnpj ? cpfCnpj.replace(/\D/g, '') : undefined,
-            postalCode: '00000000', // Mock ou vindo do form se necessário
+            postalCode: '00000000', 
             addressNumber: '0',
-            phone: '00000000000' // Mock ou vindo do form
+            phone: '00000000000' 
         };
     }
 
-    const endpoint = mode === 'subscription' ? '/subscriptions' : '/payments';
-    if (mode === 'subscription') {
-        paymentPayload.cycle = 'MONTHLY';
-        paymentPayload.nextDueDate = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-    }
-
-    const paymentResponse = await fetch(`${ASAAS_URL}${endpoint}`, {
+    const paymentResponse = await fetch(`${ASAAS_URL}/payments`, {
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',
@@ -145,9 +123,7 @@ export default async function handler(req, res) {
         throw new Error(paymentData.errors[0].description);
     }
 
-    // 3. RETORNO ESPECÍFICO
-    
-    // Se for PIX, precisamos buscar o QR Code
+    // 3. RETORNO
     if (billingType === 'PIX') {
         const qrResponse = await fetch(`${ASAAS_URL}/payments/${paymentData.id}/pixQrCode`, {
             method: 'GET',
@@ -161,16 +137,14 @@ export default async function handler(req, res) {
             pixData: {
                 encodedImage: qrData.encodedImage,
                 payload: qrData.payload
-            },
-            webhookUrlHint: webhookUrl // Retorna para debug no frontend se necessário
+            }
         });
     }
 
-    // Se for Cartão, já retorna sucesso direto se não deu erro
     return res.status(200).json({ 
         success: true,
         id: paymentData.id,
-        status: paymentData.status // CONFIRMED ou PENDING
+        status: paymentData.status
     });
 
   } catch (error) {

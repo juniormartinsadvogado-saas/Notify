@@ -10,7 +10,7 @@ import {
   Wand2, Scale, Users, 
   FileText, PenTool, Check, Loader2, 
   Briefcase, ShoppingBag, Home, Heart, FileSignature, Scroll, UploadCloud, X, User, Video, CheckCircle2, ArrowRight, Calendar, ChevronLeft, Sparkles,
-  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode, Copy, AlertCircle, Plane, Zap, Rocket, Monitor, Trophy, Anchor, ShieldCheck, ChevronDown, Lightbulb, Printer, Lock, Send, RefreshCw, Package, ArrowDown, MapPin
+  Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode, Copy, AlertCircle, Plane, Zap, Rocket, Monitor, Trophy, Anchor, ShieldCheck, ChevronDown, Lightbulb, Printer, Lock, Send, RefreshCw, Package, ArrowDown, MapPin, CreditCard, Smartphone, Mail, Eraser, Smile, IdCard
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
 import { db } from '../services/firebase';
@@ -46,7 +46,7 @@ const LAW_AREAS = [
   { id: 'internacional', name: 'Internacional', icon: Globe, desc: 'Relações estrangeiras.' },
   { id: 'maritimo', name: 'Marítimo', icon: Anchor, desc: 'Direito do mar e portos.' },
   { id: 'aeronautico', name: 'Aeronáutico', icon: Plane, desc: 'Aviação e transporte aéreo.' },
-  { id: 'energetico', name: 'Energético', icon: Zap, desc: 'Energia e regulação.' },
+  { id: 'energetico', name: 'Energetico', icon: Zap, desc: 'Energia e regulação.' },
   { id: 'espacial', name: 'Espacial', icon: Rocket, desc: 'Atividades espaciais.' },
   { id: 'digital', name: 'Digital', icon: Monitor, desc: 'Internet e dados.' },
   { id: 'esportivo', name: 'Esportivo', icon: Trophy, desc: 'Desporto e justiça desportiva.' }
@@ -99,25 +99,35 @@ const PersonForm: React.FC<any> = ({ title, data, section, colorClass, onInputCh
          <h3 className="font-bold text-slate-800 mb-6 flex items-center text-lg">{title}</h3>
          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
              <div className="md:col-span-2">
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{nameLabel}</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
+                    <Smile size={14} className="text-blue-500"/> {nameLabel}
+                </label>
                 <input type="text" value={data.name} onChange={e => onInputChange(section, 'name', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm focus:border-blue-400 transition" placeholder="Nome completo" />
              </div>
              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">{documentLabel}</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
+                    <IdCard size={14} className="text-purple-500"/> {documentLabel}
+                </label>
                 <input type="text" value={data.cpfCnpj} maxLength={documentMaxLength} onChange={e => onInputChange(section, 'cpfCnpj', documentMask(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm focus:border-blue-400 transition" placeholder="000.000.000-00" />
                 {!isCompanyAllowed && <span className="text-[10px] text-red-400">Apenas Pessoa Física (CPF) permitido neste campo.</span>}
              </div>
              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Email</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
+                    <Mail size={14} className="text-orange-500"/> Email
+                </label>
                 <input type="email" value={data.email} onChange={e => onInputChange(section, 'email', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm focus:border-blue-400 transition" placeholder="email@exemplo.com" />
              </div>
              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Telefone</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center gap-1">
+                    <Smartphone size={14} className="text-green-500"/> Telefone
+                </label>
                 <input type="text" value={data.phone} maxLength={15} onChange={e => onInputChange(section, 'phone', MASKS.phone(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-lg outline-none text-sm focus:border-blue-400 transition" placeholder="(00) 00000-0000" />
              </div>
          </div>
          <div className="mt-4 pt-4 border-t border-slate-100">
-             <span className="text-xs font-bold text-slate-400 uppercase block mb-3 flex items-center"><MapPin size={12} className="mr-1"/> Endereço</span>
+             <span className="text-xs font-bold text-slate-400 uppercase block mb-3 flex items-center gap-1">
+                 <Home size={14} className="text-red-500"/> Endereço / Localização
+             </span>
              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <input type="text" placeholder="CEP" value={data.address.cep} onChange={e => onAddressChange(section, 'cep', MASKS.cep(e.target.value))} className="col-span-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
                 <input type="text" placeholder="Rua / Logradouro" value={data.address.street} onChange={e => onAddressChange(section, 'street', e.target.value)} className="col-span-1 md:col-span-3 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
@@ -259,22 +269,53 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   };
 
   // --- 6. ASSINATURA ---
+  const getCoordinates = (event: any) => {
+    if (!canvasRef.current) return { x: 0, y: 0 };
+    const rect = canvasRef.current.getBoundingClientRect();
+    
+    // Scale logic to handle discrepancies between CSS size and Canvas size
+    const scaleX = canvasRef.current.width / rect.width;
+    const scaleY = canvasRef.current.height / rect.height;
+
+    if (event.touches && event.touches[0]) {
+        return {
+            x: (event.touches[0].clientX - rect.left) * scaleX,
+            y: (event.touches[0].clientY - rect.top) * scaleY
+        };
+    }
+
+    return {
+      x: (event.clientX - rect.left) * scaleX,
+      y: (event.clientY - rect.top) * scaleY
+    };
+  };
+
   const startDrawing = (e: any) => {
+      e.preventDefault(); // Prevent scrolling on touch
       const ctx = canvasRef.current?.getContext('2d');
       if (!ctx) return;
       setIsDrawing(true);
+      const { x, y } = getCoordinates(e);
       ctx.beginPath();
-      ctx.moveTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+      ctx.moveTo(x, y);
+      ctx.lineWidth = 3; // Thicker pen
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#000066'; // Dark blue pen color
   };
+
   const draw = (e: any) => {
+      e.preventDefault(); 
       if (!isDrawing) return;
       const ctx = canvasRef.current?.getContext('2d');
       if (ctx) {
-          ctx.lineTo(e.nativeEvent.offsetX, e.nativeEvent.offsetY);
+          const { x, y } = getCoordinates(e);
+          ctx.lineTo(x, y);
           ctx.stroke();
       }
   };
-  const endDrawing = () => {
+
+  const endDrawing = (e: any) => {
+      e.preventDefault();
       setIsDrawing(false);
       if (canvasRef.current) setSignatureData(canvasRef.current.toDataURL());
   };
@@ -576,9 +617,13 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       if (!createdData.notif) return;
       
       try {
-          await confirmPayment(createdData.notif.id);
+          // Atualiza status localmente
           const updatedNotif = { ...createdData.notif, status: NotificationStatus.SENT };
           
+          // Confirma pagamento no banco
+          await confirmPayment(createdData.notif.id);
+          
+          // Dispara comunicação
           await dispatchCommunications(updatedNotif);
           
           setCreatedData(prev => ({...prev, notif: updatedNotif}));
@@ -606,13 +651,13 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           <div className="mb-10 flex overflow-x-auto pb-4 gap-4 px-2">
               {STEPS.map((s, i) => (
                   <div key={s.id} className="flex items-center min-w-fit">
-                      <div className={`flex flex-col items-center ${s.id === currentStep ? 'opacity-100 scale-110' : 'opacity-50'}`}>
+                      <div className={`flex flex-col items-center ${s.id === currentStep ? 'opacity-100 scale-110' : 'opacity-75'}`}>
                           <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 mb-1 ${s.id <= currentStep ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-300'}`}>
                               {s.id < currentStep ? <Check size={16}/> : <s.icon size={18}/>}
                           </div>
                           <span className="text-[10px] font-bold uppercase">{s.label}</span>
                       </div>
-                      {i < STEPS.length - 1 && <div className="w-8 h-0.5 bg-slate-200 mx-2"/>}
+                      {i < STEPS.length - 1 && <div className={`w-8 h-0.5 mx-2 ${s.id < currentStep ? 'bg-slate-900' : 'bg-slate-200'}`}/>}
                   </div>
               ))}
           </div>
@@ -833,41 +878,62 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                           {formData.generatedContent}
                       </div>
 
-                      {/* Área de Assinatura */}
+                      {/* Área de Assinatura Sofisticada */}
                       <div className="mt-12 pt-8 border-t border-slate-100">
-                          <h4 className="text-sm font-bold text-slate-400 uppercase mb-4">Assinatura do Notificante</h4>
+                          <h4 className="text-sm font-bold text-slate-400 uppercase mb-4 flex items-center gap-2">
+                             <PenTool size={14}/> Assinatura Digital do Notificante
+                          </h4>
                           
                           {isSigned && signatureData ? (
-                              <div className="relative inline-block border-b border-slate-900 pb-2 px-10">
-                                  <img src={signatureData} alt="Assinatura" className="h-16 object-contain" />
-                                  <p className="text-center text-xs mt-1 font-bold">{formData.sender.name}</p>
-                                  <div className="absolute -top-3 -right-3">
-                                      <CheckCircle2 size={20} className="text-green-500 bg-white rounded-full"/>
+                              <div className="relative inline-block border-b-2 border-slate-900 pb-4 px-12">
+                                  <img src={signatureData} alt="Assinatura" className="h-20 object-contain mx-auto" />
+                                  <p className="text-center text-xs mt-2 font-bold tracking-wider">{formData.sender.name.toUpperCase()}</p>
+                                  <div className="absolute -top-3 -right-3 animate-bounce">
+                                      <CheckCircle2 size={24} className="text-green-500 bg-white rounded-full border-2 border-white"/>
                                   </div>
                               </div>
                           ) : (
-                              <div className="border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 relative h-48 touch-none cursor-crosshair overflow-hidden w-full max-w-md">
-                                  <canvas 
-                                      ref={canvasRef}
-                                      width={500} height={192}
-                                      className="w-full h-full"
-                                      onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={endDrawing} onMouseLeave={endDrawing}
-                                      onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={endDrawing}
-                                  />
-                                  {!isDrawing && !signatureData && <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-slate-300 font-bold text-xl opacity-50">ASSINE AQUI</div>}
+                              <div className="relative w-full max-w-lg mx-auto group">
+                                  <div className="absolute -top-3 left-4 bg-white px-2 text-xs font-bold text-slate-400 z-10">Assine dentro da caixa</div>
+                                  
+                                  <div className="border-2 border-dashed border-slate-300 rounded-xl bg-[#fffdf0] shadow-sm relative h-56 touch-none cursor-crosshair overflow-hidden w-full transition-all hover:shadow-md hover:border-slate-400">
+                                      {/* Canvas Element com tamanho fixo para evitar distorção */}
+                                      <canvas 
+                                          ref={canvasRef}
+                                          width={600} 
+                                          height={224}
+                                          className="w-full h-full touch-none"
+                                          onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={endDrawing} onMouseLeave={endDrawing}
+                                          onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={endDrawing}
+                                          style={{ touchAction: 'none' }}
+                                      />
+                                      {!isDrawing && !signatureData && (
+                                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-10">
+                                               <span className="text-5xl font-serif italic text-slate-500">Assine aqui</span>
+                                          </div>
+                                      )}
+                                      <div className="absolute bottom-6 left-12 right-12 h-0.5 bg-slate-300 pointer-events-none"></div>
+                                  </div>
+
+                                  <div className="flex justify-end mt-2">
+                                      <button 
+                                        onClick={handleClearSignature} 
+                                        className="text-slate-400 hover:text-red-500 text-xs flex items-center gap-1 transition-colors p-2"
+                                        title="Limpar assinatura"
+                                      >
+                                          <Eraser size={14}/> Limpar
+                                      </button>
+                                  </div>
                               </div>
                           )}
                           
-                          <div className="flex gap-4 mt-4">
+                          <div className="flex justify-center gap-4 mt-6">
                               {!isSigned ? (
-                                  <>
-                                    <button onClick={handleClearSignature} className="text-red-500 text-xs font-bold hover:bg-red-50 px-3 py-1 rounded">Limpar</button>
-                                    <button onClick={handleConfirmSignature} disabled={isSigningProcess} className="bg-slate-900 text-white px-6 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-slate-800 flex items-center disabled:opacity-50">
-                                        {isSigningProcess ? <Loader2 size={16} className="animate-spin mr-2"/> : "Validar e Anexar Assinatura"}
-                                    </button>
-                                  </>
+                                  <button onClick={handleConfirmSignature} disabled={isSigningProcess} className="bg-slate-900 text-white px-8 py-3 rounded-full text-sm font-bold shadow-lg hover:bg-slate-800 flex items-center disabled:opacity-50 transform hover:scale-105 transition-all">
+                                      {isSigningProcess ? <Loader2 size={16} className="animate-spin mr-2"/> : <><FileSignature size={18} className="mr-2"/> Validar Assinatura</>}
+                                  </button>
                               ) : (
-                                  <button onClick={() => { setIsSigned(false); setSignatureData(null); }} className="text-slate-400 text-xs hover:text-slate-600 underline">Refazer assinatura</button>
+                                  <button onClick={() => { setIsSigned(false); setSignatureData(null); }} className="text-slate-500 text-xs hover:text-slate-800 underline font-medium">Refazer assinatura</button>
                               )}
                           </div>
                       </div>
