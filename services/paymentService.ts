@@ -85,7 +85,15 @@ export const checkPaymentStatus = async (paymentId: string): Promise<{ paid: boo
 
 // --- ASAAS CHECKOUT (VIA API SERVERLESS) ---
 
-export const initiateCheckout = async (notification: NotificationItem, paymentPlan: 'single' | 'subscription', method: 'CREDIT_CARD' | 'PIX', cardData?: any): Promise<CheckoutResponse> => {
+// Agora aceita customPayerInfo como último argumento opcional
+export const initiateCheckout = async (
+    notification: NotificationItem, 
+    paymentPlan: 'single' | 'subscription', 
+    method: 'CREDIT_CARD' | 'PIX', 
+    cardData?: any,
+    customPayerInfo?: { name: string, cpfCnpj: string, email?: string, phone?: string }
+): Promise<CheckoutResponse> => {
+    
     const user = auth.currentUser;
     if (!user) {
         return { success: false, error: "Usuário não autenticado." };
@@ -93,8 +101,33 @@ export const initiateCheckout = async (notification: NotificationItem, paymentPl
 
     console.log(`[ASAAS] Iniciando Checkout via API (Plano: ${paymentPlan}, Método: ${method})...`);
 
-    const userProfile = await getUserProfile(user.uid);
     const mode = paymentPlan === 'subscription' ? 'subscription' : 'payment';
+    
+    // Preparação dos dados do pagador
+    let payerInfoToSend: any = {};
+
+    if (customPayerInfo) {
+        // Se fornecido manualmente pelo frontend (Formulário), usa este com prioridade máxima
+        payerInfoToSend = {
+            name: customPayerInfo.name,
+            cpfCnpj: customPayerInfo.cpfCnpj
+        };
+    } else {
+        // Fallback: Busca do perfil do usuário no Firestore
+        const userProfile = await getUserProfile(user.uid);
+        // Tenta usar o da notificação ou do perfil
+        const cpfToUse = notification.notificante_cpf || userProfile?.cpf;
+        
+        payerInfoToSend = {
+            name: userProfile?.name || user.displayName || 'Cliente Notify',
+            cpfCnpj: cpfToUse
+        };
+    }
+
+    // Validação extra antes de enviar
+    if (!payerInfoToSend.cpfCnpj) {
+        return { success: false, error: "CPF/CNPJ do pagador não identificado." };
+    }
 
     try {
         const response = await fetch('/api/checkout', {
@@ -102,20 +135,17 @@ export const initiateCheckout = async (notification: NotificationItem, paymentPl
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 mode: mode,
-                userEmail: user.email,
+                userEmail: user.email, // Email da conta sempre vai para rastreio, mas customer no Asaas pode ter outro
                 billingType: method,
-                cardData: cardData, // Envia dados do cartão se houver
-                payerInfo: {
-                    name: userProfile?.name || user.displayName,
-                    cpfCnpj: userProfile?.cpf || notification.notificante_uid
-                },
+                cardData: cardData,
+                payerInfo: payerInfoToSend,
                 metadata: {
                     type: 'notification_checkout',
                     notificationId: notification.id,
                     userId: user.uid,
                     plan: paymentPlan,
-                    name: userProfile?.name || user.displayName,
-                    cpfCnpj: userProfile?.cpf
+                    name: payerInfoToSend.name,
+                    cpfCnpj: payerInfoToSend.cpfCnpj
                 }
             })
         });
@@ -129,8 +159,8 @@ export const initiateCheckout = async (notification: NotificationItem, paymentPl
         return { 
             success: true, 
             checkoutUrl: data.url,
-            paymentId: data.id, // ID do Pagamento Asaas
-            pixData: data.pixData // Retorna dados do QR Code se existir
+            paymentId: data.id, 
+            pixData: data.pixData 
         };
 
     } catch (error: any) {

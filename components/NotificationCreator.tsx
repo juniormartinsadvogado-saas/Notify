@@ -190,7 +190,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                   const status = await checkPaymentStatus(asaasPaymentId);
                   if (status.paid) {
                       clearInterval(interval);
-                      handlePaymentSuccess();
+                      await handlePaymentSuccess();
                   }
               } catch (e) { console.error(e); }
           }, 3000);
@@ -332,13 +332,11 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           const uploadedEvidences: EvidenceItem[] = [];
           if (localFiles.length > 0) {
               console.log(`[UPLOAD] Iniciando upload de ${localFiles.length} evidências...`);
-              // Processa em paralelo para acelerar e verificar erros
               const uploadPromises = localFiles.map(async (fileItem) => {
                   try {
                       return await uploadEvidence(notificationId, fileItem.file);
                   } catch (err) {
                       console.error(`Erro ao subir arquivo ${fileItem.name}:`, err);
-                      // Continua, mas loga. Se for crítico, poderia lançar erro.
                       return null; 
                   }
               });
@@ -351,7 +349,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
           // 2. Geração e Upload do PDF
           console.log("Iniciando geração e upload do PDF...");
-          // Passamos o uniqueHash para usar como nome do arquivo
           const pdfUrl = await generateAndUploadPdf(true, uniqueHash); 
           console.log("PDF Gerado e salvo em:", pdfUrl);
 
@@ -373,7 +370,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               facts: formData.facts, 
               subject: formData.species,
               content: formData.generatedContent, 
-              evidences: uploadedEvidences, // Anexa evidências subidas
+              evidences: uploadedEvidences, 
               pdf_url: pdfUrl, 
               signatureBase64: signatureData,
               createdAt: new Date().toISOString(), 
@@ -575,8 +572,18 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               await handleConfirmSignature(); 
           }
 
-          const notif = createdData.notif!;
+          // Monta o objeto NotificationItem se ainda não existir
+          const notif = createdData.notif || {
+              id: notificationId,
+              notificante_uid: user.uid,
+              notificante_cpf: formData.sender.cpfCnpj.replace(/\D/g, ''),
+              notificante_dados_expostos: { nome: formData.sender.name, email: formData.sender.email, telefone: formData.sender.phone },
+              recipientName: formData.recipient.name, 
+              species: formData.species,
+              createdAt: new Date().toISOString()
+          } as NotificationItem;
 
+          // Reunião
           let meet: Meeting | undefined;
           if (formData.scheduleMeeting) {
               meet = {
@@ -588,7 +595,24 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               await createMeeting(meet);
           }
 
-          const checkout = await initiateCheckout(notif, 'single', 'PIX');
+          // LÓGICA DE PAGADOR: Notificante ou Representante (Quem está pagando)
+          // Se o usuário selecionou que é Representante, os dados de pagamento são os dele (representante).
+          // Se selecionou Notificante (Próprio), são os dados do notificante.
+          const payerData = role === 'representative' ? formData.representative : formData.sender;
+          const cleanCpfPayer = payerData.cpfCnpj ? payerData.cpfCnpj.replace(/\D/g, '') : '';
+
+          if (!cleanCpfPayer || cleanCpfPayer.length < 11) {
+              throw new Error("CPF/CNPJ do Pagador (Você) inválido para emissão do Pix. Verifique seus dados na etapa 'Partes'.");
+          }
+
+          // Chamada de Pagamento Passando Payer Info Explícito
+          const checkout = await initiateCheckout(notif, 'single', 'PIX', null, {
+              name: payerData.name || user.displayName,
+              cpfCnpj: cleanCpfPayer,
+              email: payerData.email || user.email,
+              phone: payerData.phone || ''
+          });
+          
           if (checkout.success && checkout.pixData) {
               setPixData(checkout.pixData);
               setAsaasPaymentId(checkout.paymentId || null);
@@ -602,7 +626,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               
               setCurrentStep(8); 
           } else {
-              alert("Erro ao gerar Pix: " + checkout.error);
+              alert("Erro ao gerar Pix: " + (checkout.error || "Verifique o CPF/CNPJ do responsável."));
           }
 
       } catch (e: any) {
@@ -623,7 +647,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           // Confirma pagamento no banco
           await confirmPayment(createdData.notif.id);
           
-          // Dispara comunicação
+          // DISPARA COMUNICAÇÃO (AUTOMATIZAÇÃO)
+          console.log("Pagamento detectado. Disparando comunicações...");
           await dispatchCommunications(updatedNotif);
           
           setCreatedData(prev => ({...prev, notif: updatedNotif}));
@@ -642,8 +667,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           <div className="flex items-center mb-8">
               <button onClick={onBack} className="mr-4 p-2 hover:bg-slate-200 rounded-full text-slate-500"><ChevronLeft size={24}/></button>
               <div>
-                  <h1 className="text-2xl font-bold text-slate-800">Nova Notificação Extrajudicial</h1>
-                  <p className="text-slate-500 text-sm">Crie, valide e envie documentos com validade jurídica.</p>
+                  <h1 className="text-xl md:text-2xl font-bold text-slate-800">Nova Notificação Extrajudicial</h1>
+                  <p className="text-slate-500 text-xs md:text-sm">Crie, valide e envie documentos com validade jurídica.</p>
               </div>
           </div>
 
@@ -950,49 +975,45 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               </div>
           )}
 
-          {/* --- STEP 7: SELEÇÃO DE ENVIO (Full Time) --- */}
+          {/* --- STEP 7: SELEÇÃO DE ENVIO (Visual Mobile Otimizado) --- */}
           {currentStep === 7 && (
-              <div className="max-w-3xl mx-auto">
-                  <h2 className="text-2xl font-bold text-slate-800 mb-8 text-center">Configuração de Envio</h2>
+              <div className="max-w-md mx-auto w-full px-4">
+                  <h2 className="text-xl md:text-2xl font-bold text-slate-800 mb-6 text-center">Configuração de Envio</h2>
                   
-                  <button onClick={handleStartPayment} className="w-full bg-white p-8 rounded-3xl border-2 border-blue-600 shadow-2xl relative overflow-hidden group hover:scale-[1.01] transition-transform">
+                  <button onClick={handleStartPayment} className="w-full bg-white p-4 md:p-8 rounded-3xl border-2 border-blue-600 shadow-2xl relative overflow-hidden group hover:scale-[1.01] transition-transform">
                       <div className="absolute top-0 right-0 bg-blue-600 text-white text-xs font-bold px-4 py-1.5 rounded-bl-2xl uppercase tracking-wider">Recomendado</div>
                       
-                      <div className="flex flex-col md:flex-row items-center gap-6 mb-8">
-                          <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center shrink-0">
-                              <Rocket size={32}/>
+                      <div className="flex flex-col items-center gap-3 md:gap-4 mb-4 md:mb-6">
+                          <div className="w-12 h-12 md:w-14 md:h-14 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center shrink-0">
+                              <Rocket size={24} className="md:w-7 md:h-7"/>
                           </div>
-                          <div className="text-center md:text-left">
-                              <h3 className="text-2xl font-bold text-slate-900">Full Time Notificação</h3>
-                              <p className="text-slate-500">Envio imediato, certificado e com rastreamento total.</p>
-                          </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-                          <div className="flex items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
-                              <div className="bg-green-100 p-2 rounded-full mr-3"><CheckCircle2 size={16} className="text-green-600"/></div>
-                              <span className="text-sm font-medium text-slate-700">E-mail Certificado (SendGrid)</span>
-                          </div>
-                          <div className="flex items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
-                              <div className="bg-green-100 p-2 rounded-full mr-3"><CheckCircle2 size={16} className="text-green-600"/></div>
-                              <span className="text-sm font-medium text-slate-700">WhatsApp Oficial (Z-API)</span>
-                          </div>
-                          <div className="flex items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
-                              <div className="bg-green-100 p-2 rounded-full mr-3"><CheckCircle2 size={16} className="text-green-600"/></div>
-                              <span className="text-sm font-medium text-slate-700">Monitoramento em Tempo Real</span>
-                          </div>
-                          <div className="flex items-center p-3 bg-slate-50 rounded-xl border border-slate-100">
-                              <div className="bg-green-100 p-2 rounded-full mr-3"><CheckCircle2 size={16} className="text-green-600"/></div>
-                              <span className="text-sm font-medium text-slate-700">Registro em Blockchain (Hash)</span>
+                          <div className="text-center">
+                              <h3 className="text-lg md:text-xl font-bold text-slate-900">Full Time Notificação</h3>
+                              <p className="text-xs md:text-sm text-slate-500 mt-1">Envio imediato, certificado e com rastreamento total.</p>
                           </div>
                       </div>
 
-                      <div className="flex justify-between items-center border-t border-slate-100 pt-6">
-                          <div>
-                              <p className="text-xs text-slate-400 uppercase font-bold">Valor Total</p>
-                              <span className="text-3xl font-bold text-slate-800">R$ 57,92</span>
+                      <div className="flex flex-col gap-2 md:gap-3 mb-4 md:mb-6">
+                          <div className="flex items-center p-2 md:p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+                              <div className="bg-green-100 p-1 md:p-1.5 rounded-full mr-3"><CheckCircle2 size={12} className="text-green-600 md:w-3.5 md:h-3.5"/></div>
+                              <span className="text-xs md:text-sm font-medium text-slate-700">E-mail Certificado (SendGrid)</span>
                           </div>
-                          <span className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold text-sm shadow-lg group-hover:bg-blue-600 transition-colors">
+                          <div className="flex items-center p-2 md:p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+                              <div className="bg-green-100 p-1 md:p-1.5 rounded-full mr-3"><CheckCircle2 size={12} className="text-green-600 md:w-3.5 md:h-3.5"/></div>
+                              <span className="text-xs md:text-sm font-medium text-slate-700">WhatsApp Oficial (Z-API)</span>
+                          </div>
+                          <div className="flex items-center p-2 md:p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+                              <div className="bg-green-100 p-1 md:p-1.5 rounded-full mr-3"><CheckCircle2 size={12} className="text-green-600 md:w-3.5 md:h-3.5"/></div>
+                              <span className="text-xs md:text-sm font-medium text-slate-700">Monitoramento em Tempo Real</span>
+                          </div>
+                      </div>
+
+                      <div className="flex flex-col items-center border-t border-slate-100 pt-4 md:pt-5 gap-3 md:gap-4">
+                          <div className="text-center">
+                              <p className="text-[10px] md:text-xs text-slate-400 uppercase font-bold">Valor Total</p>
+                              <span className="text-2xl md:text-3xl font-bold text-slate-800">R$ 57,92</span>
+                          </div>
+                          <span className="w-full bg-slate-900 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg group-hover:bg-blue-600 transition-colors flex justify-center items-center">
                               Contratar e Enviar Agora
                           </span>
                       </div>
@@ -1000,11 +1021,11 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               </div>
           )}
 
-          {/* --- STEP 8: PAGAMENTO PIX --- */}
+          {/* --- STEP 8: PAGAMENTO PIX (Tamanho Otimizado Mobile) --- */}
           {currentStep === 8 && (
-              <div className="max-w-md mx-auto text-center bg-white p-8 rounded-2xl shadow-xl border border-slate-200">
-                  <h2 className="text-xl font-bold text-slate-800 mb-2">Pagamento Seguro via Pix</h2>
-                  <p className="text-slate-500 text-sm mb-6">Escaneie para liberar o envio imediato.</p>
+              <div className="max-w-md mx-auto text-center bg-white p-6 rounded-2xl shadow-xl border border-slate-200 w-[95%]">
+                  <h2 className="text-lg md:text-xl font-bold text-slate-800 mb-2">Pagamento Seguro via Pix</h2>
+                  <p className="text-slate-500 text-xs md:text-sm mb-6">Escaneie para liberar o envio imediato.</p>
                   
                   {isProcessingPayment && !pixData ? (
                       <div className="py-12 flex flex-col items-center">
@@ -1012,13 +1033,21 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                           <span className="text-slate-400 text-sm">Gerando cobrança segura...</span>
                       </div>
                   ) : pixData ? (
-                      <div className="animate-fade-in">
-                          <div className="bg-white p-2 border rounded-xl mb-4 inline-block shadow-inner"><img src={`data:image/png;base64,${pixData.encodedImage}`} className="w-48 h-48"/></div>
-                          <div className="bg-slate-50 p-3 rounded-lg flex items-center justify-between gap-2 mb-4 border border-slate-200">
-                              <span className="text-xs font-mono truncate text-slate-500">{pixData.payload}</span>
-                              <button onClick={() => {navigator.clipboard.writeText(pixData.payload); alert("Copiado!");}} className="text-blue-600 font-bold text-xs bg-blue-50 p-2 rounded hover:bg-blue-100">COPIAR</button>
+                      <div className="animate-fade-in flex flex-col items-center w-full">
+                          <div className="bg-white p-2 border rounded-xl mb-4 inline-block shadow-inner">
+                              <img src={`data:image/png;base64,${pixData.encodedImage}`} className="w-48 h-48 md:w-56 md:h-56 object-contain"/>
                           </div>
-                          <div className="flex items-center justify-center text-emerald-600 font-bold text-sm animate-pulse bg-emerald-50 p-3 rounded-xl">
+                          <div className="w-full bg-slate-50 p-2 md:p-3 rounded-lg flex items-center justify-between gap-2 mb-4 border border-slate-200">
+                              <input 
+                                readOnly 
+                                value={pixData.payload} 
+                                className="bg-transparent border-none w-full text-[10px] md:text-xs text-slate-500 font-mono outline-none truncate"
+                              />
+                              <button onClick={() => {navigator.clipboard.writeText(pixData.payload); alert("Copiado!");}} className="text-blue-600 font-bold text-xs bg-blue-100 p-2 rounded hover:bg-blue-200 shrink-0 flex items-center">
+                                  <Copy size={14} className="mr-1"/> COPIAR
+                              </button>
+                          </div>
+                          <div className="flex items-center justify-center text-emerald-600 font-bold text-xs md:text-sm animate-pulse bg-emerald-50 p-3 rounded-xl w-full">
                               <RefreshCw size={16} className="animate-spin mr-2"/> Aguardando confirmação do banco...
                           </div>
                       </div>
@@ -1028,25 +1057,34 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
           {/* --- STEP 9: PROTOCOLO --- */}
           {currentStep === 9 && (
-              <div className="text-center py-12 animate-fade-in">
+              <div className="text-center py-12 animate-fade-in max-w-lg mx-auto">
                   <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-100">
                       <CheckCircle2 size={48} className="text-green-600"/>
                   </div>
-                  <h2 className="text-3xl font-bold text-slate-800 mb-2">Sucesso!</h2>
-                  <p className="text-slate-600 mb-8 max-w-md mx-auto">Sua notificação foi paga, enviada para e-mail/WhatsApp e registrada. Acompanhe o status no painel.</p>
+                  <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-2">Sucesso!</h2>
+                  <p className="text-slate-600 mb-8 px-4">
+                      Sua notificação foi paga e o envio para <span className="font-bold">{formData.recipient.name}</span> foi iniciado via E-mail e WhatsApp.
+                  </p>
                   
-                  <div className="bg-white p-4 rounded-xl border border-slate-200 max-w-sm mx-auto mb-8 text-left">
+                  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm mx-4 mb-8 text-left">
+                      <h4 className="text-xs font-bold text-slate-400 uppercase border-b border-slate-100 pb-2 mb-3">Dados do Protocolo</h4>
                       <div className="flex justify-between mb-2">
-                          <span className="text-xs text-slate-500">Protocolo</span>
-                          <span className="text-xs font-mono font-bold">{notificationId}</span>
+                          <span className="text-sm text-slate-600">ID do Protocolo</span>
+                          <span className="text-sm font-mono font-bold text-slate-800">{notificationId}</span>
                       </div>
-                      <div className="flex justify-between">
-                          <span className="text-xs text-slate-500">Hash</span>
-                          <span className="text-xs font-mono text-slate-400 truncate w-32">{docHash}</span>
+                      <div className="flex justify-between mb-2">
+                          <span className="text-sm text-slate-600">Hash de Segurança</span>
+                          <span className="text-xs font-mono text-slate-400 truncate w-24 md:w-32">{docHash}</span>
+                      </div>
+                      <div className="flex justify-between items-center mt-3 pt-3 border-t border-slate-50">
+                          <span className="text-xs text-slate-500">Status Atual</span>
+                          <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded-full uppercase">Em Processamento de Envio</span>
                       </div>
                   </div>
 
-                  <button onClick={() => onSave(createdData.notif!, createdData.meet, createdData.trans)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold shadow-lg hover:bg-slate-800 transition transform hover:-translate-y-1">Voltar ao Painel</button>
+                  <button onClick={() => onSave(createdData.notif!, createdData.meet, createdData.trans)} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold shadow-lg hover:bg-slate-800 transition transform hover:-translate-y-1">
+                      Acompanhar no Painel
+                  </button>
               </div>
           )}
       </div>
