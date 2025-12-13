@@ -460,13 +460,14 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                       </div>
                       <div className="relative group">
                           <Phone className="absolute left-3.5 top-3.5 text-slate-400" size={18} />
+                          <span className="absolute left-10 top-3.5 text-slate-400 font-bold text-sm pointer-events-none z-10">+55</span>
                           <input 
                               type="text" 
                               value={phone} 
                               maxLength={15}
                               onChange={(e) => setPhone(MASKS.phone(e.target.value))} 
-                              className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100" 
-                              placeholder="Telefone" 
+                              className="w-full pl-20 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-100" 
+                              placeholder="(00) 00000-0000" 
                           />
                       </div>
                   </div>

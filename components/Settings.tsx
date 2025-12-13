@@ -327,16 +327,17 @@ const Settings: React.FC<SettingsProps> = ({ subView = 'account', onThemeChange,
                                     </div>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-slate-500 uppercase">Telefone</label>
+                                    <label className="text-xs font-semibold text-slate-500 uppercase">WhatsApp</label>
                                     <div className="relative">
                                         <Phone className="absolute left-3 top-3 text-slate-400" size={16} />
+                                        <span className="absolute left-9 top-3 text-slate-400 font-bold text-sm pointer-events-none">+55</span>
                                         <input 
                                         type="text" 
                                         name="phone"
                                         maxLength={15}
                                         value={formData.phone} 
                                         onChange={handleInputChange}
-                                        className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm text-slate-800 font-medium" 
+                                        className="w-full pl-16 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm text-slate-800 font-medium" 
                                         placeholder="(00) 00000-0000"
                                         />
                                     </div>
