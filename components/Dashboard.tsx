@@ -5,6 +5,7 @@ import { Plus, Monitor, Video, CreditCard, ChevronRight, FileText, Send, Clock, 
 
 interface DashboardProps {
   notifications: NotificationItem[];
+  receivedCount: number; 
   meetings: Meeting[];
   transactions: Transaction[];
   onNavigate: (view: ViewState) => void;
@@ -38,24 +39,25 @@ const MiniClock = () => {
     );
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ notifications, meetings, transactions, onNavigate, user }) => {
+const Dashboard: React.FC<DashboardProps> = ({ notifications, receivedCount, meetings, transactions, onNavigate, user }) => {
 
-  // Cálculos de contagem (DADOS REAIS)
+  // LÓGICA RÍGIDA DE CONTAGEM E SEPARAÇÃO DE PASTAS
   
   // 1. Notificações Enviadas (Pagas e em transito ou entregues)
+  // Regra: Só conta se estiver PAGA (Enviada, Entregue, Lida)
   const sentCount = notifications.filter(n => 
-      n.status === NotificationStatus.SENT || 
-      n.status === NotificationStatus.DELIVERED || 
-      n.status === NotificationStatus.READ
+      ['Enviada', 'Entregue', 'Lida', 'SENT', 'DELIVERED', 'READ'].includes(n.status)
   ).length;
 
-  // 2. Recebidas
-  // Calculado via prop notifications (se passado corretamente pelo App.tsx) ou 0
+  // 2. Recebidas (Já vem calculada do App.tsx via CPF)
   
   // 3. Conciliações (Apenas Confirmadas)
+  // Regra: 'scheduled' significa que foi paga e confirmada.
   const meetScheduled = meetings.filter(m => m.status === 'scheduled').length;
   
   // 4. Pagamentos Pendentes
+  // Regra: Conta notificações 'PENDING_PAYMENT' OU transações 'Pendente'.
+  // Para evitar duplicação visual, focamos na transação financeira pendente.
   const payPending = transactions.filter(t => t.status === 'Pendente').length;
 
   const MainCard = ({ 
@@ -160,7 +162,7 @@ const Dashboard: React.FC<DashboardProps> = ({ notifications, meetings, transact
       {/* --- SEÇÃO PRINCIPAL: 4 PILARES --- */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             
-            {/* 1. NOTIFICAÇÕES (ENVIADAS) */}
+            {/* 1. NOTIFICAÇÕES (ENVIADAS / PAGAS) */}
             <MainCard 
                 title="Notificações"
                 value={sentCount}
@@ -168,13 +170,13 @@ const Dashboard: React.FC<DashboardProps> = ({ notifications, meetings, transact
                 icon={Monitor}
                 colorClass="bg-blue-100 text-blue-600"
                 borderColor="border-blue-200"
-                view={ViewState.MONITORING}
+                view={ViewState.NOTIFICATIONS_DELIVERED} 
             />
 
-            {/* 2. RECEBIDAS (NOVO CARD) */}
+            {/* 2. RECEBIDAS (Para o CPF do usuário) */}
             <MainCard 
                 title="Recebidas"
-                value={0} 
+                value={receivedCount} 
                 label="Documentos para você"
                 icon={Inbox}
                 colorClass="bg-orange-100 text-orange-600"
@@ -182,7 +184,7 @@ const Dashboard: React.FC<DashboardProps> = ({ notifications, meetings, transact
                 view={ViewState.RECEIVED_NOTIFICATIONS}
             />
 
-            {/* 3. CONCILIAÇÕES */}
+            {/* 3. CONCILIAÇÕES (Agendadas confirmadas) */}
             <MainCard 
                 title="Conciliações"
                 value={meetScheduled}
@@ -193,7 +195,7 @@ const Dashboard: React.FC<DashboardProps> = ({ notifications, meetings, transact
                 view={ViewState.MEETINGS}
             />
 
-            {/* 4. PAGAMENTOS */}
+            {/* 4. PAGAMENTOS (Pendentes) */}
             <MainCard 
                 title="Pagamentos"
                 value={payPending}
@@ -201,7 +203,7 @@ const Dashboard: React.FC<DashboardProps> = ({ notifications, meetings, transact
                 icon={CreditCard}
                 colorClass="bg-emerald-100 text-emerald-600"
                 borderColor="border-emerald-200"
-                view={ViewState.BILLING}
+                view={ViewState.PAYMENTS_PENDING} 
             />
       </div>
 

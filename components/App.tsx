@@ -10,16 +10,19 @@ import Billing from './components/Billing';
 import Settings from './components/Settings';
 import FileManager from './components/FileManager';
 import Login from './components/Login';
+import SubscriptionManager from './components/SubscriptionManager'; 
 import SplashScreen from './components/SplashScreen'; 
 import { ViewState, NotificationItem, NotificationStatus, Meeting, Transaction } from './types';
 import { Bell, Search, Menu, X, CheckCircle, FileText, ArrowLeft, LogOut, Loader2, Settings as SettingsIcon, AlertCircle } from 'lucide-react';
 import { ensureUserProfile, getUserProfile } from './services/userService';
-import { getNotificationsByRecipientCpf, confirmPayment, getNotificationsBySender } from './services/notificationService';
-import { saveTransaction, getUserTransactions } from './services/paymentService'; 
+import { confirmPayment } from './services/notificationService';
+import { saveTransaction, checkPaymentStatus, updateSubscriptionStatus } from './services/paymentService';
 import { dispatchCommunications } from './services/communicationService';
-import { auth } from './services/firebase';
+import { auth, db } from './services/firebase'; 
 import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
+// Filtros para visualização rápida nas sub-rotas (se necessário)
 const FILTER_CREATED = [NotificationStatus.DRAFT];
 const FILTER_DELIVERED = [NotificationStatus.SENT, NotificationStatus.DELIVERED, NotificationStatus.READ];
 const FILTER_PENDING = [NotificationStatus.PENDING_PAYMENT];
@@ -39,22 +42,37 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.DASHBOARD);
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
   const [searchQuery, setSearchQuery] = useState('');
+  
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [themeColor, setThemeColor] = useState('blue');
   
+  // System Notifications (Sino)
   const [systemNotifications, setSystemNotifications] = useState<any[]>([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
 
+  // Badge Counts
   const [badgeCounts, setBadgeCounts] = useState<Record<string, number>>({
     [ViewState.RECEIVED_NOTIFICATIONS]: 0,
     [ViewState.MONITORING]: 0,
     [ViewState.MEETINGS]: 0
   });
   
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  // ESTADOS GLOBAIS (Fonte da Verdade)
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]); // Minhas Enviadas
+  const [receivedNotifications, setReceivedNotifications] = useState<NotificationItem[]>([]); // Minhas Recebidas
   const [meetings, setMeetings] = useState<Meeting[]>([]); 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  
+  // Subscription
+  const [subscriptionData, setSubscriptionData] = useState({
+      active: false,
+      planName: 'Plano Gratuito',
+      creditsTotal: 0,
+      creditsUsed: 0,
+      nextBillingDate: '',
+      invoices: [] as Transaction[]
+  });
 
   useEffect(() => {
     const handleResize = () => {
@@ -66,20 +84,94 @@ const App: React.FC = () => {
     };
     window.addEventListener('resize', handleResize);
     
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    // Unsubscribers para limpar memória ao sair
+    let unsubscribeNotifs: () => void;
+    let unsubscribeReceived: () => void;
+    let unsubscribeTrans: () => void;
+    let unsubscribeMeets: () => void;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
         if (currentUser) {
             if (currentUser.emailVerified) {
                 setUser(currentUser);
-                await ensureUserProfile(currentUser);
+                const profile = await ensureUserProfile(currentUser);
                 
-                // 1. CARREGAR DADOS BÁSICOS
-                const realTransactions = await getUserTransactions(currentUser.uid);
-                setTransactions(realTransactions);
-                const sentNotifications = await getNotificationsBySender(currentUser.uid);
-                setNotifications(sentNotifications);
+                // --- 1. MONITORAMENTO: NOTIFICAÇÕES ENVIADAS (Dono) ---
+                // Traz TUDO que eu criei. O Dashboard vai decidir se mostra na pasta "Notificações" (Pagas) ou "Pagamentos" (Pendentes).
+                const qNotifs = query(collection(db, 'notificacoes'), where("notificante_uid", "==", currentUser.uid));
+                unsubscribeNotifs = onSnapshot(qNotifs, (snapshot) => {
+                    const loadedNotifs: NotificationItem[] = [];
+                    snapshot.forEach(doc => {
+                        const data = doc.data() as NotificationItem;
+                        // Ignora rascunhos puros (que não foram para o passo de pagamento/assinatura)
+                        if (data.status !== NotificationStatus.DRAFT) {
+                            loadedNotifs.push(data);
+                        }
+                    });
+                    // Ordena: Mais recentes primeiro
+                    loadedNotifs.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+                    setNotifications(loadedNotifs);
+                });
 
-                // 2. EXECUTAR MECANISMO DE RECUPERAÇÃO E POPULAR SINO
-                await runRecoveryAndAlerts(currentUser.uid, realTransactions, sentNotifications);
+                // --- 2. MONITORAMENTO: NOTIFICAÇÕES RECEBIDAS (Destinatário) ---
+                if (profile && profile.cpf) {
+                    const cleanCpf = profile.cpf.replace(/\D/g, '');
+                    if (cleanCpf) {
+                        const qReceived = query(collection(db, 'notificacoes'), where("notificados_cpfs", "array-contains", cleanCpf));
+                        unsubscribeReceived = onSnapshot(qReceived, (snapshot) => {
+                            const loadedReceived: NotificationItem[] = [];
+                            snapshot.forEach(doc => {
+                                const data = doc.data() as NotificationItem;
+                                // Só mostra para o destinatário se já foi enviada (paga)
+                                if (['Enviada', 'Entregue', 'Lida', 'SENT', 'DELIVERED', 'READ'].includes(data.status)) {
+                                    loadedReceived.push(data);
+                                }
+                            });
+                            loadedReceived.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+                            setReceivedNotifications(loadedReceived);
+                            
+                            // Atualiza Badge Lateral
+                            setBadgeCounts(prev => ({ ...prev, [ViewState.RECEIVED_NOTIFICATIONS]: loadedReceived.length }));
+                        });
+                    }
+                }
+
+                // --- 3. MONITORAMENTO: TRANSAÇÕES (Financeiro) ---
+                const qTrans = query(collection(db, 'transactions'), where("userId", "==", currentUser.uid));
+                unsubscribeTrans = onSnapshot(qTrans, (snapshot) => {
+                    const loadedTrans: Transaction[] = [];
+                    snapshot.forEach(doc => loadedTrans.push({ ...doc.data(), id: doc.id } as Transaction));
+                    loadedTrans.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                    setTransactions(loadedTrans);
+
+                    if (profile) {
+                        setSubscriptionData(prev => ({
+                            ...prev,
+                            invoices: loadedTrans.filter(t => t.description.includes('Assinatura'))
+                        }));
+                    }
+                });
+
+                // --- 4. MONITORAMENTO: REUNIÕES (Agenda) ---
+                const qMeets = query(collection(db, 'reunioes'), where("hostUid", "==", currentUser.uid));
+                unsubscribeMeets = onSnapshot(qMeets, (snapshot) => {
+                    const loadedMeets: Meeting[] = [];
+                    snapshot.forEach(doc => loadedMeets.push(doc.data() as Meeting));
+                    loadedMeets.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                    setMeetings(loadedMeets);
+                });
+
+                // Carrega assinatura (estático por enquanto, poderia ser real-time no user profile)
+                if (profile) {
+                    setSubscriptionData(prev => ({
+                        ...prev,
+                        active: profile.subscriptionActive || false,
+                        planName: profile.subscriptionPlan || 'Plano Gratuito',
+                        creditsTotal: profile.creditsTotal || 0,
+                        creditsUsed: profile.creditsUsed || 0,
+                        nextBillingDate: profile.nextBillingDate || ''
+                    }));
+                }
 
             } else {
                 setUser(null);
@@ -87,6 +179,11 @@ const App: React.FC = () => {
         } else {
             setUser(null);
             localStorage.removeItem('mock_session_user');
+            // Desliga ouvintes
+            if (unsubscribeNotifs) unsubscribeNotifs();
+            if (unsubscribeReceived) unsubscribeReceived();
+            if (unsubscribeTrans) unsubscribeTrans();
+            if (unsubscribeMeets) unsubscribeMeets();
         }
         setLoadingAuth(false);
     });
@@ -100,103 +197,59 @@ const App: React.FC = () => {
 
     return () => {
         window.removeEventListener('resize', handleResize);
-        unsubscribe();
+        unsubscribeAuth();
+        if (unsubscribeNotifs) unsubscribeNotifs();
+        if (unsubscribeReceived) unsubscribeReceived();
+        if (unsubscribeTrans) unsubscribeTrans();
+        if (unsubscribeMeets) unsubscribeMeets();
     };
   }, []);
 
-  const runRecoveryAndAlerts = async (uid: string, txs: Transaction[], notifs: NotificationItem[]) => {
-      const alerts: any[] = [];
-      let recoveredCount = 0;
-
-      try {
-          const profile = await getUserProfile(uid);
-          if (profile && profile.cpf) {
-              const cleanCpf = profile.cpf.replace(/\D/g, '');
-              const received = await getNotificationsByRecipientCpf(cleanCpf);
-              
-              if (received.length > 0) {
-                  setBadgeCounts(prev => ({ ...prev, [ViewState.RECEIVED_NOTIFICATIONS]: received.length }));
-                  received.forEach(r => alerts.push({
-                      id: `recv-${r.id}`,
-                      type: 'received',
-                      title: 'Nova Notificação Recebida',
-                      desc: `Remetente: ${r.notificante_dados_expostos.nome}`,
-                      date: r.createdAt
-                  }));
-              }
-          }
-      } catch (e) { console.error(e); }
-
-      const pendingNotifs = notifs.filter(n => n.status === NotificationStatus.PENDING_PAYMENT);
-      
-      for (const n of pendingNotifs) {
-          const matchTx = txs.find(t => 
-              t.status === 'Pago' && 
-              Math.abs(t.amount - (n.paymentAmount || 0)) < 0.1 && 
-              new Date(t.date).getTime() >= new Date(n.createdAt).getTime() - 60000 
-          );
-
-          if (matchTx) {
-              try {
-                  await confirmPayment(n.id);
-                  await dispatchCommunications(n);
-                  recoveredCount++;
-                  
-                  n.status = NotificationStatus.SENT; 
-                  
-                  alerts.push({
-                      id: `rec-${n.id}`,
-                      type: 'system',
-                      title: 'Envio Recuperado',
-                      desc: `A notificação ${n.id} foi processada com sucesso.`,
-                      date: new Date().toISOString()
-                  });
-              } catch (err) {
-                  console.error("Falha na recuperação:", err);
-              }
-          }
-      }
-
-      txs.slice(0, 5).forEach(t => {
-          alerts.push({
-              id: t.id,
-              type: 'payment',
-              title: t.status === 'Pago' ? 'Pagamento Confirmado' : 'Pagamento Pendente',
-              desc: `${t.description} - R$ ${t.amount}`,
-              date: t.date
-          });
-      });
-
-      alerts.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      setSystemNotifications(alerts);
-      
-      if (recoveredCount > 0) {
-          alert(`${recoveredCount} notificações pagas anteriormente foram recuperadas e enviadas com sucesso! Verifique o sino de notificações.`);
-      }
-  };
-
+  // --- POPULADOR DO SINO DE NOTIFICAÇÕES (Alertas) ---
   useEffect(() => {
-    const checkMeetingStatus = () => {
-        const now = new Date();
-        setMeetings(prevMeetings => prevMeetings.map(meeting => {
-            if (meeting.status === 'scheduled') {
-                try {
-                    const meetingDateTime = new Date(`${meeting.date}T${meeting.time}`);
-                    if (!isNaN(meetingDateTime.getTime()) && meetingDateTime < now) {
-                        return { ...meeting, status: 'completed' };
-                    }
-                } catch (e) {
-                    console.error("Erro ao processar data da reunião", e);
-                }
-            }
-            return meeting;
-        }));
-    };
+      if (user) {
+          const alerts: any[] = [];
+          
+          // 1. Alertas de Pagamento Confirmado
+          transactions.slice(0, 5).forEach(t => {
+              // Só mostra alertas de pagamentos bem sucedidos ou falhas
+              if (t.status === 'Pago' || t.status === 'Falha') {
+                  alerts.push({
+                      id: `tx-${t.id}`,
+                      type: 'payment',
+                      title: t.status === 'Pago' ? 'Pagamento Confirmado' : 'Falha no Pagamento',
+                      desc: `${t.description} - R$ ${t.amount}`,
+                      date: t.date
+                  });
+              }
+          });
 
-    checkMeetingStatus();
-    const interval = setInterval(checkMeetingStatus, 60000);
-    return () => clearInterval(interval);
-  }, []);
+          // 2. Alertas de Notificações Enviadas (Mudança de Status)
+          notifications.filter(n => n.status === NotificationStatus.SENT || n.status === 'Lida').slice(0, 3).forEach(n => {
+               alerts.push({
+                  id: `sent-${n.id}-${n.status}`, // ID único composto
+                  type: 'system',
+                  title: n.status === 'Lida' ? 'Notificação Lida' : 'Notificação Enviada',
+                  desc: `Destino: ${n.recipientName}`,
+                  date: n.updatedAt || n.createdAt
+              });
+          });
+
+          // 3. Alertas de Recebidas
+          receivedNotifications.slice(0, 5).forEach(r => {
+              alerts.push({
+                  id: `recv-${r.id}`,
+                  type: 'received',
+                  title: 'Documento Recebido',
+                  desc: `De: ${r.notificante_dados_expostos?.nome || 'Desconhecido'}`,
+                  date: r.createdAt
+              });
+          });
+
+          alerts.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          setSystemNotifications(alerts);
+      }
+  }, [transactions, notifications, receivedNotifications, user]);
 
   const handleRefund = (transactionId: string) => {
       setTransactions(prev => prev.map(t => 
@@ -222,39 +275,42 @@ const App: React.FC = () => {
   };
 
   const handleSaveNotification = async (notification: NotificationItem, meeting?: Meeting, transaction?: Transaction) => {
-    setNotifications(prev => {
-        const exists = prev.some(n => n.id === notification.id);
-        if (exists) return prev.map(n => n.id === notification.id ? notification : n);
-        return [notification, ...prev];
-    });
-
-    if (meeting) setMeetings(prev => [meeting, ...prev]);
-    
+    // Ação imediata pós-criação (Feedback Visual)
+    // O Listener Real-time vai confirmar isso em milissegundos depois
     if (user && transaction) {
         await saveTransaction(user.uid, transaction);
-        setTransactions(prev => [transaction, ...prev]);
-        
-        setSystemNotifications(prev => [{
-            id: `pay-${transaction.id}`,
-            type: 'payment',
-            title: 'Pagamento Realizado',
-            desc: transaction.description,
-            date: new Date().toISOString()
-        }, ...prev]);
+        if (transaction.description.includes('Assinatura')) {
+            handleToggleSubscription();
+        }
     }
-
-    if (notification.status === NotificationStatus.SENT) {
-        setSystemNotifications(prev => [{
-            id: `sent-${notification.id}`,
-            type: 'system',
-            title: 'Notificação Enviada',
-            desc: `Para: ${notification.recipientName}`,
-            date: new Date().toISOString()
-        }, ...prev]);
-    }
-
     setCurrentView(ViewState.DASHBOARD);
-    setBadgeCounts(prev => ({ ...prev, [ViewState.DASHBOARD]: (prev[ViewState.DASHBOARD] || 0) + 1 }));
+  };
+
+  const handleToggleSubscription = async () => {
+      if (!user) return;
+      const willActivate = !subscriptionData.active;
+      const nextMonth = new Date();
+      nextMonth.setMonth(nextMonth.getMonth() + 1);
+      
+      const newState = {
+          active: willActivate,
+          planName: willActivate ? 'Plano Pro' : 'Plano Gratuito',
+          creditsTotal: willActivate ? 10 : 0,
+          nextBillingDate: willActivate ? nextMonth.toLocaleDateString() : ''
+      };
+
+      await updateSubscriptionStatus(user.uid, newState);
+
+      if (willActivate) {
+          const newInvoice: Transaction = {
+              id: `SUB-${Date.now()}`,
+              description: 'Assinatura Mensal Pro',
+              amount: 259.97,
+              date: new Date().toISOString(),
+              status: 'Pago'
+          };
+          await saveTransaction(user.uid, newInvoice);
+      }
   };
 
   const handleThemeChange = (isDark: boolean, color: string) => {
@@ -263,26 +319,54 @@ const App: React.FC = () => {
       localStorage.setItem('app_theme_pref', JSON.stringify({ dark: isDark, color }));
   };
 
+  const handleNotificationClick = (alert: any) => {
+      setShowNotificationsDropdown(false);
+      if (alert.type === 'received') {
+          setCurrentView(ViewState.RECEIVED_NOTIFICATIONS);
+      } else if (alert.type === 'payment') {
+          setCurrentView(ViewState.BILLING);
+      } else if (alert.type === 'meeting') {
+          setCurrentView(ViewState.MEETINGS);
+      } else {
+          setCurrentView(ViewState.MONITORING); 
+      }
+  };
+
   const renderContent = () => {
     switch (currentView) {
-      case ViewState.DASHBOARD: return <Dashboard notifications={notifications} meetings={meetings} transactions={transactions} onNavigate={setCurrentView} user={user} />;
+      case ViewState.DASHBOARD: 
+        return <Dashboard 
+                  notifications={notifications} 
+                  receivedCount={receivedNotifications.length} 
+                  meetings={meetings} 
+                  transactions={transactions} 
+                  onNavigate={setCurrentView} 
+                  user={user} 
+               />;
       case ViewState.CREATE_NOTIFICATION: return <NotificationCreator onSave={handleSaveNotification} user={user} onBack={() => setCurrentView(ViewState.DASHBOARD)} />;
       case ViewState.RECEIVED_NOTIFICATIONS: return <ReceivedNotifications />;
+      
+      // MONITORING: Mostra todas as enviadas (O componente Monitoring filtra visualmente)
       case ViewState.MONITORING: return <Monitoring notifications={notifications} searchQuery={searchQuery} />;
-      case ViewState.NOTIFICATIONS_CREATED: return <Monitoring notifications={notifications} filterStatus={FILTER_CREATED} searchQuery={searchQuery} />;
+      
+      // FILTROS ESPECÍFICOS (Vindos dos cards do Dashboard)
       case ViewState.NOTIFICATIONS_DELIVERED: return <Monitoring notifications={notifications} filterStatus={FILTER_DELIVERED} searchQuery={searchQuery} />;
       case ViewState.NOTIFICATIONS_PENDING: return <Monitoring notifications={notifications} filterStatus={FILTER_PENDING} searchQuery={searchQuery} />;
+      
       case ViewState.CONCILIATIONS_SCHEDULED: return <MeetingScheduler filterStatus={FILTER_MEETING_SCHEDULED} meetingsProp={meetings} />;
       case ViewState.CONCILIATIONS_DONE: return <MeetingScheduler filterStatus={FILTER_MEETING_DONE} meetingsProp={meetings} />;
       case ViewState.CONCILIATIONS_CANCELED: return <MeetingScheduler filterStatus={FILTER_MEETING_CANCELED} meetingsProp={meetings} />;
+      case ViewState.MEETINGS: return <MeetingScheduler meetingsProp={meetings} />;
+      
       case ViewState.PAYMENTS_CONFIRMED: return <Billing transactions={transactions} filterStatus={FILTER_PAYMENT_CONFIRMED} onRefund={handleRefund} />;
       case ViewState.PAYMENTS_PENDING: return <Billing transactions={transactions} filterStatus={FILTER_PAYMENT_PENDING} onRefund={handleRefund} />;
-      case ViewState.PAYMENTS_REFUNDED: return <Billing transactions={transactions} filterStatus={FILTER_PAYMENT_REFUNDED} onRefund={handleRefund} />;
-      case ViewState.MEETINGS: return <MeetingScheduler meetingsProp={meetings} />;
       case ViewState.BILLING: return <Billing transactions={transactions} onRefund={handleRefund} />;
+      
       case ViewState.FILES: return <FileManager />;
+      case ViewState.SUBSCRIPTION_PLAN: return <SubscriptionManager subView="plan" subscriptionData={subscriptionData} onToggleSubscription={handleToggleSubscription} />;
+      case ViewState.SUBSCRIPTION_HISTORY: return <SubscriptionManager subView="history" subscriptionData={subscriptionData} onToggleSubscription={handleToggleSubscription} />;
       case ViewState.SETTINGS: case ViewState.SETTINGS_ACCOUNT: case ViewState.SETTINGS_PLATFORM: return <Settings key={currentView} user={user} subView={currentView === ViewState.SETTINGS_PLATFORM ? 'platform' : 'account'} onThemeChange={handleThemeChange} initialTheme={{darkMode, themeColor}} />;
-      default: return <Dashboard notifications={notifications} meetings={meetings} transactions={transactions} onNavigate={setCurrentView} user={user} />;
+      default: return <Dashboard notifications={notifications} receivedCount={receivedNotifications.length} meetings={meetings} transactions={transactions} onNavigate={setCurrentView} user={user} />;
     }
   };
 
@@ -312,7 +396,7 @@ const App: React.FC = () => {
             {currentView !== ViewState.DASHBOARD && (<div><h1 className={`text-2xl md:text-3xl font-bold capitalize tracking-tight truncate max-w-[200px] md:max-w-none ${darkMode ? 'text-white' : 'text-slate-900'}`}>{currentView === ViewState.CREATE_NOTIFICATION ? 'Nova Notificação' : currentView.includes('settings') ? 'Configurações' : currentView === ViewState.RECEIVED_NOTIFICATIONS ? 'Caixa de Entrada' : currentView === ViewState.FILES ? 'Meus Arquivos' : currentView.replace(/_/g, ' ').replace('notifications', 'Notificações').replace('conciliations', 'Conciliações').replace('payments', 'Pagamentos')}</h1><p className={`text-xs md:text-sm mt-1 font-light truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Painel do usuário, <span className={`font-medium ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{user.displayName || 'Usuário'}</span>.</p></div>)}
           </div>
           <div className="flex items-center space-x-3 md:space-x-6 w-full md:w-auto justify-end">
-             <div className={`hidden md:flex items-center px-4 py-2.5 rounded-full border shadow-sm transition-all ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} ${theme.ring}`}><Search size={18} className={darkMode ? 'text-slate-500' : 'text-slate-400'} /><input type="text" placeholder="Buscar notificações..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className={`bg-transparent border-none outline-none text-sm ml-2 w-32 md:w-48 placeholder:text-slate-400 ${darkMode ? 'text-white' : 'text-slate-700'}`} /></div>
+             <div className={`hidden md:flex items-center px-4 py-2.5 rounded-full border shadow-sm transition-all ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} ${theme.ring}`}><Search size={18} className={darkMode ? 'text-slate-500' : 'text-slate-400'} /><input type="text" placeholder="Buscar..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className={`bg-transparent border-none outline-none text-sm ml-2 w-32 md:w-48 placeholder:text-slate-400 ${darkMode ? 'text-white' : 'text-slate-700'}`} /></div>
              <div className="relative">
                  <button onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)} className={`relative p-2.5 rounded-full transition border shadow-sm group ${darkMode ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700' : 'bg-white text-slate-600 hover:text-blue-600 hover:bg-blue-50 border-slate-200'}`}><Bell size={20} className="group-hover:animate-pulse" />{systemNotifications.length > 0 && (<span className="absolute top-0 right-0 h-3 w-3 bg-red-500 rounded-full border-2 border-white"></span>)}</button>
                  {showNotificationsDropdown && (
@@ -320,7 +404,7 @@ const App: React.FC = () => {
                          <div className={`p-3 border-b flex justify-between items-center ${darkMode ? 'border-slate-700' : 'border-slate-100'}`}><h4 className={`font-bold text-sm ${darkMode ? 'text-white' : 'text-slate-800'}`}>Central de Notificações</h4><button onClick={() => setShowNotificationsDropdown(false)}><X size={16} className="text-slate-400" /></button></div>
                          <div className="max-h-64 overflow-y-auto">
                              {systemNotifications.length === 0 ? (<div className="p-6 text-center text-slate-500 text-sm">Nenhuma atualização recente.</div>) : (systemNotifications.map(alert => (
-                                 <div key={alert.id} className={`p-3 border-b cursor-pointer transition flex items-start gap-3 ${darkMode ? 'border-slate-700 hover:bg-slate-700' : 'border-slate-50 hover:bg-slate-50'}`}>
+                                 <div key={alert.id} onClick={() => handleNotificationClick(alert)} className={`p-3 border-b cursor-pointer transition flex items-start gap-3 ${darkMode ? 'border-slate-700 hover:bg-slate-700' : 'border-slate-50 hover:bg-slate-50'}`}>
                                      <div className={`mt-1 ${alert.type === 'payment' ? 'text-green-500' : alert.type === 'received' ? 'text-blue-500' : 'text-amber-500'}`}>
                                          {alert.type === 'payment' ? <CheckCircle size={16} /> : <AlertCircle size={16} />}
                                      </div>

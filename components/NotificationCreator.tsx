@@ -174,9 +174,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const [asaasPaymentId, setAsaasPaymentId] = useState<string | null>(null);
   const [createdData, setCreatedData] = useState<{notif?: NotificationItem, meet?: Meeting, trans?: Transaction}>({});
   
-  // Estado de Demora/Manual Check
-  const [isCheckingManual, setIsCheckingManual] = useState(false);
-
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const stepperRef = useRef<HTMLDivElement>(null); // Ref para o Stepper
   const [isDrawing, setIsDrawing] = useState(false);
@@ -199,7 +196,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   }, [currentStep]);
 
-  // --- STRATEGY: REAL-TIME LISTENER + BACKUP POLLING ---
+  // --- STRATEGY: REAL-TIME LISTENER + AGGRESSIVE POLLING ---
   useEffect(() => {
       let unsubscribeSnapshot: () => void;
       let interval: any;
@@ -222,15 +219,19 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               }
           });
 
-          // 2. POLLING API (Método de Backup)
+          // 2. POLLING AGRESSIVO NA API (Garante que se o Webhook falhar, a API consulta e dispara)
           interval = setInterval(async () => {
               try {
+                  console.log("[PAYMENT] Verificando API...");
                   const status = await checkPaymentStatus(asaasPaymentId);
                   if (status.paid) {
+                      console.log("[PAYMENT] Pagamento confirmado via API Check.");
                       forceSuccessTransition();
                   }
-              } catch (e) { /* Silently fail on polling errors */ }
-          }, 2000);
+              } catch (e) { 
+                  console.warn("[PAYMENT] Erro leve no polling:", e);
+              }
+          }, 3000); // Tenta a cada 3 segundos
       }
 
       return () => {
@@ -254,42 +255,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
               confirmPayment(createdData.notif.id).catch(() => {});
           } catch(e) { console.error("Sync error bg", e); }
       }
-  };
-
-  // --- VERIFICAÇÃO MANUAL AGRESSIVA (LOOP DE TENTATIVAS) ---
-  const handleManualCheck = async () => {
-      if (!asaasPaymentId) return;
-      
-      setIsCheckingManual(true);
-      let attempts = 0;
-      const maxAttempts = 5; // Tenta 5 vezes seguidas (aprox 10s)
-
-      const attemptCheck = async (): Promise<boolean> => {
-          try {
-              const status = await checkPaymentStatus(asaasPaymentId);
-              return status.paid;
-          } catch (e) { 
-              return false; 
-          }
-      };
-
-      // Loop de retentativa
-      const intervalId = setInterval(async () => {
-          attempts++;
-          const paid = await attemptCheck();
-          
-          if (paid) {
-              clearInterval(intervalId);
-              setIsCheckingManual(false);
-              forceSuccessTransition();
-          } else {
-              if (attempts >= maxAttempts) {
-                  clearInterval(intervalId);
-                  setIsCheckingManual(false);
-                  alert("O banco ainda não retornou a confirmação. O sistema continuará monitorando automaticamente.");
-              }
-          }
-      }, 2000); // Tenta a cada 2 segundos
   };
 
   const handleInputChange = (s: any, f: any, v: any) => setFormData(p => ({ ...p, [s]: { ...p[s], [f]: v } }));
@@ -1007,31 +972,13 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                                   </button>
                               </div>
 
-                              {/* STATUS AUTOMÁTICO */}
-                              {!isCheckingManual && (
-                                  <div className="flex items-center justify-center text-emerald-600 font-bold text-xs bg-emerald-50 px-4 py-3 rounded-full w-full animate-pulse border border-emerald-100 mb-4 shadow-sm">
-                                      <RefreshCw size={14} className="animate-spin mr-2"/> Aguardando pagamento...
-                                  </div>
-                              )}
-
-                              {/* BOTÃO MANUAL (EMERGÊNCIA) */}
-                              <div className="w-full animate-fade-in-up mt-2">
-                                  <button 
-                                    onClick={handleManualCheck}
-                                    disabled={isCheckingManual}
-                                    className={`w-full font-bold py-3.5 rounded-xl shadow-lg flex items-center justify-center transition-all ${
-                                        isCheckingManual 
-                                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                                        : 'bg-white text-emerald-600 border border-emerald-100 hover:bg-emerald-50'
-                                    }`}
-                                  >
-                                      {isCheckingManual ? <Loader2 size={18} className="animate-spin mr-2"/> : <CheckCircle2 size={18} className="mr-2"/>}
-                                      {isCheckingManual ? 'Verificando...' : 'Já realizei o pagamento'}
-                                  </button>
-                                  <p className="text-[9px] text-slate-400 mt-2 px-4">
-                                      A confirmação ocorre automaticamente. Use este botão apenas se houver demora excessiva.
-                                  </p>
+                              {/* STATUS AUTOMÁTICO - AGORA É O ÚNICO INDICADOR */}
+                              <div className="flex items-center justify-center text-emerald-600 font-bold text-xs bg-emerald-50 px-4 py-3 rounded-full w-full animate-pulse border border-emerald-100 mb-4 shadow-sm">
+                                  <RefreshCw size={14} className="animate-spin mr-2"/> Verificando pagamento automaticamente...
                               </div>
+                              <p className="text-[10px] text-slate-400 mt-2 px-4">
+                                  O sistema identifica o pagamento em instantes. Não feche esta janela.
+                              </p>
 
                           </div>
                       ) : <p className="text-red-500">Erro ao carregar Pix.</p>}

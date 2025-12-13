@@ -46,9 +46,11 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                 const liveData: NotificationItem[] = [];
                 snapshot.forEach((doc) => {
                     const data = doc.data() as NotificationItem;
-                    // LÓGICA RÍGIDA: Apenas mostrar se JÁ PAGO ou ENVIADO
-                    if (data.status === NotificationStatus.PENDING_PAYMENT || data.status === NotificationStatus.DRAFT) return;
-                    liveData.push(data);
+                    // CORREÇÃO: Não filtrar nada aqui. Deixar o array completo carregar.
+                    // O filtro visual será aplicado pelo useEffect abaixo baseado nas props do Dashboard.
+                    if (data.status !== NotificationStatus.DRAFT) { // Apenas remove rascunhos não salvos
+                        liveData.push(data);
+                    }
                 });
                 liveData.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
                 setItems(liveData);
@@ -63,7 +65,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                     const liveData: NotificationItem[] = [];
                     snapshot.forEach((doc) => {
                         const data = doc.data() as NotificationItem;
-                        if (data.status !== NotificationStatus.DRAFT && data.status !== NotificationStatus.PENDING_PAYMENT) {
+                        if (data.status !== NotificationStatus.DRAFT) {
                             liveData.push(data);
                         }
                     });
@@ -80,9 +82,13 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
 
   useEffect(() => {
     let result = items;
+    
+    // Filtro por Status (vindo das props do Dashboard)
     if (filterStatus && filterStatus.length > 0 && activeTab === 'sent') {
         result = result.filter(i => filterStatus.includes(i.status));
     }
+    
+    // Busca textual
     if (searchQuery.trim() !== '') {
         const query = searchQuery.toLowerCase();
         result = result.filter(item => 
@@ -147,23 +153,25 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
       <div className="flex justify-between items-center mb-2">
         <div>
             <h2 className="text-2xl font-bold text-slate-800">{activeTab === 'sent' ? 'Notificações Enviadas' : 'Notificações Recebidas'}</h2>
-            <p className="text-slate-500">{activeTab === 'sent' ? 'Histórico completo de envios realizados e monitoramento.' : 'Documentos oficiais destinados ao seu CPF.'}</p>
+            <p className="text-slate-500">{activeTab === 'sent' ? 'Histórico completo e status de envio.' : 'Documentos oficiais destinados ao seu CPF.'}</p>
         </div>
         {loading && <div className="flex items-center text-xs text-blue-600 bg-blue-50 px-3 py-1 rounded-full"><Loader2 size={12} className="animate-spin mr-2"/> Sincronizando...</div>}
       </div>
 
       <div className="space-y-4">
         {loading && items.length === 0 ? <div className="flex justify-center py-12"><Loader2 className="animate-spin" /></div> : filteredItems.length === 0 ? 
-            <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center"><Package className="text-slate-400 mx-auto mb-4" size={24} /><h3 className="text-lg font-medium text-slate-700">Nenhuma notificação encontrada</h3></div> 
+            <div className="bg-white border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center"><Package className="text-slate-400 mx-auto mb-4" size={24} /><h3 className="text-lg font-medium text-slate-700">Nenhuma notificação nesta pasta</h3></div> 
         : filteredItems.map((notif) => (
             <div key={notif.id} className={`bg-white rounded-xl border transition-all duration-300 overflow-hidden ${expandedId === notif.id ? 'shadow-lg border-blue-200 ring-1 ring-blue-100' : 'shadow-sm border-slate-200 hover:border-blue-200'}`}>
                 <div onClick={() => setExpandedId(expandedId === notif.id ? null : notif.id)} className="p-5 flex items-center justify-between cursor-pointer group">
                     <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 border ${notif.status === 'Lida' ? 'bg-green-100 text-green-600' : 'bg-blue-50 text-blue-600'}`}>{notif.status === 'Lida' ? <CheckCircle2 size={24} /> : <Send size={20} />}</div>
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 border ${notif.status === 'Lida' ? 'bg-green-100 text-green-600' : notif.status === NotificationStatus.PENDING_PAYMENT ? 'bg-amber-100 text-amber-600' : 'bg-blue-50 text-blue-600'}`}>
+                            {notif.status === 'Lida' ? <CheckCircle2 size={24} /> : notif.status === NotificationStatus.PENDING_PAYMENT ? <AlertTriangle size={24} /> : <Send size={20} />}
+                        </div>
                         <div>
                             <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-3">
                                 <h4 className="font-bold text-slate-800 text-sm md:text-base group-hover:text-blue-600 transition-colors">{activeTab === 'sent' ? `Para: ${notif.recipientName}` : `De: ${notif.notificante_dados_expostos?.nome}`}</h4>
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border bg-blue-50 text-blue-600 border-blue-100">{notif.status}</span>
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border ${notif.status === NotificationStatus.PENDING_PAYMENT ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>{notif.status}</span>
                             </div>
                             <div className="flex items-center gap-2 mt-1">
                                 <span className="flex items-center text-[10px] font-mono bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200"><Hash size={10} className="mr-1"/>{notif.id}</span>
@@ -180,8 +188,12 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                             
                             {/* COLUNA ESQUERDA: Rastreamento e Dados */}
                             <div>
-                                <h5 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Rastreamento de Entrega</h5>
-                                <div className="mb-6 p-4 bg-white rounded-xl border border-slate-100 shadow-sm"><DeliveryFlow notification={notif} /></div>
+                                {notif.status !== NotificationStatus.PENDING_PAYMENT && (
+                                    <>
+                                        <h5 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Rastreamento de Entrega</h5>
+                                        <div className="mb-6 p-4 bg-white rounded-xl border border-slate-100 shadow-sm"><DeliveryFlow notification={notif} /></div>
+                                    </>
+                                )}
                                 
                                 <div className="bg-white p-4 rounded-xl border border-slate-200 mt-4 shadow-sm">
                                     <h6 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center"><User size={12} className="mr-1"/> Dados do Destinatário</h6>
