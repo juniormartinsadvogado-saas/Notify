@@ -12,6 +12,8 @@ import {
   Gavel, Building2, Landmark, GraduationCap, Wifi, Leaf, Car, Stethoscope, Banknote, Copyright, Key, Globe, QrCode, Copy, AlertCircle, Plane, Zap, Rocket, Monitor, Trophy, Anchor, ShieldCheck, ChevronDown, Lightbulb, Printer, Lock, Send, RefreshCw, Package, ArrowDown, MapPin, CreditCard, Smartphone, Mail, Eraser, Smile, IdCard, Clock, Shield
 } from 'lucide-react';
 import { jsPDF } from "jspdf";
+import { db } from '../services/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 // --- CONSTANTES ---
 const STEPS = [
@@ -173,7 +175,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const [createdData, setCreatedData] = useState<{notif?: NotificationItem, meet?: Meeting, trans?: Transaction}>({});
   
   // Estado de Demora/Manual Check
-  const [showManualCheck, setShowManualCheck] = useState(false);
   const [isCheckingManual, setIsCheckingManual] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -182,54 +183,103 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
   const currentArea = LAW_AREAS.find(a => a.id === formData.areaId);
   const availableSubtypes = currentArea ? (AREA_SUBTYPES[currentArea.id] || AREA_SUBTYPES['default']) : [];
 
-  // --- POLLING DE PAGAMENTO ---
+  // --- STRATEGY: REAL-TIME LISTENER + BACKUP POLLING ---
   useEffect(() => {
+      let unsubscribeSnapshot: () => void;
       let interval: any;
-      let timeoutManual: any;
 
-      if (currentStep === 8 && asaasPaymentId) {
-          // Ativa o botão "Já Paguei" após 10 segundos
-          timeoutManual = setTimeout(() => setShowManualCheck(true), 10000);
+      if (currentStep === 8 && asaasPaymentId && createdData.notif) {
+          
+          console.log("[PAYMENT] Iniciando monitoramento em tempo real...");
 
+          // 1. LISTENER DO FIRESTORE (Método Principal - Instantâneo)
+          const docRef = doc(db, 'notificacoes', createdData.notif.id);
+          
+          unsubscribeSnapshot = onSnapshot(docRef, (docSnap) => {
+              if (docSnap.exists()) {
+                  const data = docSnap.data();
+                  // Verifica se o status mudou para Enviada/SENT (via Webhook)
+                  if (data.status === NotificationStatus.SENT || data.status === 'Enviada' || data.status === 'Entregue') {
+                      console.log("[PAYMENT] Pagamento detectado via Firestore!");
+                      forceSuccessTransition();
+                  }
+              }
+          });
+
+          // 2. POLLING API (Método de Backup)
           interval = setInterval(async () => {
               try {
                   const status = await checkPaymentStatus(asaasPaymentId);
                   if (status.paid) {
-                      clearInterval(interval);
-                      clearTimeout(timeoutManual);
-                      await handlePaymentSuccess();
+                      forceSuccessTransition();
                   }
-              } catch (e) { console.error(e); }
-          }, 3000);
+              } catch (e) { /* Silently fail on polling errors */ }
+          }, 2000);
       }
-      return () => {
-          clearInterval(interval);
-          clearTimeout(timeoutManual);
-      };
-  }, [currentStep, asaasPaymentId]);
 
+      return () => {
+          if (unsubscribeSnapshot) unsubscribeSnapshot();
+          if (interval) clearInterval(interval);
+      };
+  }, [currentStep, asaasPaymentId, createdData.notif]);
+
+  const forceSuccessTransition = async () => {
+      // Evita loops se já estiver no passo 9
+      if (currentStep === 9) return;
+
+      console.log("[PAYMENT] Transição de Sucesso Acionada.");
+      
+      // 1. Atualiza UI Imediatamente
+      setCurrentStep(9); 
+      
+      // 2. Garante persistência no backend (Redundância caso o listener tenha disparado mas o webhook falhado em algo)
+      if (createdData.notif) {
+          try {
+              confirmPayment(createdData.notif.id).catch(() => {});
+          } catch(e) { console.error("Sync error bg", e); }
+      }
+  };
+
+  // --- VERIFICAÇÃO MANUAL AGRESSIVA (LOOP DE TENTATIVAS) ---
   const handleManualCheck = async () => {
       if (!asaasPaymentId) return;
+      
       setIsCheckingManual(true);
-      try {
-          const status = await checkPaymentStatus(asaasPaymentId);
-          if (status.paid) {
-              await handlePaymentSuccess();
-          } else {
-              alert("O banco ainda não identificou o pagamento. Se já pagou, aguarde alguns instantes e tente novamente.");
+      let attempts = 0;
+      const maxAttempts = 5; // Tenta 5 vezes seguidas (aprox 10s)
+
+      const attemptCheck = async (): Promise<boolean> => {
+          try {
+              const status = await checkPaymentStatus(asaasPaymentId);
+              return status.paid;
+          } catch (e) { 
+              return false; 
           }
-      } catch (e) {
-          console.error(e);
-          alert("Erro ao verificar status. Tente novamente.");
-      } finally {
-          setIsCheckingManual(false);
-      }
+      };
+
+      // Loop de retentativa
+      const intervalId = setInterval(async () => {
+          attempts++;
+          const paid = await attemptCheck();
+          
+          if (paid) {
+              clearInterval(intervalId);
+              setIsCheckingManual(false);
+              forceSuccessTransition();
+          } else {
+              if (attempts >= maxAttempts) {
+                  clearInterval(intervalId);
+                  setIsCheckingManual(false);
+                  alert("O banco ainda não retornou a confirmação. O sistema continuará monitorando automaticamente.");
+              }
+          }
+      }, 2000); // Tenta a cada 2 segundos
   };
 
   const handleInputChange = (s: any, f: any, v: any) => setFormData(p => ({ ...p, [s]: { ...p[s], [f]: v } }));
   const handleAddressChange = (s: any, f: any, v: any) => setFormData(p => ({ ...p, [s]: { ...p[s], address: { ...p[s].address, [f]: v } } }));
 
-  // --- VALIDAÇÃO DATA/HORA CONCILIAÇÃO ---
+  // ... (Funções de validação e helpers mantidas)
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const selectedDate = new Date(e.target.value);
       const day = selectedDate.getUTCDay();
@@ -296,7 +346,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   };
 
-  // --- 6. ASSINATURA ---
+  // --- 6. ASSINATURA (Lógica mantida) ---
   const getCoordinates = (event: any) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
@@ -584,7 +634,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
 
   const handleStartPayment = async () => {
       setIsProcessingPayment(true);
-      setShowManualCheck(false); // Reset
       try {
           if (!createdData.notif) {
               await handleConfirmSignature(); 
@@ -649,24 +698,6 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
       }
   };
 
-  const handlePaymentSuccess = async () => {
-      if (!createdData.notif) return;
-      
-      try {
-          const updatedNotif = { ...createdData.notif, status: NotificationStatus.SENT };
-          await confirmPayment(createdData.notif.id);
-          
-          // O backend agora dispara as comunicações no webhook/validação.
-          console.log("Pagamento detectado. UI Atualizada.");
-          
-          setCreatedData(prev => ({...prev, notif: updatedNotif}));
-          setCurrentStep(9); 
-      } catch (e) { 
-          console.error("Erro pós-pagamento:", e);
-          setCurrentStep(9);
-      }
-  };
-
   return (
       <div className="max-w-5xl mx-auto pb-24 relative animate-fade-in">
           
@@ -695,8 +726,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           </div>
 
           {/* ... STEPS 1-7 ... */}
-          {/* OMITIDO PARA BREVIDADE NO DISPLAY, MAS INCLUÍDO NO XML FINAL */}
-          {/* INICIO CONTEÚDO ANTERIOR MANTIDO */}
+          {/* OMITIDO PARA BREVIDADE NO DISPLAY, MAS INCLUÍDO NO XML FINAL - MANTENHA O CONTEÚDO ORIGINAL AQUI */}
           {currentStep === 1 && (
               <div>
                   <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center"><Scale size={24} className="mr-2 text-blue-600"/> Selecione a Área Jurídica</h2>
@@ -920,9 +950,8 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                   </button>
               </div>
           )}
-          {/* FIM CONTEÚDO MANTIDO */}
 
-          {/* --- STEP 8: PAGAMENTO PIX (INTERFACE SOFISTICADA & LÓGICA DE DELAY) --- */}
+          {/* --- STEP 8: PAGAMENTO PIX --- */}
           {currentStep === 8 && (
               <div className="max-w-md mx-auto w-full px-4 animate-fade-in">
                   <div className="bg-white/80 backdrop-blur-xl border border-white/20 p-8 rounded-3xl shadow-2xl relative overflow-hidden text-center">
@@ -946,10 +975,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                               <div className="relative group mb-6">
                                   <div className="absolute inset-0 bg-gradient-to-tr from-blue-500 to-purple-600 rounded-2xl blur opacity-20 group-hover:opacity-30 transition duration-500"></div>
                                   <div className="bg-white p-3 border border-slate-100 rounded-2xl shadow-xl relative transform transition group-hover:scale-[1.02]">
-                                      <img src={`data:image/png;base64,${pixData.encodedImage}`} className="w-52 h-52 object-contain mix-blend-multiply"/>
-                                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 backdrop-blur-sm rounded-xl">
-                                          <span className="text-blue-600 font-bold text-sm">Validar Pagamento</span>
-                                      </div>
+                                      <img src={`data:image/png;base64,${pixData.encodedImage}`} className="w-56 h-56 object-contain mix-blend-multiply"/>
                                   </div>
                               </div>
 
@@ -965,26 +991,30 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                               </div>
 
                               {/* STATUS AUTOMÁTICO */}
-                              {!isCheckingManual && !showManualCheck && (
-                                  <div className="flex items-center justify-center text-emerald-600 font-bold text-xs bg-emerald-50 px-4 py-2 rounded-full w-full animate-pulse border border-emerald-100">
-                                      <RefreshCw size={14} className="animate-spin mr-2"/> Aguardando confirmação do banco...
+                              {!isCheckingManual && (
+                                  <div className="flex items-center justify-center text-emerald-600 font-bold text-xs bg-emerald-50 px-4 py-3 rounded-full w-full animate-pulse border border-emerald-100 mb-4 shadow-sm">
+                                      <RefreshCw size={14} className="animate-spin mr-2"/> Aguardando pagamento...
                                   </div>
                               )}
 
-                              {/* BOTÃO MANUAL "JÁ PAGUEI" (Aparece após 10s) */}
-                              {showManualCheck && (
-                                  <div className="w-full animate-fade-in-up">
-                                      <button 
-                                        onClick={handleManualCheck}
-                                        disabled={isCheckingManual}
-                                        className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-bold py-3 rounded-xl shadow-lg shadow-emerald-200/50 hover:shadow-xl transform hover:-translate-y-0.5 transition-all flex items-center justify-center"
-                                      >
-                                          {isCheckingManual ? <Loader2 size={18} className="animate-spin mr-2"/> : <CheckCircle2 size={18} className="mr-2"/>}
-                                          {isCheckingManual ? 'Verificando...' : 'Já realizei o pagamento'}
-                                      </button>
-                                      <p className="text-[10px] text-slate-400 mt-2">Clique para liberar o envio imediatamente.</p>
-                                  </div>
-                              )}
+                              {/* BOTÃO MANUAL (EMERGÊNCIA) */}
+                              <div className="w-full animate-fade-in-up mt-2">
+                                  <button 
+                                    onClick={handleManualCheck}
+                                    disabled={isCheckingManual}
+                                    className={`w-full font-bold py-3.5 rounded-xl shadow-lg flex items-center justify-center transition-all ${
+                                        isCheckingManual 
+                                        ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                        : 'bg-white text-emerald-600 border border-emerald-100 hover:bg-emerald-50'
+                                    }`}
+                                  >
+                                      {isCheckingManual ? <Loader2 size={18} className="animate-spin mr-2"/> : <CheckCircle2 size={18} className="mr-2"/>}
+                                      {isCheckingManual ? 'Verificando...' : 'Já realizei o pagamento'}
+                                  </button>
+                                  <p className="text-[9px] text-slate-400 mt-2 px-4">
+                                      A confirmação ocorre automaticamente. Use este botão apenas se houver demora excessiva.
+                                  </p>
+                              </div>
 
                           </div>
                       ) : <p className="text-red-500">Erro ao carregar Pix.</p>}
@@ -995,7 +1025,7 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
           {/* --- STEP 9: PROTOCOLO --- */}
           {currentStep === 9 && (
               <div className="text-center py-12 animate-fade-in max-w-lg mx-auto">
-                  <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-100">
+                  <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg shadow-green-100 animate-bounce-short">
                       <CheckCircle2 size={48} className="text-green-600"/>
                   </div>
                   <h2 className="text-2xl md:text-3xl font-bold text-slate-800 mb-2">Sucesso!</h2>

@@ -20,6 +20,8 @@ export default async function handler(req, res) {
 
   const { userEmail, metadata, payerInfo, billingType, cardData } = req.body;
   const apiKey = process.env.ASAAS_PAGAMENTO_API_KEY;
+  // Permite override via env var para Sandbox, default para Prod
+  const ASAAS_URL = process.env.ASAAS_API_URL || 'https://www.asaas.com/api/v3';
 
   if (!apiKey) {
     console.error("ASAAS_PAGAMENTO_API_KEY não configurada.");
@@ -31,15 +33,7 @@ export default async function handler(req, res) {
   const description = `Notificação Extrajudicial - Ref: ${metadata.notificationId || 'Avulsa'}`;
   const externalReference = metadata.notificationId; // Vincula estritamente à notificação
 
-  let webhookUrl = null;
-  if (process.env.BASE_URL) {
-      webhookUrl = `${process.env.BASE_URL}/api/webhook`;
-  } else if (process.env.VERCEL_URL) {
-      webhookUrl = `https://${process.env.VERCEL_URL}/api/webhook`;
-  }
-
   try {
-    const ASAAS_URL = 'https://www.asaas.com/api/v3';
     
     // 1. GESTÃO DO CLIENTE NO ASAAS
     let customerId = null;
