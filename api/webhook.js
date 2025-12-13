@@ -67,7 +67,6 @@ export default async function handler(req, res) {
       const payment = event.payment;
       
       // --- LÓGICA DE NOTIFICAÇÃO AVULSA ---
-      // Tenta obter o ID da notificação pelo externalReference ou Descrição
       let notificationId = payment.externalReference; 
       
       if (!notificationId && payment.description && payment.description.includes('Ref: ')) {
@@ -92,7 +91,7 @@ export default async function handler(req, res) {
       const alreadySent = notification.status === 'Enviada' || notification.status === 'SENT';
 
       if (!alreadySent) {
-          // 1. Atualiza Status Inicial
+          // 1. Atualiza Status Inicial da Notificação
           await docRef.update({
               status: 'Enviada', 
               updatedAt: new Date().toISOString(),
@@ -103,7 +102,28 @@ export default async function handler(req, res) {
               whatsappStatus: 'SENT'
           });
 
-          // 2. DISPAROS COM RASTREAMENTO AUTOMÁTICO
+          // 2. ATUALIZA STATUS DA REUNIÃO VINCULADA (Se existir)
+          // Procura reuniões criadas pelo usuário (hostUid) que estão 'pending' e foram criadas recentemente
+          try {
+              // Busca a reunião mais recente pendente deste usuário
+              const meetingsSnap = await db.collection('reunioes')
+                  .where('hostUid', '==', notification.notificante_uid)
+                  .where('status', '==', 'pending')
+                  .orderBy('createdAt', 'desc')
+                  .limit(1)
+                  .get();
+
+              if (!meetingsSnap.empty) {
+                  const meetingDoc = meetingsSnap.docs[0];
+                  // Confirma a reunião
+                  await meetingDoc.ref.update({ status: 'scheduled' });
+                  console.log(`[WEBHOOK] Reunião ${meetingDoc.id} confirmada.`);
+              }
+          } catch (meetErr) {
+              console.error("[WEBHOOK] Erro ao confirmar reunião:", meetErr);
+          }
+
+          // 3. DISPAROS COM RASTREAMENTO AUTOMÁTICO
           const dispatchPromises = [];
 
           const officialSubject = `NOTIFICAÇÃO EXTRAJUDICIAL: ${notification.subject}`;
@@ -156,14 +176,21 @@ export default async function handler(req, res) {
           if (notification.recipientPhone && zInstance && zToken) {
               const whatsTask = async () => {
                   try {
+                      // Usa a mesma função auxiliar que criamos no frontend ou API Route
+                      const ZAPI_URL = "https://notify.ia.br/api/whatsapp"; // Chamada interna para usar a lógica robusta de lá
+                      // Como estamos no server-side, podemos chamar a lógica diretamente ou via fetch localhost se fosse Next.js real.
+                      // Aqui, replicaremos a chamada simplificada para a API Externa da Z-API com a formatação correta:
+                      
                       let cleanPhone = notification.recipientPhone.replace(/\D/g, '');
-                      if (cleanPhone.length < 12) cleanPhone = '55' + cleanPhone;
+                      if (cleanPhone.length >= 10 && cleanPhone.length <= 11) cleanPhone = '55' + cleanPhone;
+                      else if (cleanPhone.startsWith('0')) cleanPhone = cleanPhone.substring(1);
 
-                      const ZAPI_URL = `https://api.z-api.io/instances/${zInstance}/token/${zToken}`;
+                      const ZAPI_ENDPOINT = `https://api.z-api.io/instances/${zInstance}/token/${zToken}`;
                       let zaapId = null;
 
+                      // Tenta PDF
                       if (notification.pdf_url) {
-                          const resPdf = await fetch(`${ZAPI_URL}/send-document-pdf`, {
+                          const resPdf = await fetch(`${ZAPI_ENDPOINT}/send-document-pdf`, {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
@@ -174,11 +201,12 @@ export default async function handler(req, res) {
                               })
                           });
                           const dataPdf = await resPdf.json();
-                          if (resPdf.ok) zaapId = dataPdf.messageId || dataPdf.id;
+                          if (resPdf.ok && !dataPdf.error) zaapId = dataPdf.messageId || dataPdf.id;
                       }
 
+                      // Fallback Texto
                       if (!zaapId) {
-                          const resText = await fetch(`${ZAPI_URL}/send-text`, {
+                          const resText = await fetch(`${ZAPI_ENDPOINT}/send-text`, {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({

@@ -79,7 +79,7 @@ export interface Meeting {
     time: string;
     meetLink: string;
     createdAt: string;
-    status: 'scheduled' | 'completed' | 'canceled';
+    status: 'scheduled' | 'completed' | 'canceled' | 'pending';
 }
   
 export interface Transaction {

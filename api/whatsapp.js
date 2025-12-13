@@ -20,30 +20,32 @@ export default async function handler(req, res) {
 
   if (!phone) return res.status(400).json({ error: "Telefone é obrigatório." });
 
-  // LIMPEZA E FORMATAÇÃO RIGOROSA DO TELEFONE
-  // 1. Remove tudo que não for dígito
+  // --- FORMATAÇÃO DE TELEFONE (CRÍTICO) ---
+  // Remove tudo que não é número
   let cleanPhone = phone.replace(/\D/g, '');
   
-  // 2. Remove zero à esquerda se houver (ex: 011999... -> 11999...)
-  if (cleanPhone.startsWith('0') && cleanPhone.length >= 11) {
-      cleanPhone = cleanPhone.substring(1);
-  }
-
-  // 3. Lógica para adicionar 55 se faltar
+  // Tratamento para números brasileiros
   if (cleanPhone.length >= 10 && cleanPhone.length <= 11) {
+      // Se não tem 55, adiciona
       cleanPhone = '55' + cleanPhone;
   }
-  
+  // Se tem 12 ou 13 digitos e começa com 0, remove o 0
+  else if (cleanPhone.startsWith('0')) {
+      cleanPhone = cleanPhone.substring(1);
+      if (cleanPhone.length <= 11) cleanPhone = '55' + cleanPhone;
+  }
+
   console.log(`[Z-API] Enviando para: ${cleanPhone}`);
 
   const ZAPI_BASE = `https://api.z-api.io/instances/${instanceId}/token/${token}`;
 
   try {
     let zaapId = null;
+    let sentMethod = '';
 
-    // TENTA ENVIAR PDF SE EXISTIR URL
+    // 1. TENTATIVA PRIORITÁRIA: ENVIAR PDF
     if (pdfUrl) {
-        console.log(`[Z-API] Tentando enviar PDF para ${cleanPhone}`);
+        console.log(`[Z-API] Tentando enviar PDF...`);
         try {
             const docResponse = await fetch(`${ZAPI_BASE}/send-document-pdf`, {
                 method: 'POST',
@@ -57,43 +59,50 @@ export default async function handler(req, res) {
             });
 
             const docData = await docResponse.json();
-            if (docResponse.ok && !docData.error) {
+            if (docResponse.ok && !docData.error && (docData.messageId || docData.id)) {
                 console.log("[Z-API] PDF enviado com sucesso.");
                 zaapId = docData.messageId || docData.id;
+                sentMethod = 'PDF';
             } else {
-                console.warn("[Z-API] Erro ao enviar PDF, falha na API:", docData);
+                console.warn("[Z-API] Falha no envio de PDF, tentando texto com link...", docData);
             }
         } catch (pdfErr) {
             console.error("[Z-API] Exceção no envio de PDF:", pdfErr.message);
         }
     }
 
-    // FALLBACK: SE O PDF FALHOU (OU NÃO EXISTE), ENVIA TEXTO COM O LINK
+    // 2. FALLBACK OBRIGATÓRIO: TEXTO COM LINK (Se PDF falhou ou não existe)
     if (!zaapId) {
         console.log(`[Z-API] Usando Fallback Texto para ${cleanPhone}`);
-        const textPayload = {
-            phone: cleanPhone,
-            message: pdfUrl ? `${message}\n\n📄 *ACESSE O DOCUMENTO AQUI:* ${pdfUrl}` : message
-        };
+        
+        // Garante que o link esteja visível no texto se o PDF falhou
+        let finalMessage = message;
+        if (pdfUrl && !message.includes(pdfUrl)) {
+            finalMessage = `${message}\n\n📄 *CLIQUE PARA ACESSAR O DOCUMENTO:*\n${pdfUrl}`;
+        }
 
         const textResponse = await fetch(`${ZAPI_BASE}/send-text`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(textPayload)
+            body: JSON.stringify({
+                phone: cleanPhone,
+                message: finalMessage
+            })
         });
         
         const textData = await textResponse.json();
         
         if (!textResponse.ok || textData.error) {
             console.error("[Z-API] Falha no envio de texto:", textData);
-            throw new Error("Falha total no envio Z-API.");
+            throw new Error("Falha total no envio Z-API (PDF e Texto falharam). Verifique o número.");
         }
+        
         console.log("[Z-API] Texto enviado com sucesso.");
         zaapId = textData.messageId || textData.id;
+        sentMethod = 'TEXT_LINK';
     }
 
-    // Retorna o ID da mensagem para fins de rastreamento no webhook
-    return res.status(200).json({ success: true, messageId: zaapId });
+    return res.status(200).json({ success: true, messageId: zaapId, method: sentMethod });
 
   } catch (error) {
     console.error("[API/WHATSAPP] Handler Error:", error);

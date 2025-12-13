@@ -4,7 +4,7 @@ import { NotificationItem, NotificationStatus } from '../types';
 import { getNotificationsBySender, getNotificationsByRecipientCpf, saveNotification } from '../services/notificationService';
 import { initiateCheckout } from '../services/paymentService';
 import { getUserProfile } from '../services/userService';
-import { Send, RefreshCw, ChevronDown, ChevronUp, Package, Mail, FileText, CreditCard, Trash2, User, CheckCircle2, Circle, Clock, Inbox, Loader2, Zap, MapPin, AlertCircle, Copy, QrCode, MessageCircle, Check, Eye, Shield, Lock } from 'lucide-react';
+import { Send, RefreshCw, ChevronDown, ChevronUp, Package, Mail, FileText, CreditCard, Trash2, User, CheckCircle2, Circle, Clock, Inbox, Loader2, Zap, MapPin, AlertCircle, Copy, QrCode, MessageCircle, Check, Eye, Shield, Lock, Phone } from 'lucide-react';
 import { db } from '../services/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
@@ -55,7 +55,8 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                 const liveData: NotificationItem[] = [];
                 snapshot.forEach((doc) => {
                     const data = doc.data() as NotificationItem;
-                    if (data.status === NotificationStatus.PENDING_PAYMENT) return;
+                    // LÓGICA RÍGIDA: Apenas mostrar se JÁ PAGO ou ENVIADO
+                    if (data.status === NotificationStatus.PENDING_PAYMENT || data.status === NotificationStatus.DRAFT) return;
                     liveData.push(data);
                 });
                 liveData.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -146,8 +147,8 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
   };
 
   const DeliveryFlow = ({ notification }: { notification: NotificationItem }) => {
-      const isDelivered = notification.status === NotificationStatus.DELIVERED || notification.status === NotificationStatus.READ;
-      const isRead = notification.status === NotificationStatus.READ;
+      const isDelivered = notification.status === NotificationStatus.DELIVERED || notification.status === NotificationStatus.READ || notification.whatsappStatus === 'DELIVERED' || notification.whatsappStatus === 'READ';
+      const isRead = notification.status === NotificationStatus.READ || notification.whatsappStatus === 'READ' || notification.emailStatus === 'OPENED';
       const emailSt = notification.emailStatus;
       const whatsSt = notification.whatsappStatus;
 
@@ -231,7 +232,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                 {activeTab === 'sent' ? 'Notificações Enviadas' : 'Notificações Recebidas'}
             </h2>
             <p className="text-slate-500">
-                {activeTab === 'sent' ? 'Rastreamento em tempo real de entrega e leitura.' : 'Documentos oficiais recebidos destinados ao seu CPF.'}
+                {activeTab === 'sent' ? 'Acompanhe documentos pagos e em trânsito.' : 'Documentos oficiais recebidos destinados ao seu CPF.'}
             </p>
         </div>
         {loading && <div className="flex items-center text-xs text-blue-600 bg-blue-50 px-3 py-1 rounded-full"><Loader2 size={12} className="animate-spin mr-2"/> Sincronizando...</div>}
@@ -247,8 +248,9 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                     {activeTab === 'sent' ? <Package className="text-slate-400" size={24} /> : <Inbox className="text-slate-400" size={24} />}
                 </div>
                 <h3 className="text-lg font-medium text-slate-700">
-                    {activeTab === 'sent' ? 'Nenhuma notificação enviada' : 'Caixa de entrada vazia'}
+                    {activeTab === 'sent' ? 'Nenhuma notificação ativa' : 'Caixa de entrada vazia'}
                 </h3>
+                {activeTab === 'sent' && <p className="text-sm text-slate-400 mt-2">Notificações aguardando pagamento estão na aba Pagamentos.</p>}
             </div>
         ) : (
             filteredItems.map((notif) => (
@@ -306,12 +308,12 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                                         <DeliveryFlow notification={notif} />
                                     </div>
                                     
-                                    {/* Exibe dados da contraparte */}
+                                    {/* Exibe dados COMPLETOS de envio */}
                                     <div className="bg-white p-4 rounded-xl border border-slate-200 mt-4 shadow-sm">
                                         <h6 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center"><User size={12} className="mr-1"/> 
-                                            {activeTab === 'sent' ? 'Dados do Notificado' : 'Dados do Remetente'}
+                                            {activeTab === 'sent' ? 'Dados do Destinatário (Para quem foi enviado)' : 'Dados do Remetente'}
                                         </h6>
-                                        <div className="space-y-2">
+                                        <div className="space-y-3">
                                             <div className="flex justify-between border-b border-slate-50 pb-2">
                                                 <span className="text-xs text-slate-400">Nome</span>
                                                 <span className="text-xs font-medium text-slate-700">
@@ -319,16 +321,23 @@ const Monitoring: React.FC<MonitoringProps> = ({ notifications: propNotification
                                                 </span>
                                             </div>
                                             <div className="flex justify-between border-b border-slate-50 pb-2">
-                                                <span className="text-xs text-slate-400">Documento</span>
-                                                <span className="text-xs font-medium text-slate-700">
-                                                    {activeTab === 'sent' ? notif.recipientDocument : notif.notificante_cpf || '***.***.***-**'}
+                                                <span className="text-xs text-slate-400">Documento (CPF/CNPJ)</span>
+                                                <span className="text-xs font-medium text-slate-700 font-mono">
+                                                    {activeTab === 'sent' ? (notif.recipientDocument || 'Não informado') : notif.notificante_cpf || '***.***.***-**'}
                                                 </span>
                                             </div>
-                                            {activeTab === 'received' && (
-                                                <div className="flex justify-between border-b border-slate-50 pb-2">
-                                                    <span className="text-xs text-slate-400">Contato</span>
+                                            <div className="flex justify-between border-b border-slate-50 pb-2">
+                                                <span className="text-xs text-slate-400">WhatsApp de Envio</span>
+                                                <span className="text-xs font-medium text-slate-700 font-mono flex items-center">
+                                                    <Phone size={10} className="mr-1 text-emerald-500"/>
+                                                    {activeTab === 'sent' ? (notif.recipientPhone || 'Não informado') : notif.notificante_dados_expostos?.telefone}
+                                                </span>
+                                            </div>
+                                            {activeTab === 'sent' && (
+                                                <div className="flex justify-between pb-2">
+                                                    <span className="text-xs text-slate-400">E-mail de Envio</span>
                                                     <span className="text-xs font-medium text-slate-700">
-                                                        {notif.notificante_dados_expostos?.email}
+                                                        {notif.recipientEmail || 'Não informado'}
                                                     </span>
                                                 </div>
                                             )}

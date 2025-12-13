@@ -273,7 +273,9 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
                       >
                           <div className={`absolute left-0 top-0 bottom-0 w-1 ${
                               meet.status === 'scheduled' ? 'bg-blue-500' :
-                              meet.status === 'completed' ? 'bg-green-500' : 'bg-red-500'
+                              meet.status === 'completed' ? 'bg-green-500' : 
+                              meet.status === 'pending' ? 'bg-orange-400' :
+                              'bg-red-500'
                           }`}></div>
 
                           <div className="pl-3">
@@ -282,10 +284,17 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
                                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase flex items-center ${
                                     meet.status === 'scheduled' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
                                     meet.status === 'completed' ? 'bg-green-50 text-green-600 border border-green-100' :
+                                    meet.status === 'pending' ? 'bg-orange-50 text-orange-600 border border-orange-100' :
                                     'bg-red-50 text-red-600 border border-red-100'
                                 }`}>
-                                    {meet.status === 'scheduled' ? <Clock size={10} className="mr-1"/> : meet.status === 'completed' ? <CheckCircle2 size={10} className="mr-1"/> : <XCircle size={10} className="mr-1"/>}
-                                    {meet.status === 'scheduled' ? 'Agendada' : meet.status === 'completed' ? 'Realizada' : 'Cancelada'}
+                                    {meet.status === 'scheduled' ? <Clock size={10} className="mr-1"/> : 
+                                     meet.status === 'completed' ? <CheckCircle2 size={10} className="mr-1"/> : 
+                                     meet.status === 'pending' ? <AlertTriangle size={10} className="mr-1"/> :
+                                     <XCircle size={10} className="mr-1"/>}
+                                    {meet.status === 'scheduled' ? 'Agendada' : 
+                                     meet.status === 'completed' ? 'Realizada' : 
+                                     meet.status === 'pending' ? 'Pendente' :
+                                     'Cancelada'}
                                 </span>
                             </div>
                             <div className="flex items-center text-xs text-slate-500 mb-3">
@@ -300,7 +309,7 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
                                     <div className="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-white text-[10px] border-2 border-white ring-1 ring-slate-100" title="Você">{user?.displayName?.charAt(0)}</div>
                                     <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center text-slate-500 text-[10px] border-2 border-white ring-1 ring-slate-100" title="Convidado">C</div>
                                 </div>
-                                {meet.status === 'scheduled' && (
+                                {(meet.status === 'scheduled' || meet.status === 'pending') && (
                                     <button onClick={(e) => {e.stopPropagation(); handleDelete(meet.id);}} className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors" title="Cancelar Reunião">
                                         <Trash2 size={14} />
                                     </button>
@@ -432,12 +441,20 @@ const MeetingScheduler: React.FC<MeetingSchedulerProps> = ({ filterStatus, meeti
                        </button>
 
                        <div className="flex flex-col items-center justify-center h-full max-w-md mx-auto text-center px-4">
-                           <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 shadow-sm border-4 border-white ${selectedMeeting.status === 'completed' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                               {selectedMeeting.status === 'completed' ? <CheckCircle2 size={48} /> : <XCircle size={48} />}
+                           <div className={`w-24 h-24 rounded-full flex items-center justify-center mb-6 shadow-sm border-4 border-white ${
+                               selectedMeeting.status === 'completed' ? 'bg-green-100 text-green-600' : 
+                               selectedMeeting.status === 'pending' ? 'bg-orange-100 text-orange-600' :
+                               'bg-red-100 text-red-600'
+                           }`}>
+                               {selectedMeeting.status === 'completed' ? <CheckCircle2 size={48} /> : 
+                                selectedMeeting.status === 'pending' ? <AlertTriangle size={48} /> :
+                                <XCircle size={48} />}
                            </div>
                            
                            <h2 className="text-2xl font-bold text-slate-800 mb-2">
-                               {selectedMeeting.status === 'completed' ? 'Conciliação Realizada' : 'Conciliação Cancelada'}
+                               {selectedMeeting.status === 'completed' ? 'Conciliação Realizada' : 
+                                selectedMeeting.status === 'pending' ? 'Pagamento Pendente' :
+                                'Conciliação Cancelada'}
                            </h2>
                            
                            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 w-full mt-6 text-left">

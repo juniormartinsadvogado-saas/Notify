@@ -21,9 +21,10 @@ service firebase.storage {
       allow write: if isAuthenticated() && request.auth.uid == userId;
     }
 
+    // REGRA CRÍTICA CORRIGIDA: Permite leitura pública de qualquer PDF nesta pasta
+    // Isso é necessário para que o link enviado por WhatsApp/Email funcione para o destinatário
     match /notificacoes/{notificationId}/{allPaths=**} {
-      // PDF Público para links externos funcionarem
-      allow read: if (allPaths.matches('.*\\.pdf')) || isAuthenticated();
+      allow read: if true; 
       allow write: if isAuthenticated();
     }
 

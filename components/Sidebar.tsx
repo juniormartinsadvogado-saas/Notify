@@ -46,7 +46,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onChangeView, onLogout, 
     },
     {
         id: ViewState.BILLING, 
-        label: 'Pagamentos',
+        label: 'Pagamentos', 
         icon: <CreditCard size={20} />
     },
     { 

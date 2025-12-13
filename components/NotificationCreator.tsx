@@ -671,23 +671,22 @@ const NotificationCreator: React.FC<NotificationCreatorProps> = ({ onSave, user,
                   id: `MEET-${Date.now()}`, hostUid: user.uid, hostName: user.displayName, title: `Conciliação: ${formData.species}`,
                   date: formData.meetingDate, time: formData.meetingTime, guestEmail: formData.recipient.email, 
                   meetLink: formData.meetLink || "https://meet.google.com/yjg-zhrg-rez",
-                  createdAt: new Date().toISOString(), status: 'scheduled'
+                  createdAt: new Date().toISOString(), 
+                  status: 'pending' // LÓGICA CRÍTICA: Status inicial pendente até pagar
               };
               await createMeeting(meet);
           }
 
           const payerData = role === 'representative' ? formData.representative : formData.sender;
-          // LIMPEZA EXTREMA DO CPF (APENAS NÚMEROS)
           const cleanCpfPayer = payerData.cpfCnpj ? payerData.cpfCnpj.replace(/\D/g, '') : '';
 
-          // VALIDAÇÃO RÍGIDA: APENAS CPF (11 DÍGITOS)
           if (!cleanCpfPayer || cleanCpfPayer.length !== 11) {
               throw new Error("O pagamento via Pix exige um CPF válido (11 dígitos). Verifique os dados do pagador.");
           }
 
           const checkout = await initiateCheckout(notif, 'single', 'PIX', null, {
               name: payerData.name || user.displayName,
-              cpfCnpj: cleanCpfPayer, // Envia limpo
+              cpfCnpj: cleanCpfPayer,
               email: payerData.email || user.email,
               phone: payerData.phone || ''
           });

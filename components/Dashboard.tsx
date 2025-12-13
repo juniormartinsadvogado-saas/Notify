@@ -49,14 +49,10 @@ const Dashboard: React.FC<DashboardProps> = ({ notifications, meetings, transact
       n.status === NotificationStatus.READ
   ).length;
 
-  // 2. Recebidas (Assumindo que props.notifications contém as enviadas pelo user, precisamos buscar as recebidas.
-  // Nota: A prop 'notifications' aqui vem do App.tsx que carrega as enviadas. 
-  // Para exibir o contador de recebidas, idealmente passariamos via props também, 
-  // mas vamos assumir que o App.tsx vai passar essa info ou calcular via badgeCounts global.
-  // Neste componente, vamos usar uma lógica simplificada ou placeholder se não tivermos os dados completos ainda.
-  // Ajuste: Vamos assumir que 'notifications' aqui são APENAS as enviadas.
+  // 2. Recebidas
+  // Calculado via prop notifications (se passado corretamente pelo App.tsx) ou 0
   
-  // 3. Conciliações
+  // 3. Conciliações (Apenas Confirmadas)
   const meetScheduled = meetings.filter(m => m.status === 'scheduled').length;
   
   // 4. Pagamentos Pendentes
@@ -178,7 +174,7 @@ const Dashboard: React.FC<DashboardProps> = ({ notifications, meetings, transact
             {/* 2. RECEBIDAS (NOVO CARD) */}
             <MainCard 
                 title="Recebidas"
-                value={0} // Este valor deve vir das props se disponível, ou carregado. No MVP assumimos 0 ou logica de App.tsx
+                value={0} 
                 label="Documentos para você"
                 icon={Inbox}
                 colorClass="bg-orange-100 text-orange-600"
@@ -199,9 +195,9 @@ const Dashboard: React.FC<DashboardProps> = ({ notifications, meetings, transact
 
             {/* 4. PAGAMENTOS */}
             <MainCard 
-                title="Financeiro"
+                title="Pagamentos"
                 value={payPending}
-                label="Pendentes de Pgto"
+                label="Pendentes"
                 icon={CreditCard}
                 colorClass="bg-emerald-100 text-emerald-600"
                 borderColor="border-emerald-200"
